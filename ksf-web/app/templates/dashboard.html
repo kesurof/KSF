@@ -1,173 +1,151 @@
 {% extends "base.html" %}
-{% block title %}Dashboard - KSF Web{% endblock %}
+{% block title %}Tableau de bord — KSF{% endblock %}
 {% block content %}
-<h1>Dashboard</h1>
-<p class="text-muted">Etat global du serveur — {{ now }}</p>
-
-<div class="grid grid-4">
-    <div class="card stat-card">
-        <div class="stat-value text-success">{{ running }}</div>
-        <div class="stat-label">Running</div>
-    </div>
-    <div class="card stat-card">
-        <div class="stat-value text-warning">{{ stopped }}</div>
-        <div class="stat-label">Stopped</div>
-    </div>
-    <div class="card stat-card">
-        <div class="stat-value text-danger">{{ unhealthy }}</div>
-        <div class="stat-label">Unhealthy</div>
-    </div>
-    <div class="card stat-card">
-        <div class="stat-value">{{ total }}</div>
-        <div class="stat-label">Total</div>
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Tableau de bord</h1>
+        <p class="page-sub">
+            <span class="muted" aria-hidden="true">●</span>
+            <span>{{ now }}</span>
+        </p>
     </div>
 </div>
 
 {% if docker_error %}
-<div class="card card-warning">
-    <div class="status-list">
-        <div class="status-row">
-            <span class="text-warning">Docker</span>
-            <span class="badge badge-warning">{{ docker_error }}</span>
-        </div>
+<div class="card card-warn-err" role="alert">
+    <div class="flex acenter gap-3">
+        <span class="dot dot-err" aria-hidden="true"></span>
+        <span class="red"><strong>Docker indisponible.</strong> Vérifiez que le socket est monté et accessible.</span>
     </div>
 </div>
 {% endif %}
-
-<div class="grid grid-2">
-    <div class="card">
-        <h2>Infrastructure</h2>
-        <div class="status-list">
-            <div class="status-row">
-                <span>Traefik</span>
-                <span class="badge {% if traefik_active %}badge-success{% else %}badge-danger{% endif %}">
-                    {% if traefik_active %}Actif{% else %}Inactif{% endif %}
-                </span>
-            </div>
-            <div class="status-row">
-                <span>OAuth2 Proxy</span>
-                <span class="badge {% if oauth2_active %}badge-success{% else %}badge-danger{% endif %}">
-                    {% if oauth2_active %}Actif{% else %}Inactif{% endif %}
-                </span>
-            </div>
-            <div class="status-row">
-                <span>CrowdSec</span>
-                <span class="badge {% if crowdsec_active %}badge-success{% else %}badge-secondary{% endif %}">
-                    {% if crowdsec_active %}Actif{% else %}Inactif{% endif %}
-                </span>
-            </div>
-            <div class="status-row">
-                <span>AppSec / WAF</span>
-                {% if appsec_state == 'active' %}
-                <span class="badge badge-success">Actif</span>
-                {% elif appsec_state == 'inactive' %}
-                <span class="badge badge-secondary">Inactif</span>
-                {% else %}
-                <span class="badge badge-warning">Indetermine</span>
-                {% endif %}
-            </div>
-        </div>
+<div class="section-head">
+    <h2>État des services</h2>
+    <span class="section-sub">{{ installed_apps|length + 4 }} composant(s) surveillé(s)</span>
+</div>
+<div class="rack" role="list" aria-label="État des services">
+    <div class="rack-row" role="listitem">
+        <span class="led {% if infra.traefik %}led-on{% else %}led-err{% endif %}" aria-hidden="true"></span>
+        <span class="rack-name">Traefik</span>
+        <span class="rack-info">{% if infra.traefik %}en service{% else %}arrêté{% endif %}</span>
     </div>
-
+    <div class="rack-row" role="listitem">
+        <span class="led {% if infra.oauth2 %}led-on{% else %}led-off{% endif %}" aria-hidden="true"></span>
+        <span class="rack-name">OAuth2 Proxy</span>
+        <span class="rack-info">{% if infra.oauth2 %}en service{% else %}inactif{% endif %}</span>
+    </div>
+    <div class="rack-row" role="listitem">
+        <span class="led {% if infra.crowdsec %}led-on{% else %}led-off{% endif %}" aria-hidden="true"></span>
+        <span class="rack-name">CrowdSec</span>
+        <span class="rack-info">{% if infra.crowdsec %}en service{% else %}inactif{% endif %}</span>
+    </div>
+    <div class="rack-row" role="listitem">
+        <span class="led {% if appsec_state == 'active' %}led-on{% elif appsec_state == 'inactive' %}led-off{% else %}led-warn{% endif %}" aria-hidden="true"></span>
+        <span class="rack-name">AppSec / WAF</span>
+        <span class="rack-info">{% if appsec_state == 'active' %}actif{% elif appsec_state == 'inactive' %}inactif{% else %}indéterminé{% endif %}</span>
+    </div>
+    {% for app in installed_apps %}
+    <div class="rack-row" role="listitem">
+        <span class="led {% if app.status == 'running' %}led-on{% else %}led-off{% endif %}" aria-hidden="true"></span>
+        <span class="rack-name">{{ app.name }}</span>
+        <span class="rack-info">{{ app.host if app.host else '—' }}</span>
+    </div>
+    {% endfor %}
+</div>
+<div class="grid g4">
+    <div class="card stat">
+        <div class="stat-val green">{{ running }}</div>
+        <div class="stat-lbl green">En service</div>
+    </div>
+    <div class="card stat">
+        <div class="stat-val {% if stopped > 0 %}orange{% endif %}">{{ stopped }}</div>
+        <div class="stat-lbl {% if stopped > 0 %}orange{% endif %}">Arrêtés</div>
+    </div>
+    <div class="card stat">
+        <div class="stat-val {% if unhealthy > 0 %}red{% endif %}">{{ unhealthy }}</div>
+        <div class="stat-lbl {% if unhealthy > 0 %}red{% endif %}">Indisponibles</div>
+    </div>
+    <div class="card stat">
+        <div class="stat-val">{{ total }}</div>
+        <div class="stat-lbl">Total</div>
+    </div>
+</div>
+<div class="grid g2 mt-4">
     <div class="card">
-        <h2>Dernier backup</h2>
-        {% if backups_error %}
-        <div class="status-list">
-            <div class="status-row">
-                <span class="text-warning">{{ backups_error }}</span>
-            </div>
+        <div class="card-title">
+            <span>Dernière sauvegarde</span>
+            <a href="/backups" class="btn btn-ghost btn-sm" aria-label="Voir toutes les sauvegardes">Tout voir →</a>
         </div>
+        {% if backups_error %}
+        <p class="muted">{{ backups_error }}</p>
         {% elif latest_backup %}
-        <div class="status-list">
-            <div class="status-row">
-                <span>Fichier</span>
-                <span class="text-mono">{{ latest_backup.name }}</span>
-            </div>
-            <div class="status-row">
-                <span>Date</span>
-                <span>{{ latest_backup.created }}</span>
-            </div>
-            <div class="status-row">
-                <span>Taille</span>
-                <span>{{ latest_backup.size }}</span>
-            </div>
-            <div class="status-row">
+        <div class="slist">
+            <div class="srow"><span>Fichier</span><span class="mono sm">{{ latest_backup.name }}</span></div>
+            <div class="srow"><span>Date</span><span>{{ latest_backup.created }}</span></div>
+            <div class="srow"><span>Taille</span><span>{{ latest_backup.size }}</span></div>
+            <div class="srow">
                 <span>Checksum</span>
-                <span class="badge {% if latest_backup.has_checksum %}badge-success{% else %}badge-warning{% endif %}">
-                    {% if latest_backup.has_checksum %}Present{% else %}Absent{% endif %}
+                <span>
+                    <span class="badge {% if latest_backup.has_checksum %}b-green{% else %}b-orange{% endif %}">
+                        {% if latest_backup.has_checksum %}présent{% else %}absent{% endif %}
+                    </span>
                 </span>
             </div>
         </div>
         {% else %}
-        <p class="text-muted">Aucun backup trouve.</p>
+        <div class="empty">
+            <span class="empty-text">Aucune sauvegarde n'a été créée.</span>
+        </div>
         {% endif %}
     </div>
-</div>
-
-<div class="card">
-    <h2>Actions</h2>
-    <div class="btn-group">
-        <button class="btn btn-primary"
-            hx-post="/system/doctor"
-            hx-target="#action-result"
-            hx-indicator="#doctor-indicator"
-            {% if not actions_enabled %}disabled{% endif %}>
-            <span id="doctor-indicator" class="htmx-indicator spinner"></span>
-            Lancer doctor
-        </button>
-        <button class="btn btn-primary"
-            hx-post="/backups/create"
-            hx-target="#action-result"
-            hx-swap="innerHTML"
-            hx-on::after-request="showToast(event.detail.xhr.responseText ? JSON.parse(event.detail.xhr.responseText).message : 'Action terminee', event.detail.xhr.status === 200)"
-            data-confirm="Creer un backup maintenant ?"
-            {% if not actions_enabled %}disabled{% endif %}>
-            Creer backup
-        </button>
-        <button class="btn btn-warning"
-            hx-post="/system/update-all"
-            hx-target="#action-result"
-            hx-swap="innerHTML"
-            hx-on::after-request="showToast(event.detail.xhr.responseText ? JSON.parse(event.detail.xhr.responseText).message : 'Action terminee', event.detail.xhr.status === 200)"
-            data-confirm="Lancer la mise a jour de toutes les stacks ?"
-            {% if not actions_enabled %}disabled{% endif %}>
-            Update all
-        </button>
-    </div>
-    <div id="action-result" class="action-result"></div>
-</div>
-
-{% if installed_apps %}
-<div class="card">
-    <h2>Apps installees</h2>
-    <div class="table-responsive">
-        <table>
-            <thead>
-                <tr>
-                    <th>Nom</th>
-                    <th>Domaine</th>
-                    <th>OAuth2</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for app in installed_apps %}
-                <tr>
-                    <td class="text-mono">{{ app.name }}</td>
-                    <td>{{ app.host if app.host else 'Non defini' }}</td>
-                    <td>
-                        <span class="badge {% if app.protected %}badge-success{% else %}badge-secondary{% endif %}">
-                            {% if app.protected %}Protege{% else %}Public{% endif %}
-                        </span>
-                    </td>
-                    <td>
-                        <a href="/containers" class="btn btn-sm">Containers</a>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="card">
+        <div class="card-title">
+            <span>Actions rapides</span>
+        </div>
+        <div class="btn-stack">
+            <button class="action-tile"
+                    hx-post="/system/doctor"
+                    hx-target="#action-result"
+                    hx-swap="innerHTML"
+                    {% if not actions_enabled %}disabled{% endif %}>
+                <span class="action-tile-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                </span>
+                <span class="action-tile-text">
+                    <span class="action-tile-title">Lancer un diagnostic</span>
+                    <span class="action-tile-sub">État complet de la plateforme (doctor)</span>
+                </span>
+            </button>
+            <button class="action-tile"
+                    hx-post="/backups/create"
+                    hx-target="#action-result"
+                    hx-swap="innerHTML"
+                    data-confirm="Créer une sauvegarde ?"
+                    {% if not actions_enabled %}disabled{% endif %}>
+                <span class="action-tile-icon" aria-hidden="true" style="background:var(--blue-soft);color:var(--blue)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                </span>
+                <span class="action-tile-text">
+                    <span class="action-tile-title">Créer une sauvegarde</span>
+                    <span class="action-tile-sub">Archive horodatée de la plateforme</span>
+                </span>
+            </button>
+            <button class="action-tile"
+                    hx-post="/system/update-all"
+                    hx-target="#action-result"
+                    hx-swap="innerHTML"
+                    data-confirm="Mettre à jour toutes les stacks ?"
+                    {% if not actions_enabled %}disabled{% endif %}>
+                <span class="action-tile-icon" aria-hidden="true" style="background:var(--green-soft);color:var(--green)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+                </span>
+                <span class="action-tile-text">
+                    <span class="action-tile-title">Tout mettre à jour</span>
+                    <span class="action-tile-sub">Stacks système et applications</span>
+                </span>
+            </button>
+        </div>
+        <div id="action-result" class="action-result" aria-live="polite"></div>
     </div>
 </div>
-{% endif %}
 {% endblock %}

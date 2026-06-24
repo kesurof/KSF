@@ -1,55 +1,66 @@
 {% extends "base.html" %}
-{% block title %}Backups - KSF Web{% endblock %}
+{% block title %}Sauvegardes — KSF{% endblock %}
 {% block content %}
-<h1>Backups</h1>
-<p class="text-muted">{{ backups|length }} backup(s) — {{ now }}</p>
-
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Sauvegardes</h1>
+        <p class="page-sub">
+            <span>{{ backups|length }} backup(s)</span>
+            <span class="muted" aria-hidden="true">·</span>
+            <span>{{ now }}</span>
+        </p>
+    </div>
+</div>
 <div class="card">
-    <h2>Actions</h2>
+    <div class="card-title">Actions</div>
     <div class="btn-group">
         <button class="btn btn-primary"
-            hx-post="/backups/create"
-            hx-on::after-request="showToast(JSON.parse(event.detail.xhr.responseText).message, event.detail.xhr.status === 200)"
-            data-confirm="Creer un backup maintenant ?"
-            {% if not actions_enabled %}disabled{% endif %}>
-            Creer backup
+                hx-post="/backups/create"
+                data-confirm="Créer une sauvegarde ?"
+                {% if not actions_enabled %}disabled{% endif %}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:14px;height:14px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Créer
         </button>
-        <button class="btn btn-sm"
-            hx-post="/backups/verify"
-            hx-on::after-request="showToast(JSON.parse(event.detail.xhr.responseText).message, event.detail.xhr.status === 200)"
-            {% if not actions_enabled %}disabled{% endif %}>
-            Verifier latest
-        </button>
-        <button class="btn btn-sm btn-warning"
-            hx-post="/backups/restore-dryrun"
-            hx-on::after-request="showToast(JSON.parse(event.detail.xhr.responseText).message, event.detail.xhr.status === 200)"
-            data-confirm="Simuler la restauration du dernier backup ?"
-            {% if not actions_enabled %}disabled{% endif %}>
-            Restore latest (dry-run)
-        </button>
+        <button class="btn"
+                hx-post="/backups/verify"
+                {% if not actions_enabled %}disabled{% endif %}>Vérifier</button>
+        <button class="btn btn-warn"
+                hx-post="/backups/restore-dryrun"
+                data-confirm="Simuler la restauration ?"
+                {% if not actions_enabled %}disabled{% endif %}>Restaurer (dry-run)</button>
     </div>
 </div>
 
 {% if backups_error %}
-<div class="card card-warning">
-    <div class="status-list">
-        <div class="status-row">
-            <span class="text-warning">{{ backups_error }}</span>
-        </div>
+<div class="card card-warn" role="alert">
+    <div class="flex acenter gap-3">
+        <span class="dot dot-warn" aria-hidden="true"></span>
+        <span class="orange"><strong>Lecture impossible.</strong> {{ backups_error }}</span>
     </div>
 </div>
 {% endif %}
 
 {% if not backups and not backups_error %}
 <div class="card">
-    <p class="text-muted">Aucun backup trouve.</p>
+    <div class="empty">
+        <span class="empty-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </span>
+        <span class="empty-title">Aucune sauvegarde</span>
+        <span class="empty-text">Créez votre première sauvegarde pour protéger votre plateforme.</span>
+        <div class="empty-actions">
+            <button class="btn btn-primary"
+                    hx-post="/backups/create"
+                    data-confirm="Créer une sauvegarde ?">Créer une sauvegarde</button>
+        </div>
+    </div>
 </div>
 {% endif %}
 
 {% if backups %}
 <div class="card">
-    <h2>Backups disponibles</h2>
-    <div class="table-responsive">
+    <div class="card-title">Sauvegardes disponibles</div>
+    <div class="tbl-wrap">
         <table>
             <thead>
                 <tr>
@@ -57,25 +68,21 @@
                     <th>Date</th>
                     <th>Taille</th>
                     <th>Checksum</th>
-                    <th>Latest</th>
+                    <th>État</th>
                 </tr>
             </thead>
             <tbody>
                 {% for b in backups %}
                 <tr>
-                    <td class="text-mono">{{ b.name }}</td>
+                    <td class="mono">{{ b.name }}</td>
                     <td>{{ b.created }}</td>
                     <td>{{ b.size }}</td>
                     <td>
-                        <span class="badge badge-{{ 'success' if b.has_checksum else 'warning' }}">
-                            {{ 'Present' if b.has_checksum else 'Absent' }}
+                        <span class="badge {% if b.has_checksum %}b-green{% else %}b-orange{% endif %}">
+                            {{ 'présent' if b.has_checksum else 'absent' }}
                         </span>
                     </td>
-                    <td>
-                        {% if b.get('is_latest') %}
-                        <span class="badge badge-primary">Latest</span>
-                        {% endif %}
-                    </td>
+                    <td>{% if b.get('is_latest') %}<span class="badge b-amber no-dot">latest</span>{% endif %}</td>
                 </tr>
                 {% endfor %}
             </tbody>

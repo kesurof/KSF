@@ -1,102 +1,242 @@
 {% extends "base.html" %}
-{% block title %}Applications - KSF Web{% endblock %}
+{% block title %}Applications — KSF{% endblock %}
 {% block content %}
-<h1>Applications KSF</h1>
-<p class="text-muted">{{ apps|length }} app(s) installee(s) — {{ now }}</p>
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Applications</h1>
+        <p class="page-sub">
+            <span>{{ apps|length }} installée(s)</span>
+            <span class="muted" aria-hidden="true">·</span>
+            <span>{{ available_apps|length }} disponible(s)</span>
+            <span class="muted" aria-hidden="true">·</span>
+            <span>{{ now }}</span>
+        </p>
+    </div>
+</div>
 
 {% if docker_error %}
-<div class="card card-warning">
-    <div class="status-list">
-        <div class="status-row">
-            <span class="text-warning">{{ docker_error }}</span>
-        </div>
+<div class="card card-warn-err" role="alert">
+    <div class="flex acenter gap-3">
+        <span class="dot dot-err" aria-hidden="true"></span>
+        <span class="red"><strong>Docker indisponible.</strong> Certaines actions sont désactivées.</span>
     </div>
 </div>
 {% endif %}
-
-{% if not apps %}
-<div class="card">
-    <p class="text-muted">Aucune application installee.</p>
+<div class="toolbar">
+    <div class="toolbar-left">
+        <div class="tabs" role="tablist" aria-label="Onglets">
+            <button class="tab on" data-tab="installed" onclick="stab('installed', this)" role="tab" aria-selected="true">
+                Installées <span class="tab-n">{{ apps|length }}</span>
+            </button>
+            <button class="tab" data-tab="available" onclick="stab('available', this)" role="tab" aria-selected="false">
+                Catalogue <span class="tab-n">{{ available_apps|length }}</span>
+            </button>
+        </div>
+    </div>
+    <div class="toolbar-right">
+        <div class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" placeholder="Rechercher une application..." aria-label="Rechercher" oninput="sfilter(this.value)">
+        </div>
+    </div>
 </div>
-{% endif %}
-
-{% for app in apps %}
-<div class="card app-card">
-    <div class="app-header">
-        <div>
-            <h2 class="app-name">{{ app.name }}</h2>
-            <div class="flex gap-sm">
-                <span class="badge badge-{{ 'success' if app.status == 'running' else 'danger' }}">
-                    {{ app.status }}
-                </span>
-                <span class="badge badge-{{ 'success' if app.protected else 'secondary' }}">
-                    {{ 'Protege' if app.protected else 'Public' }}
-                </span>
-                {% if app.disabled %}
-                <span class="badge badge-warning">Desactive</span>
-                {% endif %}
+<div id="tab-installed" role="tabpanel" aria-label="Applications installées">
+    {% if not apps %}
+    <div class="card">
+        <div class="empty">
+            <span class="empty-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            </span>
+            <span class="empty-title">Aucune application installée</span>
+            <span class="empty-text">Passez au catalogue pour parcourir les applications disponibles.</span>
+            <div class="empty-actions">
+                <button class="btn btn-primary" onclick="stab('available', document.querySelector('[data-tab=available]'))">Voir le catalogue</button>
             </div>
         </div>
     </div>
-    <div class="status-list">
-        <div class="status-row">
-            <span>Domaine</span>
-            <span class="text-mono">{{ app.host if app.host else 'Non defini' }}</span>
+    {% endif %}
+    <div class="agrid">
+    {% for app in apps %}
+    <div class="card acard {% if app.disabled %}card-warn{% endif %}" data-search="{{ app.name }} {{ app.description }}">
+        <div class="acard-head">
+            <div class="acard-icon acard-icon-{{ app.category|default('other') }}" aria-hidden="true">{{ app.name[:2]|upper }}</div>
+            <div class="acard-title">
+                <h3>{{ app.name }}</h3>
+                <p class="acard-desc">{{ app.description or 'Aucune description.' }}</p>
+            </div>
+            <div class="acard-status">
+                <span class="dot {% if app.status == 'running' %}dot-on{% else %}dot-off{% endif %}" aria-hidden="true"></span>
+                <span class="mono sm muted">{{ app.status }}</span>
+            </div>
         </div>
-        <div class="status-row">
-            <span>Port</span>
-            <span>{{ app.port if app.port else 'Non defini' }}</span>
+        <div class="acard-meta">
+            <div class="meta"><span class="meta-l">Domaine</span><span class="meta-v">{{ app.host if app.host else '—' }}</span></div>
+            <div class="meta"><span class="meta-l">Port</span><span class="meta-v">{{ app.port or '—' }}</span></div>
+            <div class="meta"><span class="meta-l">Accès</span>
+                <span class="badge {% if app.protected %}b-green{% else %}b-gray{% endif %}">{{ 'Protégé' if app.protected else 'Public' }}</span>
+            </div>
+            {% if app.disabled %}<div class="meta"><span class="meta-l">État</span><span class="badge b-orange">Désactivé</span></div>{% endif %}
         </div>
-        <div class="status-row">
-            <span>Repertoire</span>
-            <span class="text-mono text-sm">{{ app.dir if app.dir else 'Non defini' }}</span>
+        <div class="acard-actions">
+            {% if app.status == 'running' and not app.disabled %}
+            <button class="btn btn-sm"
+                    hx-post="/apps/{{ app.name }}/restart"
+                    data-confirm="Redémarrer {{ app.name }} ?"
+                    {% if not actions_enabled %}disabled{% endif %}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:12px;height:12px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15A9 9 0 1 1 18 5.28"/></svg>
+                Restart
+            </button>
+            <button class="btn btn-sm btn-warn"
+                    hx-post="/apps/{{ app.name }}/stop"
+                    data-confirm="Arrêter {{ app.name }} ?"
+                    {% if not actions_enabled %}disabled{% endif %}>Stop</button>
+            {% else %}
+            <button class="btn btn-sm btn-primary"
+                    hx-post="/apps/{{ app.name }}/restart"
+                    data-confirm="Démarrer {{ app.name }} ?"
+                    {% if not actions_enabled %}disabled{% endif %}>Start</button>
+            {% endif %}
+            <button class="btn btn-sm"
+                    hx-post="/apps/{{ app.name }}/update"
+                    data-confirm="Mettre à jour {{ app.name }} ?"
+                    {% if not actions_enabled %}disabled{% endif %}>Update</button>
+            {% if app.disabled %}
+            <button class="btn btn-sm btn-danger"
+                    hx-post="/apps/{{ app.name }}/remove"
+                    data-confirm2="Supprimer {{ app.name }} ?"
+                    {% if not actions_enabled %}disabled{% endif %}>Remove</button>
+            {% else %}
+            <button class="btn btn-sm btn-warn"
+                    hx-post="/apps/{{ app.name }}/disable"
+                    data-confirm2="Désactiver {{ app.name }} ?"
+                    {% if not actions_enabled %}disabled{% endif %}>Désactiver</button>
+            {% endif %}
         </div>
-        <div class="status-row">
-            <span>Installe le</span>
-            <span>{{ app.installed_at[:19] if app.installed_at else 'Non defini' }}</span>
-        </div>
+
         {% if app.containers %}
-        <div class="status-row">
-            <span>Containers</span>
-            <span>
-                {% for c in app.containers %}
-                <a href="/containers/{{ c.name }}" class="text-mono text-sm">{{ c.name }}</a>
-                <span class="badge badge-{{ 'success' if c.status == 'running' else 'danger' }}">{{ c.status }}</span>
-                {% endfor %}
-            </span>
+        <div class="acard-containers">
+            {% for c in app.containers %}
+            <a href="/containers/{{ c.name }}" class="container-link">
+                <span class="dot {% if c.status == 'running' %}dot-on{% else %}dot-off{% endif %}" aria-hidden="true"></span>
+                {{ c.name }}
+            </a>
+            {% endfor %}
         </div>
         {% endif %}
     </div>
-    <div class="app-actions">
-        <button class="btn btn-sm btn-primary"
-            hx-post="/apps/{{ app.name }}/update"
-            hx-on::after-request="showToast(JSON.parse(event.detail.xhr.responseText).message, event.detail.xhr.status === 200)"
-            data-confirm="Mettre a jour {{ app.name }} ?"
-            {% if not actions_enabled %}disabled{% endif %}>
-            Update
-        </button>
-        <button class="btn btn-sm"
-            hx-post="/apps/{{ app.name }}/restart"
-            hx-on::after-request="showToast(JSON.parse(event.detail.xhr.responseText).message, event.detail.xhr.status === 200)"
-            data-confirm="Redemarrer {{ app.name }} ?"
-            {% if not actions_enabled %}disabled{% endif %}>
-            Restart
-        </button>
-        <button class="btn btn-sm btn-warning"
-            hx-post="/apps/{{ app.name }}/disable"
-            hx-on::after-request="showToast(JSON.parse(event.detail.xhr.responseText).message, event.detail.xhr.status === 200)"
-            data-confirm-double="Desactiver {{ app.name }} ? Cette action arretera le service."
-            {% if not actions_enabled %}disabled{% endif %}>
-            Disable
-        </button>
-        <button class="btn btn-sm btn-danger"
-            hx-post="/apps/{{ app.name }}/remove"
-            hx-on::after-request="showToast(JSON.parse(event.detail.xhr.responseText).message, event.detail.xhr.status === 200)"
-            data-confirm-double="Supprimer {{ app.name }} ? Les donnees seront preservees mais la stack arretee."
-            {% if not actions_enabled %}disabled{% endif %}>
-            Remove
-        </button>
+    {% endfor %}
     </div>
 </div>
-{% endfor %}
+<div id="tab-available" role="tabpanel" style="display:none" aria-label="Catalogue d'applications">
+    <div class="cats" aria-label="Catégories">
+        <button class="cat-btn on" data-cat="all" onclick="cfilter('all', this)">Toutes</button>
+        {% for cat in categories %}<button class="cat-btn" data-cat="{{ cat }}" onclick="cfilter('{{ cat }}', this)">{{ cat }}</button>{% endfor %}
+    </div>
+    <div class="agrid">
+    {% for app in available_apps %}
+    <div class="card acard {% if app.installed %}acard-installed{% endif %}" data-cat="{{ app.category }}" data-inst="{{ app.installed|lower }}" data-search="{{ app.name }} {{ app.description }}">
+        <div class="acard-head">
+            <div class="acard-icon acard-icon-{{ app.category|default('other') }}" aria-hidden="true">{{ app.name[:2]|upper }}</div>
+            <div class="acard-title">
+                <h3>{{ app.name }}</h3>
+                <p class="acard-desc">{{ app.description or 'Aucune description.' }}</p>
+            </div>
+            {% if app.installed %}<span class="badge b-green no-dot">installé</span>{% endif %}
+        </div>
+        <div class="acard-meta">
+            <div class="meta"><span class="meta-l">Catégorie</span><span class="badge b-blue no-dot">{{ app.category }}</span></div>
+            <div class="meta"><span class="meta-l">Port</span><span class="meta-v">{{ app.port }}</span></div>
+            <div class="meta"><span class="meta-l">Accès</span>
+                <span class="badge {% if app.protected %}b-green{% else %}b-gray{% endif %}">{{ 'Protégé' if app.protected else 'Public' }}</span>
+            </div>
+        </div>
+        <div class="acard-actions">
+            {% if not app.installed %}
+            <button class="btn btn-sm btn-primary"
+                    hx-get="/apps/install-form/{{ app.name }}"
+                    hx-target="#modal-body"
+                    hx-swap="innerHTML"
+                    onclick="openModal('Installer {{ app.name }}')">Installer</button>
+            {% else %}
+            <button class="btn btn-sm" onclick="stab('installed', document.querySelector('[data-tab=installed]'))">Gérer</button>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+    </div>
+    {% if not available_apps %}
+    <div class="card">
+        <div class="empty">
+            <span class="empty-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </span>
+            <span class="empty-title">Aucune application disponible</span>
+            <span class="empty-text">Le catalogue est vide. Vérifiez le dossier templates/apps.</span>
+        </div>
+    </div>
+    {% endif %}
+</div>
+<div class="modal-bg" id="modal" onclick="if(event.target===this)closeModal()" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal">
+        <div class="modal-head">
+            <h2 id="modal-title">Installer</h2>
+            <button class="modal-x" type="button" aria-label="Fermer" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="modal-body">
+            <div class="empty"><span class="spinner spinner-lg" aria-hidden="true"></span></div>
+        </div>
+    </div>
+</div>
+<script>
+    function stab(t, b) {
+        document.querySelectorAll('.tab').forEach(function (x) {
+            x.classList.remove('on');
+            x.setAttribute('aria-selected', 'false');
+        });
+        b.classList.add('on');
+        b.setAttribute('aria-selected', 'true');
+        document.getElementById('tab-installed').style.display = t === 'installed' ? '' : 'none';
+        document.getElementById('tab-available').style.display = t === 'available' ? '' : 'none';
+    }
+    function sfilter(q) {
+        q = (q || '').toLowerCase();
+        document.querySelectorAll('.acard').forEach(function (c) {
+            var s = (c.getAttribute('data-search') || '').toLowerCase();
+            var match = !q || s.indexOf(q) >= 0;
+            var activeTab = document.querySelector('.tab.on').getAttribute('data-tab');
+            var inActiveTab = (activeTab === 'installed' && c.closest('#tab-installed')) ||
+                              (activeTab === 'available' && c.closest('#tab-available'));
+            if (!inActiveTab) { c.style.display = ''; return; }
+            c.style.display = match ? '' : 'none';
+        });
+    }
+    function cfilter(cat, b) {
+        document.querySelectorAll('.cat-btn').forEach(function (x) { x.classList.remove('on'); });
+        b.classList.add('on');
+        document.querySelectorAll('#tab-available .acard').forEach(function (c) {
+            var cc = c.getAttribute('data-cat');
+            var inst = c.getAttribute('data-inst') === 'true';
+            c.style.display = (cat === 'all' || cc === cat) && !inst ? '' : 'none';
+        });
+    }
+    function openModal(title) {
+        var m = document.getElementById('modal');
+        if (title) document.getElementById('modal-title').textContent = title;
+        m.classList.add('on');
+        document.body.style.overflow = 'hidden';
+        var btn = m.querySelector('.modal-x');
+        if (btn) setTimeout(function () { btn.focus(); }, 50);
+    }
+    function closeModal() {
+        var m = document.getElementById('modal');
+        m.classList.remove('on');
+        document.body.style.overflow = '';
+    }
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            var m = document.getElementById('modal');
+            if (m && m.classList.contains('on')) closeModal();
+        }
+    });
+</script>
 {% endblock %}

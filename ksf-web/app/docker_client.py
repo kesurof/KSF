@@ -29,38 +29,16 @@ def get_client() -> docker.DockerClient | None:
         return None
 
 
-def _is_ksf_container(name: str, labels: dict) -> bool:
-    if name in KSF_CORE_CONTAINERS:
-        return True
-    if labels.get("com.docker.compose.project", "") in KSF_CORE_CONTAINERS:
-        return True
-    env_file = os.path.join(INSTALLED_DIR, f"{name}.env")
-    if os.path.isfile(env_file):
-        return True
-    compose_project = labels.get("com.docker.compose.project", "")
-    if compose_project:
-        env_file = os.path.join(INSTALLED_DIR, f"{compose_project}.env")
-        if os.path.isfile(env_file):
-            return True
-    return False
-
-
-def _is_ksf_app(name: str, labels: dict) -> bool:
-    env_file = os.path.join(INSTALLED_DIR, f"{name}.env")
-    if os.path.isfile(env_file):
-        return True
-    compose_project = labels.get("com.docker.compose.project", "")
-    if compose_project:
-        env_file = os.path.join(INSTALLED_DIR, f"{compose_project}.env")
-        if os.path.isfile(env_file):
-            return True
-    return False
-
-
 def _container_type(name: str, labels: dict) -> str:
     if name in KSF_CORE_CONTAINERS:
         return "core"
-    if _is_ksf_app(name, labels):
+    if labels.get("com.docker.compose.project", "") in KSF_CORE_CONTAINERS:
+        return "core"
+    env_file = os.path.join(INSTALLED_DIR, f"{name}.env")
+    if os.path.isfile(env_file):
+        return "app"
+    compose_project = labels.get("com.docker.compose.project", "")
+    if compose_project and os.path.isfile(os.path.join(INSTALLED_DIR, f"{compose_project}.env")):
         return "app"
     return "other"
 
@@ -69,7 +47,8 @@ def _format_uptime(started_at: str) -> str:
     if not started_at:
         return "-"
     try:
-        start = datetime_from_iso(started_at)
+        from datetime import datetime, timezone
+        start = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
         delta = time.time() - start.timestamp()
         days = int(delta // 86400)
         hours = int((delta % 86400) // 3600)
@@ -85,15 +64,7 @@ def _format_uptime(started_at: str) -> str:
         return "-"
 
 
-def datetime_from_iso(s: str):
-    from datetime import datetime, timezone
-
-    s = s.replace("Z", "+00:00")
-    return datetime.fromisoformat(s)
-
-
 def list_containers(all_: bool = True) -> tuple[list[dict], str | None]:
-    """Returns (containers_list, error_or_None)."""
     client = get_client()
     if client is None:
         return [], "Docker indisponible"
@@ -109,9 +80,7 @@ def list_containers(all_: bool = True) -> tuple[list[dict], str | None]:
         name = c.name
         labels = info.get("Config", {}).get("Labels", {}) or {}
         state = info.get("State", {})
-        health = "-"
-        if state.get("Health"):
-            health = state["Health"].get("Status", "-")
+        health = state.get("Health", {}).get("Status", "-") if state.get("Health") else "-"
 
         ports_raw = []
         for p in info.get("NetworkSettings", {}).get("Ports", {}).values() or []:
@@ -122,25 +91,19 @@ def list_containers(all_: bool = True) -> tuple[list[dict], str | None]:
                         f"->{p[0].get('Port', '')}/{p[0].get('Proto', '')}"
                     )
 
-        networks = list(
-            (info.get("NetworkSettings", {}).get("Networks", {}) or {}).keys()
-        )
-
-        result.append(
-            {
-                "id": c.short_id,
-                "name": name,
-                "image": c.image.tags[0] if c.image.tags else c.image.short_id,
-                "status": c.status,
-                "health": health,
-                "uptime": _format_uptime(state.get("StartedAt", "")),
-                "ports": ports_raw,
-                "networks": networks,
-                "type": _container_type(name, labels),
-                "created": info.get("Created", ""),
-                "labels": labels,
-            }
-        )
+        result.append({
+            "id": c.short_id,
+            "name": name,
+            "image": c.image.tags[0] if c.image.tags else c.image.short_id,
+            "status": c.status,
+            "health": health,
+            "uptime": _format_uptime(state.get("StartedAt", "")),
+            "ports": ports_raw,
+            "networks": list((info.get("NetworkSettings", {}).get("Networks", {}) or {}).keys()),
+            "type": _container_type(name, labels),
+            "created": info.get("Created", ""),
+            "labels": labels,
+        })
     return result, None
 
 
@@ -156,46 +119,33 @@ def get_container(container_id: str) -> dict | None:
     name = c.name
     labels = info.get("Config", {}).get("Labels", {}) or {}
     state = info.get("State", {})
-    health = "-"
-    if state.get("Health"):
-        health = state["Health"].get("Status", "-")
+    health = state.get("Health", {}).get("Status", "-") if state.get("Health") else "-"
 
-    mounts = []
-    for m in info.get("Mounts", []):
-        mounts.append(
-            {
-                "type": m.get("Type", ""),
-                "source": m.get("Source", ""),
-                "destination": m.get("Destination", ""),
-                "mode": m.get("Mode", ""),
-                "rw": m.get("RW", True),
-            }
-        )
+    mounts = [
+        {
+            "type": m.get("Type", ""),
+            "source": m.get("Source", ""),
+            "destination": m.get("Destination", ""),
+            "mode": m.get("Mode", ""),
+            "rw": m.get("RW", True),
+        }
+        for m in info.get("Mounts", [])
+    ]
 
     ports = []
-    for container_port, bindings in (
-        info.get("NetworkSettings", {}).get("Ports", {}) or {}
-    ).items():
+    for container_port, bindings in (info.get("NetworkSettings", {}).get("Ports") or {}).items():
         if bindings:
             for b in bindings:
-                ports.append(
-                    f"{b.get('HostIp', '0.0.0.0')}:{b.get('HostPort', '')} -> {container_port}"
-                )
+                ports.append(f"{b.get('HostIp', '0.0.0.0')}:{b.get('HostPort', '')} -> {container_port}")
         else:
             ports.append(container_port)
 
-    networks = {}
-    for net_name, net_conf in (
-        info.get("NetworkSettings", {}).get("Networks") or {}
-    ).items():
-        networks[net_name] = net_conf.get("IPAddress", "")
+    networks = {
+        net_name: net_conf.get("IPAddress", "")
+        for net_name, net_conf in (info.get("NetworkSettings", {}).get("Networks") or {}).items()
+    }
 
-    useful_labels = {}
-    skip_prefixes = ("maintainer",)
-    for k, v in labels.items():
-        if any(k.startswith(p) for p in skip_prefixes):
-            continue
-        useful_labels[k] = v
+    useful_labels = {k: v for k, v in labels.items() if not k.startswith("maintainer")}
 
     return {
         "id": c.short_id,
@@ -206,7 +156,6 @@ def get_container(container_id: str) -> dict | None:
         "health": health,
         "created": info.get("Created", ""),
         "started_at": state.get("StartedAt", ""),
-        "finished_at": state.get("FinishedAt", ""),
         "uptime": _format_uptime(state.get("StartedAt", "")),
         "ports": ports,
         "mounts": mounts,
@@ -227,8 +176,7 @@ def get_container_logs(container_id: str, tail: int = 200) -> str:
     except (NotFound, APIError, Exception):
         return ""
     try:
-        logs = c.logs(tail=tail, timestamps=False, follow=False)
-        return logs.decode("utf-8", errors="replace")
+        return c.logs(tail=tail, timestamps=False, follow=False).decode("utf-8", errors="replace")
     except Exception:
         return ""
 
@@ -238,8 +186,29 @@ def restart_container(container_id: str) -> bool:
     if client is None:
         return False
     try:
-        c = client.containers.get(container_id)
-        c.restart(timeout=10)
+        client.containers.get(container_id).restart(timeout=10)
+        return True
+    except (NotFound, APIError, Exception):
+        return False
+
+
+def stop_container(container_id: str) -> bool:
+    client = get_client()
+    if client is None:
+        return False
+    try:
+        client.containers.get(container_id).stop(timeout=10)
+        return True
+    except (NotFound, APIError, Exception):
+        return False
+
+
+def start_container(container_id: str) -> bool:
+    client = get_client()
+    if client is None:
+        return False
+    try:
+        client.containers.get(container_id).start()
         return True
     except (NotFound, APIError, Exception):
         return False

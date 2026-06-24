@@ -1,98 +1,75 @@
 {% extends "base.html" %}
-{% block title %}{{ container.name }} - KSF Web{% endblock %}
+{% block title %}{{ container.name }} — KSF{% endblock %}
 {% block content %}
-<div class="breadcrumb">
-    <a href="/containers">Containers</a> / <span>{{ container.name }}</span>
+<div class="bread" aria-label="Fil d'Ariane">
+    <a href="/containers">Containers</a>
+    <span class="bread-sep" aria-hidden="true">/</span>
+    <span>{{ container.name }}</span>
 </div>
-
-<h1>{{ container.name }}</h1>
-<div class="flex gap-sm">
-    <span class="badge badge-{{ 'success' if container.status == 'running' else 'danger' if container.status in ('exited', 'dead') else 'warning' }}">
-        {{ container.status }}
-    </span>
-    {% if container.health and container.health != '-' %}
-    <span class="badge badge-{{ 'success' if container.health == 'healthy' else 'danger' if container.health == 'unhealthy' else 'warning' }}">
-        {{ container.health }}
-    </span>
-    {% endif %}
-    <span class="badge badge-{{ 'primary' if container.type == 'core' else 'info' if container.type == 'app' else 'secondary' }}">
-        {{ container.type }}
-    </span>
-</div>
-
-<div class="grid grid-2">
-    <div class="card">
-        <h2>Informations</h2>
-        <div class="status-list">
-            <div class="status-row">
-                <span>Nom</span>
-                <span class="text-mono">{{ container.name }}</span>
-            </div>
-            <div class="status-row">
-                <span>ID</span>
-                <span class="text-mono">{{ container.full_id }}</span>
-            </div>
-            <div class="status-row">
-                <span>Image</span>
-                <span class="text-mono text-sm">{{ container.image }}</span>
-            </div>
-            <div class="status-row">
-                <span>Statut</span>
-                <span>{{ container.status }}</span>
-            </div>
-            <div class="status-row">
-                <span>Health</span>
-                <span>{{ container.health }}</span>
-            </div>
-            <div class="status-row">
-                <span>Uptime</span>
-                <span>{{ container.uptime }}</span>
-            </div>
-            <div class="status-row">
-                <span>Créé le</span>
-                <span>{{ container.created[:19] if container.created else '-' }}</span>
-            </div>
-            <div class="status-row">
-                <span>Restart count</span>
-                <span>{{ container.restart_count }}</span>
-            </div>
+<div class="page-head">
+    <div>
+        <h1 class="page-title">{{ container.name }}</h1>
+        <div class="flex acenter gap-1 wrap mt-1">
+            <span class="badge {% if container.status == 'running' %}b-green{% elif container.status in ('exited','dead') %}b-red{% else %}b-orange{% endif %}">{{ container.status }}</span>
+            {% if container.health and container.health != '-' %}
+            <span class="badge {% if container.health == 'healthy' %}b-green{% elif container.health == 'unhealthy' %}b-red{% else %}b-orange{% endif %}">{{ container.health }}</span>
+            {% endif %}
+            <span class="badge b-gray no-dot">{{ container.type }}</span>
+            <span class="ccard-id mono muted" style="font-size:0.7rem">{{ container.full_id }}</span>
         </div>
     </div>
-
+    <div class="btn-group">
+        <button class="btn"
+                hx-get="/containers/{{ container.name }}/logs?lines=200"
+                hx-target="#logs"
+                hx-swap="innerHTML">Rafraîchir les logs</button>
+        <button class="btn btn-warn"
+                hx-post="/containers/{{ container.name }}/restart"
+                data-confirm="Redémarrer {{ container.name }} ?">Redémarrer</button>
+    </div>
+</div>
+<div class="grid g2">
     <div class="card">
-        <h2>Ports</h2>
-        {% if container.ports %}
-        <div class="status-list">
-            {% for port in container.ports %}
-            <div class="status-row">
-                <span class="text-mono text-sm">{{ port }}</span>
-            </div>
-            {% endfor %}
+        <div class="card-title">Informations</div>
+        <div class="slist">
+            <div class="srow"><span>Nom</span><span class="mono">{{ container.name }}</span></div>
+            <div class="srow"><span>ID</span><span class="mono sm">{{ container.full_id }}</span></div>
+            <div class="srow"><span>Image</span><span class="mono sm">{{ container.image }}</span></div>
+            <div class="srow"><span>Statut</span><span>{{ container.status }}</span></div>
+            <div class="srow"><span>Health</span><span>{{ container.health }}</span></div>
+            <div class="srow"><span>Uptime</span><span>{{ container.uptime }}</span></div>
+            <div class="srow"><span>Créé le</span><span>{{ container.created[:19] if container.created else '-' }}</span></div>
+            <div class="srow"><span>Redémarrages</span><span>{{ container.restart_count }}</span></div>
         </div>
-        {% else %}
-        <p class="text-muted">Aucun port exposé.</p>
-        {% endif %}
-
-        <h2>Réseaux</h2>
-        {% if container.networks %}
-        <div class="status-list">
-            {% for name, ip in container.networks.items() %}
-            <div class="status-row">
-                <span>{{ name }}</span>
-                <span class="text-mono text-sm">{{ ip or '-' }}</span>
-            </div>
-            {% endfor %}
+    </div>
+    <div class="card">
+        <div class="card-title">Réseau</div>
+        <div class="slist">
+            {% if container.ports %}
+                {% for p in container.ports %}
+                <div class="srow"><span class="muted">Port</span><span class="mono sm">{{ p }}</span></div>
+                {% endfor %}
+            {% else %}
+                <div class="srow"><span class="muted">Ports</span><span class="muted">Aucun port exposé</span></div>
+            {% endif %}
         </div>
-        {% else %}
-        <p class="text-muted">Aucun réseau.</p>
-        {% endif %}
+        <div class="card-title" style="margin-top:1rem">Réseaux</div>
+        <div class="slist">
+            {% if container.networks %}
+                {% for name, ip in container.networks.items() %}
+                <div class="srow"><span>{{ name }}</span><span class="mono sm">{{ ip or '—' }}</span></div>
+                {% endfor %}
+            {% else %}
+                <div class="srow"><span class="muted">Réseaux</span><span class="muted">Aucun réseau</span></div>
+            {% endif %}
+        </div>
     </div>
 </div>
 
+{% if container.mounts %}
 <div class="card">
-    <h2>Mounts</h2>
-    {% if container.mounts %}
-    <div class="table-responsive">
+    <div class="card-title">Volumes montés</div>
+    <div class="tbl-wrap">
         <table>
             <thead>
                 <tr>
@@ -100,63 +77,40 @@
                     <th>Source</th>
                     <th>Destination</th>
                     <th>Mode</th>
-                    <th>R/W</th>
+                    <th>Accès</th>
                 </tr>
             </thead>
             <tbody>
                 {% for m in container.mounts %}
                 <tr>
                     <td>{{ m.type }}</td>
-                    <td class="text-mono text-sm">{{ m.source }}</td>
-                    <td class="text-mono text-sm">{{ m.destination }}</td>
+                    <td class="mono sm">{{ m.source }}</td>
+                    <td class="mono sm">{{ m.destination }}</td>
                     <td>{{ m.mode or '-' }}</td>
-                    <td>
-                        <span class="badge badge-{{ 'success' if m.rw else 'secondary' }}">
-                            {{ 'R/W' if m.rw else 'R/O' }}
-                        </span>
-                    </td>
+                    <td><span class="badge {% if m.rw %}b-green{% else %}b-gray{% endif %}">{{ 'R/W' if m.rw else 'R/O' }}</span></td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
-    {% else %}
-    <p class="text-muted">Aucun mount.</p>
-    {% endif %}
 </div>
+{% endif %}
 
 {% if container.labels %}
 <div class="card">
-    <h2>Labels</h2>
-    <div class="status-list">
-        {% for key, value in container.labels.items() %}
-        <div class="status-row">
-            <span class="text-mono text-sm">{{ key }}</span>
-            <span class="text-mono text-sm">{{ value }}</span>
-        </div>
+    <div class="card-title">Labels</div>
+    <div class="slist">
+        {% for k, v in container.labels.items() %}
+        <div class="srow"><span class="mono sm muted-2">{{ k }}</span><span class="mono sm">{{ v }}</span></div>
         {% endfor %}
     </div>
 </div>
 {% endif %}
-
 <div class="card">
-    <div class="flex justify-between align-center">
-        <h2>Logs (200 dernières lignes)</h2>
-        <div class="flex gap-sm">
-            <button class="btn btn-sm"
-                hx-get="/containers/{{ container.name }}/logs?lines=200"
-                hx-target="#logs-content"
-                hx-swap="innerHTML">
-                Rafraîchir
-            </button>
-            <button class="btn btn-sm btn-warning"
-                hx-post="/containers/{{ container.name }}/restart"
-                hx-on::after-request="showToast(JSON.parse(event.detail.xhr.responseText).message, event.detail.xhr.status === 200)"
-                data-confirm="Redémarrer {{ container.name }} ?">
-                Redémarrer
-            </button>
-        </div>
+    <div class="card-title">
+        <span>Logs</span>
+        <span class="muted sm">200 dernières lignes</span>
     </div>
-    <pre id="logs-content" class="logs-block">{{ logs }}</pre>
+    <pre id="logs" class="logs" aria-live="polite">{{ logs }}</pre>
 </div>
 {% endblock %}

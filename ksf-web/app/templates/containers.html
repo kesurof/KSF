@@ -1,91 +1,124 @@
 {% extends "base.html" %}
-{% block title %}Containers - KSF Web{% endblock %}
+{% block title %}Containers — KSF{% endblock %}
 {% block content %}
-<h1>Containers</h1>
-<p class="text-muted">{{ containers|length }} container(s) — {{ now }}</p>
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Containers</h1>
+        <p class="page-sub"><span>{{ containers|length }} container(s)</span> <span class="muted" aria-hidden="true">·</span> <span>{{ now }}</span></p>
+    </div>
+</div>
 
 {% if docker_error %}
-<div class="card card-warning">
-    <div class="status-list">
-        <div class="status-row">
-            <span class="text-warning">{{ docker_error }}</span>
-        </div>
+<div class="card card-warn-err" role="alert">
+    <div class="flex acenter gap-3">
+        <span class="dot dot-err" aria-hidden="true"></span>
+        <span class="red"><strong>Docker indisponible.</strong> Les containers ne peuvent pas être listés.</span>
     </div>
 </div>
 {% endif %}
-
-<div class="filter-bar">
-    <button class="btn btn-sm filter-btn active" onclick="filterContainers('all', this)">Tous</button>
-    <button class="btn btn-sm filter-btn" onclick="filterContainers('running', this)">Running</button>
-    <button class="btn btn-sm filter-btn" onclick="filterContainers('stopped', this)">Stopped</button>
-    <button class="btn btn-sm filter-btn" onclick="filterContainers('core', this)">Core KSF</button>
-    <button class="btn btn-sm filter-btn" onclick="filterContainers('app', this)">App KSF</button>
-    <button class="btn btn-sm filter-btn" onclick="filterContainers('other', this)">Autre</button>
-</div>
-
-<div id="containers-list">
-{% for c in containers %}
-<div class="card container-card" data-status="{{ c.status }}" data-type="{{ c.type }}">
-    <div class="container-header">
-        <div class="container-name">
-            <a href="/containers/{{ c.name }}">{{ c.name }}</a>
-            <span class="badge badge-{{ 'success' if c.status == 'running' else 'danger' if c.status in ('exited', 'dead') else 'warning' if c.status == 'restarting' else 'secondary' }}">
-                {{ c.status }}
-            </span>
-            {% if c.health and c.health != '-' %}
-            <span class="badge badge-{{ 'success' if c.health == 'healthy' else 'danger' if c.health == 'unhealthy' else 'warning' }}">
-                {{ c.health }}
-            </span>
-            {% endif %}
-            <span class="badge badge-{{ 'primary' if c.type == 'core' else 'info' if c.type == 'app' else 'secondary' }}">
-                {{ c.type }}
-            </span>
+<div class="toolbar">
+    <div class="toolbar-left">
+        <div class="filters" role="tablist" aria-label="Filtres">
+            <button class="filter-btn on" data-f="all" onclick="fc('all', this)">Tous</button>
+            <button class="filter-btn" data-f="running" onclick="fc('running', this)">En service</button>
+            <button class="filter-btn" data-f="stopped" onclick="fc('stopped', this)">Arrêtés</button>
+            <button class="filter-btn" data-f="core" onclick="fc('core', this)">Core</button>
+            <button class="filter-btn" data-f="app" onclick="fc('app', this)">Apps</button>
+            <button class="filter-btn" data-f="other" onclick="fc('other', this)">Autres</button>
         </div>
     </div>
-    <div class="container-meta">
-        <span class="text-muted">Image:</span> <span class="text-mono text-sm">{{ c.image }}</span>
-        <span class="text-muted">Uptime:</span> {{ c.uptime }}
-        {% if c.ports %}
-        <span class="text-muted">Ports:</span> <span class="text-mono text-sm">{{ c.ports|join(', ') }}</span>
-        {% endif %}
-        {% if c.networks %}
-        <span class="text-muted">Réseaux:</span> {{ c.networks|join(', ') }}
-        {% endif %}
+    <div class="toolbar-right">
+        <div class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" placeholder="Filtrer par nom ou image..." aria-label="Rechercher un container" oninput="csearch(this.value)">
+        </div>
     </div>
-    <div class="container-actions">
+</div>
+<div id="clist">
+{% for c in containers %}
+<div class="card ccard" data-s="{{ c.status }}" data-t="{{ c.type }}" data-q="{{ c.name }} {{ c.image }}">
+    <div class="ccard-head">
+        <div class="ccard-name">
+            <a href="/containers/{{ c.name }}">{{ c.name }}</a>
+            <span class="ccard-id">{{ c.id }}</span>
+        </div>
+        <div class="ccard-meta mt-1">
+            {% if c.image %}<span><span class="ccard-meta-key">Image</span> <span class="ccard-meta-val">{{ c.image }}</span></span>{% endif %}
+            <span><span class="ccard-meta-key">Uptime</span> <span class="ccard-meta-val">{{ c.uptime }}</span></span>
+            {% if c.ports %}<span><span class="ccard-meta-key">Ports</span> <span class="ccard-meta-val">{{ c.ports|join(', ') }}</span></span>{% endif %}
+        </div>
+    </div>
+    <div class="ccard-status">
+        <span class="badge {% if c.status == 'running' %}b-green{% elif c.status in ('exited','dead') %}b-red{% elif c.status == 'restarting' %}b-orange{% else %}b-gray{% endif %}">{{ c.status }}</span>
+        {% if c.health and c.health != '-' %}
+        <span class="badge {% if c.health == 'healthy' %}b-green{% elif c.health == 'unhealthy' %}b-red{% else %}b-orange{% endif %}">{{ c.health }}</span>
+        {% endif %}
+        <span class="badge b-gray no-dot">{{ c.type }}</span>
+    </div>
+    <div class="ccard-actions">
         <a href="/containers/{{ c.name }}" class="btn btn-sm">Détails</a>
         <button class="btn btn-sm"
-            hx-get="/containers/{{ c.name }}/logs?lines=50"
-            hx-target="#logs-{{ c.name }}"
-            hx-swap="innerHTML">
-            Logs
-        </button>
-        <button class="btn btn-sm btn-warning"
-            hx-post="/containers/{{ c.name }}/restart"
-            hx-on::after-request="showToast(JSON.parse(event.detail.xhr.responseText).message, event.detail.xhr.status === 200)"
-            data-confirm="Redémarrer {{ c.name }} ?">
-            Redémarrer
-        </button>
+                hx-get="/containers/{{ c.name }}/logs?lines=50"
+                hx-target="#logs-{{ c.name }}"
+                hx-swap="innerHTML"
+                onclick="toggleLogs('logs-{{ c.name }}', this)">Logs</button>
+        <button class="btn btn-sm btn-warn"
+                hx-post="/containers/{{ c.name }}/restart"
+                data-confirm="Redémarrer {{ c.name }} ?">Redémarrer</button>
     </div>
-    <pre id="logs-{{ c.name }}" class="logs-preview" style="display:none"></pre>
+    <pre id="logs-{{ c.name }}" class="logs logs-sm" aria-live="polite"></pre>
 </div>
 {% endfor %}
 </div>
 
+{% if not containers and not docker_error %}
+<div class="card">
+    <div class="empty">
+        <span class="empty-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/></svg>
+        </span>
+        <span class="empty-title">Aucun container</span>
+        <span class="empty-text">Aucun container n'est actuellement visible depuis le socket Docker.</span>
+    </div>
+</div>
+{% endif %}
 <script>
-function filterContainers(filter, btn) {
-    document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
-    btn.classList.add('active');
-    document.querySelectorAll('.container-card').forEach(function(card) {
-        var status = card.getAttribute('data-status');
-        var type = card.getAttribute('data-type');
-        var show = false;
-        if (filter === 'all') { show = true; }
-        else if (filter === 'running') { show = status === 'running'; }
-        else if (filter === 'stopped') { show = status !== 'running'; }
-        else { show = type === filter; }
+    function fc(f, b) {
+        document.querySelectorAll('.filter-btn').forEach(function (x) { x.classList.remove('on'); });
+        b.classList.add('on');
+        document.querySelectorAll('.ccard').forEach(function (c) {
+            var s = c.getAttribute('data-s'), t = c.getAttribute('data-t');
+            var show = f === 'all'
+                || (f === 'running' && s === 'running')
+                || (f === 'stopped' && s !== 'running')
+                || (f !== 'running' && f !== 'stopped' && f !== 'all' && t === f);
+            applyFilters(c, show);
+        });
+    }
+    function csearch(q) {
+        q = (q || '').toLowerCase();
+        document.querySelectorAll('.ccard').forEach(function (c) {
+            var data = (c.getAttribute('data-q') || '').toLowerCase();
+            var match = !q || data.indexOf(q) >= 0;
+            applyFilters(c, match);
+        });
+    }
+    function applyFilters(card, matchType) {
+        var activeF = document.querySelector('.filter-btn.on');
+        var f = activeF ? activeF.getAttribute('data-f') : 'all';
+        var s = card.getAttribute('data-s'), t = card.getAttribute('data-t');
+        var show = matchType && (f === 'all'
+            || (f === 'running' && s === 'running')
+            || (f === 'stopped' && s !== 'running')
+            || (f !== 'running' && f !== 'stopped' && f !== 'all' && t === f));
         card.style.display = show ? '' : 'none';
-    });
-}
+    }
+    function toggleLogs(id, btn) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        var willShow = !el.classList.contains('show');
+        el.classList.toggle('show', willShow);
+        btn.textContent = willShow ? 'Masquer' : 'Logs';
+    }
 </script>
 {% endblock %}

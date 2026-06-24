@@ -463,6 +463,50 @@ app_update() {
   ok "App ${APP_MANAGED_NAME} mise a jour."
 }
 
+app_rebuild() {
+  local app_name="$1"
+  local app_template_dir="${APP_TEMPLATE_DIR}/${app_name}"
+
+  app_require_installed "$app_name"
+  if [ ! -f "${app_template_dir}/compose.yml" ]; then
+    err "Template Compose absent pour ${app_name} : ${app_template_dir}/compose.yml"
+    exit 1
+  fi
+
+  if ! _compose_has_build "${APP_MANAGED_DIR}/docker-compose.yml"; then
+    warn "Pas de build local pour ${app_name} — mise à jour classique."
+    app_update "$app_name"
+    return $?
+  fi
+
+  app_confirm_action "la reconstruction (sans cache)" "$app_name"
+  app_create_backup_before "rebuild ${app_name}"
+
+  app_resolve_docker_gid
+  render_template "${app_template_dir}/compose.yml" "${APP_MANAGED_DIR}/docker-compose.yml"
+  app_write_env_file "${APP_MANAGED_DIR}/app.env" "$app_name" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
+  app_write_env_file "${INSTALLED_DIR}/${app_name}.env" "$app_name" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
+
+  if [ "${APP_LOCAL_ONLY:-false}" != true ] && [ "${APP_DISABLED:-false}" != true ] && [ "${APP_PUBLIC:-true}" = true ] && [ -n "${APP_HOST:-}" ]; then
+    render_app_route_from_env "${BASE_DIR}/proxy/traefik/dynamic/route-${app_name}.yml"
+  fi
+
+  if [ "${DRY_RUN:-false}" = true ]; then
+    warn "[DRY-RUN] cd ${APP_MANAGED_DIR} && docker compose build --no-cache && docker compose up -d --force-recreate"
+    ok "Simulation de reconstruction de ${APP_MANAGED_NAME} terminee."
+    return 0
+  fi
+
+  app_require_docker
+
+  info "Reconstruction sans cache de ${APP_MANAGED_NAME}..."
+  (cd "${APP_MANAGED_DIR}" && docker compose build --no-cache) || { err "Echec docker compose build --no-cache pour ${APP_MANAGED_NAME}."; exit 1; }
+  info "Recreation de ${APP_MANAGED_NAME}..."
+  (cd "${APP_MANAGED_DIR}" && docker compose up -d --force-recreate) || { err "Echec docker compose up -d --force-recreate pour ${APP_MANAGED_NAME}."; exit 1; }
+
+  ok "App ${APP_MANAGED_NAME} reconstruite."
+}
+
 app_disable() {
   local app_name="$1"
   local route_file="${BASE_DIR}/proxy/traefik/dynamic/route-${app_name}.yml"

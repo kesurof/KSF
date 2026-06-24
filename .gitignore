@@ -4,6 +4,12 @@
 .kilo
 .docs_dev
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
 # Server data (never committed)
 config/
 data/

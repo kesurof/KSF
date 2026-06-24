@@ -41,7 +41,8 @@ Commands:
   installed             Liste les apps installées
   install <app>         Installe une app
   status <app>          Affiche l'état Docker d'une app installée
-  update <app>          Met à jour une app installée
+  update <app>          Met à jour une app (build incrémental)
+  rebuild <app>         Reconstruit l'image sans cache puis recrée le container
   start <app>           Démarre une app installée
   stop <app>            Arrête une app installée sans suppression
   restart <app>         Redémarre une app installée
@@ -78,7 +79,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    list|installed|install|status|update|start|stop|restart|disable|logs|remove)
+    list|installed|install|status|update|rebuild|start|stop|restart|disable|logs|remove)
       if [ -n "$COMMAND" ]; then
         err "Commande déjà définie : ${COMMAND}"
         exit 1
@@ -126,7 +127,7 @@ while [[ $# -gt 0 ]]; do
       usage
       ;;
     *)
-      if { [ "$COMMAND" = "install" ] || [ "$COMMAND" = "status" ] || [ "$COMMAND" = "update" ] || [ "$COMMAND" = "start" ] || [ "$COMMAND" = "stop" ] || [ "$COMMAND" = "restart" ] || [ "$COMMAND" = "disable" ] || [ "$COMMAND" = "logs" ] || [ "$COMMAND" = "remove" ]; } && [ -z "$APP_NAME" ]; then
+      if { [ "$COMMAND" = "install" ] || [ "$COMMAND" = "status" ] || [ "$COMMAND" = "update" ] || [ "$COMMAND" = "rebuild" ] || [ "$COMMAND" = "start" ] || [ "$COMMAND" = "stop" ] || [ "$COMMAND" = "restart" ] || [ "$COMMAND" = "disable" ] || [ "$COMMAND" = "logs" ] || [ "$COMMAND" = "remove" ]; } && [ -z "$APP_NAME" ]; then
         APP_NAME="$1"
         shift
       else
@@ -176,6 +177,13 @@ case "${COMMAND}" in
       exit 1
     fi
     app_update "$APP_NAME"
+    ;;
+  rebuild)
+    if [ -z "$APP_NAME" ]; then
+      err "Nom d'application requis."
+      exit 1
+    fi
+    app_rebuild "$APP_NAME"
     ;;
   start)
     if [ -z "$APP_NAME" ]; then
