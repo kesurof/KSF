@@ -7,6 +7,9 @@ Structure :
 - `app/routes/actions.py` : POST/DELETE mutations.
 - `app/routes/api.py` : JSON / partials / fichiers.
 - `app/routes/sse.py` : EventSource streaming.
+
+Note : le rate-limit applicatif a été retiré (doublon avec Traefik).
+Voir README section "Architecture" pour la config Traefik équivalente.
 """
 import logging
 from contextlib import asynccontextmanager
@@ -21,7 +24,6 @@ import secrets
 
 from app import config, db
 from app.helpers import wants_json
-from app.middleware.rate_limit import RateLimitMiddleware
 from app.routes import pages as pages_routes
 from app.routes import actions as actions_routes
 from app.routes import api as api_routes
@@ -47,14 +49,6 @@ async def lifespan(app):
         await _prune_old_jobs()
     except Exception:
         logger.exception("Prune jobs a échoué (non-bloquant)")
-    # Prune notifications dédupliquées > 1 jour (review post-implementation).
-    # Sans cela, l'index unique partiel `idx_notif_dedup` accumule des
-    # entrées qui ne sont jamais évincées et bloquent les nouveaux INSERT
-    # avec le même dedup_key pour toujours.
-    try:
-        await _prune_old_deduped_notifications()
-    except Exception:
-        logger.exception("Prune notifications a échoué (non-bloquant)")
     await jobs.start_worker()
     logger.info("ksf-web démarré (DB=%s, jobs worker actif)", config.DB_PATH)
     try:
@@ -101,31 +95,10 @@ async def _prune_old_jobs(retention_days: int = 30) -> int:
         return len(ids)
 
 
-async def _prune_old_deduped_notifications(retention_days: int = 1) -> int:
-    """Supprime les notifications dédupliquées > `retention_days` jours.
-
-    Sans cela, l'index unique partiel `idx_notif_dedup` (qui couvre
-    `created_at > '-1 day'` côté INSERT) accumule des entrées qui ne sont
-    jamais évincées et bloquent définitivement les nouveaux INSERT avec
-    le même dedup_key (le `WHERE` n'est pas ré-évalué sur les entrées
-    existantes).
-    """
-    async for conn in db.get_conn():
-        cur = await conn.execute(
-            "DELETE FROM notifications "
-            "WHERE dedup_key IS NOT NULL AND created_at < datetime('now', ?)",
-            (f"-{retention_days} days",),
-        )
-        n = cur.rowcount
-        await conn.commit()
-        await cur.close()
-        if n:
-            logger.info("Prune notifications: %d notif(s) dédupliquée(s) > %d jour(s) supprimée(s)",
-                        n, retention_days)
-        return n
-
-
 app = FastAPI(title="KSF Web", docs_url=None, redoc_url=None, lifespan=lifespan)
+
+
+app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
 
 app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
 
@@ -196,8 +169,6 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-# Rate limit AVANT CSRF pour rejeter tôt (économise le coût de CSRF).
-app.add_middleware(RateLimitMiddleware)
 app.add_middleware(CSRFMiddleware)
 
 

@@ -1,0 +1,8 @@
+# Dev dependencies pour les tests E2E.
+# Installer via : pip install -r requirements-dev.txt
+# Lancer les tests : pytest -v ksf-web/tests/
+
+-r requirements.txt
+
+pytest==8.3.0
+httpx==0.27.0

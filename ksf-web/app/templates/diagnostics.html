@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Diagnostics — KSF{% endblock %}
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Diagnostics</h1>
+        <p class="page-sub muted">Sortie brute des commandes <code>ksf.sh</code> + état des données</p>
+    </div>
+</div>
+
+<div class="tabs" role="tablist" aria-label="Sections diagnostics">
+    <a href="/diagnostics?tab=status" class="tab {% if tab == 'status' %}on{% endif %}" role="tab" aria-selected="{{ 'true' if tab == 'status' else 'false' }}">État global</a>
+    <a href="/diagnostics?tab=config" class="tab {% if tab == 'config' %}on{% endif %}" role="tab" aria-selected="{{ 'true' if tab == 'config' else 'false' }}">Configuration</a>
+    <a href="/diagnostics?tab=routes" class="tab {% if tab == 'routes' %}on{% endif %}" role="tab" aria-selected="{{ 'true' if tab == 'routes' else 'false' }}">Routes Traefik</a>
+    <a href="/diagnostics?tab=data" class="tab {% if tab == 'data' %}on{% endif %}" role="tab" aria-selected="{{ 'true' if tab == 'data' else 'false' }}">Données préservées</a>
+</div>
+
+<div class="mt-3">
+    {% if tab == 'status' %}
+    <div class="card">
+        <div class="card-title">ksf.sh status</div>
+        <pre class="logs">{{ output.status }}</pre>
+    </div>
+    {% elif tab == 'config' %}
+    <div class="card">
+        <div class="card-title">ksf.sh config</div>
+        <pre class="logs">{{ output.config }}</pre>
+    </div>
+    {% elif tab == 'routes' %}
+    <div class="card">
+        <div class="card-title">Routes actives</div>
+        <pre class="logs" hx-get="/api/routes" hx-trigger="every 30s" hx-swap="outerHTML">{{ output.routes }}</pre>
+    </div>
+    {% elif tab == 'data' %}
+    {% if not data_items %}
+    <div class="card">
+        <div class="empty">
+            <span class="empty-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            </span>
+            <span class="empty-title">Aucune donnée préservée</span>
+            <span class="empty-text">Le dossier <code>${BASE_DIR}/data</code> est vide. Les données d'apps apparaîtront ici après une désinstallation.</span>
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="tbl-wrap">
+            <table>
+                <thead>
+                    <tr><th>Application</th><th>Taille</th><th>Fichiers</th><th>Actions</th></tr>
+                </thead>
+                <tbody>
+                    {% for it in data_items %}
+                    <tr>
+                        <td><strong>{{ it.name }}</strong></td>
+                        <td class="mono sm">{{ (it.size_bytes / 1024 / 1024) | round(1) }} Mo</td>
+                        <td class="mono sm">{{ it.file_count }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-danger"
+                                    hx-post="/data/{{ it.name }}/remove"
+                                    hx-swap="none"
+                                    hx-on::after-request="if(event.detail.xhr.status===200){var j=JSON.parse(event.detail.xhr.responseText);if(j.job_id)window.location='/jobs/'+j.job_id;}"
+                                    data-confirm2="Supprimer définitivement les données de {{ it.name }} ?"
+                                    {% if not actions_enabled %}disabled{% endif %}>
+                                Supprimer
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+</div>
+{% endblock %}

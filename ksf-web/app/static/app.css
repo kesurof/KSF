@@ -950,7 +950,70 @@ a.card:hover,
     display: flex;
     gap: var(--s-1);
     flex-wrap: wrap;
+    align-items: center;
 }
+
+/* Kebab menu (⋯) : dropdown d'actions rares / destructives */
+.kebab { position: relative; display: inline-block; }
+.kebab > summary {
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    height: 1.5rem;
+    padding: 0 var(--s-1);
+    font-size: 1rem;
+    line-height: 1;
+    color: var(--text-2);
+    background: transparent;
+    border: 1px solid var(--border-1, var(--border));
+    border-radius: var(--r-1);
+    transition: background 0.12s, border-color 0.12s;
+}
+.kebab > summary::-webkit-details-marker { display: none; }
+.kebab > summary:hover {
+    background: var(--bg-3, var(--bg-2));
+    border-color: var(--border-2, var(--border));
+}
+.kebab[open] > summary {
+    background: var(--bg-3, var(--bg-2));
+    border-color: var(--border-2, var(--border));
+}
+.kebab-menu {
+    position: absolute;
+    top: calc(100% + var(--s-1));
+    right: 0;
+    z-index: 50;
+    min-width: 9rem;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-1);
+    border: 1px solid var(--border-2, var(--border));
+    border-radius: var(--r-1);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    padding: var(--s-1);
+    gap: 2px;
+}
+.kebab-item {
+    text-align: left;
+    background: transparent;
+    border: 0;
+    color: var(--text-1);
+    padding: var(--s-1) var(--s-2);
+    font-size: var(--t-sm);
+    border-radius: var(--r-0, 4px);
+    cursor: pointer;
+    transition: background 0.1s;
+}
+.kebab-item:hover { background: var(--bg-2); }
+.kebab-item.warn { color: var(--orange); }
+.kebab-item.danger { color: var(--red); }
+.kebab-item:disabled { opacity: 0.5; cursor: not-allowed; }
+/* Ferme le kebab après un clic externe */
+.kebab:not([open]) > .kebab-menu { display: none; }
 
 .acard-containers {
     display: flex;
@@ -1028,7 +1091,7 @@ tbody tr:hover td { background: var(--hover); color: var(--text); }
    ═════════════════════════════════════════════════════════════════ */
 
 .logs {
-    background: var(--bg);
+    background: #0d1117;
     border: 1px solid var(--border);
     border-radius: var(--r);
     padding: var(--s-3);
@@ -1039,7 +1102,7 @@ tbody tr:hover td { background: var(--hover); color: var(--text); }
     max-height: 500px;
     white-space: pre-wrap;
     word-break: break-word;
-    color: var(--text-2);
+    color: #c9d1d9;
 }
 
 .logs-sm {

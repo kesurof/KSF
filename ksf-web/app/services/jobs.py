@@ -301,49 +301,31 @@ async def _run_job(job: dict) -> None:
             )
             await _update(job_id, pid=proc.pid)
 
-            # Compteur de lignes partagé entre stdout et stderr pour unicité
-            # des numéros de ligne côté front. Verrou car asyncio.gather exécute
-            # les 2 streams en parallèle.
-            counter_lock = asyncio.Lock()
-            counter = {"n": 0}
+            # Lecture ligne par ligne de chaque stream. Chaque stream a son
+            # propre compteur (le front distingue stdout/stderr via le champ
+            # `stream`, pas via un n° de ligne unique). Préfixe "[stderr] "
+            # pour les lignes stderr.
+            line_count = {"stdout": 0, "stderr": 0}
 
-            async def read_stream(stream, prefix: str):
-                buf = b""
+            async def read_stream(stream, stream_name: str, prefix: str):
                 while True:
-                    chunk = await stream.read(4096)
-                    if not chunk:
+                    line = await stream.readline()
+                    if not line:
                         break
-                    logf.write(chunk)
-                    buf += chunk
-                    while b"\n" in buf:
-                        line, buf = buf.split(b"\n", 1)
-                        async with counter_lock:
-                            counter["n"] += 1
-                            n = counter["n"]
-                        text = line.decode("utf-8", errors="replace")
-                        if prefix:
-                            text = prefix + text
-                        await events.bus.publish(
-                            f"jobs:{job_id}", "line",
-                            {"n": n, "text": text, "stream": "stderr" if prefix else "stdout"},
-                        )
-                if buf:
-                    async with counter_lock:
-                        counter["n"] += 1
-                        n = counter["n"]
-                    logf.write(b"\n")
-                    text = buf.decode("utf-8", errors="replace")
+                    logf.write(line)
+                    line_count[stream_name] += 1
+                    text = line.decode("utf-8", errors="replace").rstrip("\n")
                     if prefix:
                         text = prefix + text
                     await events.bus.publish(
                         f"jobs:{job_id}", "line",
-                        {"n": n, "text": text, "stream": "stderr" if prefix else "stdout"},
+                        {"n": line_count[stream_name], "text": text, "stream": stream_name},
                     )
 
-            # Lecture parallèle de stdout et stderr avec préfixe pour stderr
+            # Lecture parallèle de stdout et stderr.
             await asyncio.gather(
-                read_stream(proc.stdout, ""),
-                read_stream(proc.stderr, "[stderr] "),
+                read_stream(proc.stdout, "stdout", ""),
+                read_stream(proc.stderr, "stderr", "[stderr] "),
             )
 
             await proc.wait()

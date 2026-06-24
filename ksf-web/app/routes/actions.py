@@ -255,28 +255,6 @@ async def job_cancel(job_id: str):
     return {"success": True}
 
 
-# ── Notifications ──────────────────────────────────────────
-
-@router.post("/notifications/{notif_id}/read")
-async def notification_read(notif_id: str):
-    await notifications.mark_read(notif_id)
-    return {"success": True}
-
-
-@router.post("/notifications/read-all")
-async def notification_read_all():
-    n = await notifications.mark_all_read()
-    return {"success": True, "marked": n}
-
-
-@router.delete("/notifications/{notif_id}")
-async def notification_delete(notif_id: str):
-    ok = await notifications.delete(notif_id)
-    if not ok:
-        raise HTTPException(status_code=404, detail="Notification introuvable")
-    return {"success": True}
-
-
 # ── Webhooks ───────────────────────────────────────────────
 
 @router.post("/api/webhooks")

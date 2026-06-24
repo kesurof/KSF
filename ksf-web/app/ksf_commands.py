@@ -4,6 +4,8 @@ import subprocess
 import re
 import logging
 
+from app import utils
+
 logger = logging.getLogger("ksf-web")
 
 KSF_BASE_DIR = os.environ.get("KSF_BASE_DIR", "/serverbox")
@@ -69,7 +71,7 @@ def _run_subprocess_sync(cmd: list[str], timeout: int) -> tuple[bool, str]:
             cmd, capture_output=True, text=True, timeout=timeout,
             cwd=KSF_REPO_DIR, env=EXEC_ENV,
         )
-        output = _mask_secrets(result.stdout + result.stderr)
+        output = utils.mask_secrets(result.stdout + result.stderr)
         return result.returncode == 0, output.strip()
     except subprocess.TimeoutExpired:
         return False, "La commande a expire (timeout)."
@@ -127,7 +129,7 @@ def list_installed_apps() -> list[dict]:
         if not fname.endswith(".env"):
             continue
         app_name = fname[:-4]
-        env_data = _parse_env_file(os.path.join(INSTALLED_DIR, fname))
+        env_data = utils.parse_env_file(os.path.join(INSTALLED_DIR, fname))
 
         app_host = env_data.get("APP_HOST", "") or env_data.get("APP_DOMAIN", "")
         if app_host and domain and "." not in app_host:
@@ -135,7 +137,7 @@ def list_installed_apps() -> list[dict]:
 
         if not app_host:
             runtime_dir = env_data.get("APP_DIR", os.path.join(KSF_BASE_DIR, "apps", app_name))
-            runtime_data = _parse_env_file(os.path.join(runtime_dir, "app.env"))
+            runtime_data = utils.parse_env_file(os.path.join(runtime_dir, "app.env"))
             rh = runtime_data.get("APP_HOST", "") or runtime_data.get("APP_DOMAIN", "")
             if rh and domain and "." not in rh:
                 rh = f"{rh}.{domain}"
@@ -164,7 +166,7 @@ def list_available_apps() -> list[dict]:
         env_path = os.path.join(app_dir, "app.env")
         if not os.path.isfile(env_path):
             continue
-        env_data = _parse_env_file(env_path)
+        env_data = utils.parse_env_file(env_path)
         apps.append({
             "name": app_name,
             "description": env_data.get("APP_DESCRIPTION", ""),
@@ -182,10 +184,10 @@ def get_installed_app_env(app_name: str) -> dict:
     env_path = os.path.join(INSTALLED_DIR, f"{app_name}.env")
     if not os.path.isfile(env_path):
         return {}
-    env_data = _parse_env_file(env_path)
+    env_data = utils.parse_env_file(env_path)
     template_env_path = os.path.join(TEMPLATES_DIR, app_name, "app.env")
     if os.path.isfile(template_env_path):
-        template_data = _parse_env_file(template_env_path)
+        template_data = utils.parse_env_file(template_env_path)
         env_data.setdefault("APP_DESCRIPTION", template_data.get("APP_DESCRIPTION", ""))
         env_data.setdefault("APP_CATEGORY", template_data.get("APP_CATEGORY", "other"))
     return env_data
@@ -195,7 +197,7 @@ def get_ksf_env() -> dict:
     env_path = os.path.join(KSF_BASE_DIR, "config", "ksf.env")
     if not os.path.isfile(env_path):
         return {}
-    return _parse_env_file(env_path)
+    return utils.parse_env_file(env_path)
 
 
 def get_appsec_state() -> str:
@@ -233,47 +235,10 @@ def list_backups() -> tuple[list[dict], str | None]:
             continue
         backups.append({
             "name": fname,
-            "size": _format_size(stat.st_size),
-            "created": _format_timestamp(stat.st_mtime),
+            "size": utils.format_size(stat.st_size),
+            "created": utils.format_timestamp(stat.st_mtime),
             "has_checksum": os.path.isfile(f"{fpath}.sha256"),
         })
     if backups:
         backups[0]["is_latest"] = True
     return backups, None
-
-
-def _parse_env_file(path: str) -> dict:
-    data = {}
-    try:
-        with open(path, "r") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                key, _, value = line.partition("=")
-                value = value.strip().strip("\"'")
-                data[key.strip()] = value
-    except Exception:
-        pass
-    return data
-
-
-def _mask_secrets(text: str) -> str:
-    pattern = re.compile(
-        r"(SECRET|TOKEN|PASSWORD|COOKIE|CLIENT_SECRET|CF_API_KEY|BOUNCER_KEY)\s*[=:]\s*\S+",
-        re.IGNORECASE,
-    )
-    return pattern.sub(lambda m: m.group(0).split("=")[0].strip() + "= ******", text)
-
-
-def _format_size(size_bytes: int) -> str:
-    for unit in ("B", "KB", "MB", "GB"):
-        if size_bytes < 1024:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024
-    return f"{size_bytes:.1f} TB"
-
-
-def _format_timestamp(ts: float) -> str:
-    from datetime import datetime, timezone
-    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")

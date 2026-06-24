@@ -111,22 +111,78 @@ lors de la création/update d'un endpoint.
 ## Routes
 
 - **GET** : `/`, `/containers`, `/apps`, `/backups`, `/jobs`, `/audit`,
-  `/notifications`, `/config`, `/settings/webhooks`, `/security`, `/status`,
-  `/routes`, `/data`, `/maintenance`, `/security/crowdsec`, `/security/appsec`,
-  `/security/trusted-ips`
+  `/config`, `/settings/webhooks`, `/security` (onglets overview/crowdsec/appsec/trusted-ips),
+  `/diagnostics` (onglets status/config/routes/data), `/maintenance`
 - **POST** : install/update/restart/start/stop/disable/remove/rebuild d'app ;
-  create/verify/restore/prune/delete backup ; cancel job ; mark read notif ;
+  create/verify/restore/prune/delete backup ; cancel job ;
   CRUD webhooks ; ban/unban/flush/restart CrowdSec ; toggle AppSec ;
   apply trusted-ips ; system restart/update ; clean-data ; doctor
 - **SSE** : `/jobs/{id}/stream` (subprocess output) ;
   `/containers/{id}/logs/stream` (logs Docker live)
 - **JSON** : `/api/dashboard/summary`, `/api/audit/export`, `/api/audit/{id}`,
   `/api/config/preview`, `/api/config/commit`, `/api/jobs/list`,
-  `/api/notifications/unread-count`, `/api/notifications/list`,
   `/api/status`, `/api/config-view`, `/api/routes`, `/api/data/list`,
   `/api/security/crowdsec/decisions`, `/api/security/trusted-ips`,
   `/api/locks`
 - **Health** : `/health` (DB + Docker status, JSON, 200/503)
+
+## Architecture & Décisions
+
+**Frontend** : Jinja2 + htmx 1.x (server-rendered, pas de SPA). JS vanilla
+minimal (kebab menu, colorisation syntaxique via highlight.js 11.x).
+
+**Backend** : FastAPI + SQLite (aiosqlite, mode WAL) + cryptographie Fernet
+pour les secrets au repos.
+
+**Communication ksf-web ↔ plateforme** :
+- **Subprocess `ksf.sh` / `app.sh`** via whitelist (`ALLOWED_COMMANDS` dans
+  `app/ksf_commands.py`) pour les commandes de coordination (render Traefik,
+  OAuth2, CrowdSec, trusted-ips, backups, etc.)
+- **Docker API direct** via `docker.from_env()` pour les opérations container
+  atomiques (start/stop/restart, list, logs).
+- **HTTP via `httpx`** pour les webhooks sortants (avec rate-limit,
+  HMAC-SHA256, SSRF blocking, DNS rebinding mitigation).
+
+### Décision : pas d'API tierce (etcd / Consul / Portainer / etc.)
+
+ksf-web n'introduit pas de service tiers (etcd, Consul, Portainer, Vault, etc.)
+pour gérer la configuration ou l'état. Les raisons :
+
+1. **Les scripts bash restent la source de vérité** : `ksf.sh` et `app.sh`
+   coordonnent déjà Traefik, OAuth2, CrowdSec, les backups. Un service tiers
+   serait un troisième système à synchroniser, augmentant la complexité
+   sans rien apporter.
+2. **Subprocess = debuggable et fiable** : `subprocess.run()` avec capture
+   stdout/stderr, returncode, timeout. Pas de dépendance réseau supplémentaire,
+   pas de race conditions sur des API REST, pas de service à démarrer/arrêter.
+3. **SQLite couvre l'état local de ksf-web** : la base stocke uniquement
+   l'état propre à ksf-web (jobs, audit, config_versions, webhooks, notifications).
+   L'état de la plateforme (containers, routes Traefik, OAuth2 config) reste
+   dans les fichiers et le daemon Docker.
+
+**Conséquence** : si tu as besoin d'un 2e client (CLI, mobile, intégration
+externe), investis dans l'OpenAPI (déjà généré gratuitement par FastAPI sur
+les routes `/api/*`) au lieu d'introduire un service tiers. Ne casse pas
+l'architecture pour résoudre un problème qui n'existe pas encore.
+
+### Sécurité : rate-limit (déplacé sur Traefik)
+
+Le rate-limit applicatif a été retiré de ksf-web (doublon avec Traefik).
+Config Traefik équivalente (à mettre sur le routeur ksf-web) :
+
+```yaml
+# /etc/traefik/dynamic/middlewares/ksf-web-ratelimit.yml
+http:
+  middlewares:
+    ksf-web-ratelimit:
+      rateLimit:
+        average: 100
+        burst: 200
+        period: 1m
+```
+
+Si tu utilises un autre reverse-proxy (nginx, caddy), applique la même
+politique côté proxy.
 
 ## Debug
 
@@ -165,8 +221,30 @@ curl -fsS http://ksf.example.com/health
 - **EventBus in-memory** : pub/sub entre producers et consumers SSE reste dans
   le process. Si ksf-web redémarre pendant un job, les subscribers SSE doivent
   se reconnecter.
-- **Rate limit in-memory** : perdu au restart du conteneur. Acceptable single-user.
 - **Bind mount** : pas de réplication native, sauvegarder `${KSF_WEB_DATA_HOST_DIR}`.
+
+## Tests
+
+```bash
+# Setup (dev only)
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt
+
+# Smoke tests E2E (TestClient + mocks Docker/ksf)
+pytest -v ksf-web/tests/
+```
+
+Les tests E2E vérifient que :
+- Tous les modules Python s'importent sans `NameError` / `ImportError`
+- Les 14 pages canoniques (`/`, `/containers`, `/apps`, `/backups`, `/jobs`,
+  `/audit`, `/settings/webhooks`, `/config`, `/security`, `/security?tab=*`,
+  `/diagnostics`, `/diagnostics?tab=*`, `/maintenance`) retournent 200
+- Les 6 URLs legacy (`/security/crowdsec`, `/security/appsec`,
+  `/security/trusted-ips`, `/status`, `/routes`, `/data`) redirigent en 307
+- Les 11 endpoints API critiques (`/api/dashboard/summary`, `/api/jobs/list`,
+  `/api/audit/export`, `/api/locks`, `/api/status`, `/api/routes`, etc.)
+  retournent 200
+- Le health endpoint `/health` répond avec la structure JSON attendue
 
 ## Liens
 

@@ -8,12 +8,21 @@
     </div>
 </div>
 
-<div class="grid g2">
+<div class="tabs" role="tablist" aria-label="Sections sécurité">
+    <a href="/security?tab=overview" class="tab {% if tab == 'overview' %}on{% endif %}" role="tab" aria-selected="{{ 'true' if tab == 'overview' else 'false' }}">Vue d'ensemble</a>
+    <a href="/security?tab=crowdsec" class="tab {% if tab == 'crowdsec' %}on{% endif %}" role="tab" aria-selected="{{ 'true' if tab == 'crowdsec' else 'false' }}">CrowdSec</a>
+    <a href="/security?tab=appsec" class="tab {% if tab == 'appsec' %}on{% endif %}" role="tab" aria-selected="{{ 'true' if tab == 'appsec' else 'false' }}">AppSec / WAF</a>
+    <a href="/security?tab=trusted-ips" class="tab {% if tab == 'trusted-ips' %}on{% endif %}" role="tab" aria-selected="{{ 'true' if tab == 'trusted-ips' else 'false' }}">Trusted IPs</a>
+</div>
+
+{# ── Overview ───────────────────────────────────────────── #}
+{% if tab == 'overview' %}
+<div class="grid g2 mt-3">
     <div class="card">
-        <div class="card-title">CrowdSec</div>
+        <div class="card-title">État global</div>
         <div class="slist">
             <div class="srow">
-                <span>Statut</span>
+                <span>CrowdSec</span>
                 <span class="badge {% if crowdsec_enabled %}b-green{% else %}b-gray{% endif %}">
                     {{ 'activé' if crowdsec_enabled else 'désactivé' }}
                 </span>
@@ -25,16 +34,7 @@
                 {% else %}<span class="badge b-orange">indéterminé</span>{% endif %}
             </div>
         </div>
-        <div class="mt-3">
-            <button class="btn btn-sm"
-                    hx-post="/security/refresh"
-                    hx-target="#sec-result"
-                    hx-swap="innerHTML"
-                    {% if not crowdsec_enabled or not actions_enabled %}disabled{% endif %}>Rafraîchir les alertes</button>
-        </div>
-        <div id="sec-result" class="action-result" aria-live="polite"></div>
     </div>
-
     <div class="card">
         <div class="card-title">Diagnostic</div>
         <p class="muted sm">Lance une vérification complète de la plateforme (ksf doctor).</p>
@@ -44,38 +44,37 @@
                     hx-target="#doc-result"
                     hx-swap="innerHTML"
                     {% if not actions_enabled %}disabled{% endif %}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:14px;height:14px"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
                 Lancer doctor
             </button>
         </div>
         <div id="doc-result" class="action-result" aria-live="polite"></div>
     </div>
 </div>
-
 {% if crowdsec_enabled %}
-<div class="section-head"><h2>CrowdSec</h2></div>
-<div class="card">
-    <div class="card-title">Statut</div>
-    <pre class="logs">{{ crowdsec_status or 'Indisponible' }}</pre>
-</div>
-<div class="card">
-    <div class="card-title">Alertes</div>
-    <pre class="logs">{{ crowdsec_alerts or 'Aucune alerte' }}</pre>
-</div>
-<div class="card">
-    <div class="card-title">Bouncers</div>
-    <pre class="logs">{{ crowdsec_bouncers or 'Aucun bouncer' }}</pre>
-</div>
+<div class="section-head"><h2>CrowdSec — résumé</h2></div>
+<div class="card"><div class="card-title">Statut</div><pre class="logs">{{ crowdsec_status or 'Indisponible' }}</pre></div>
+<div class="card"><div class="card-title">Alertes</div><pre class="logs">{{ crowdsec_alerts or 'Aucune alerte' }}</pre></div>
 {% endif %}
-
 {% if appsec_state == 'active' %}
-<div class="section-head"><h2>AppSec / WAF</h2></div>
-<div class="card">
-    <div class="card-title">Statut</div>
-    <pre class="logs">{{ appsec_status or 'Indisponible' }}</pre>
+<div class="section-head"><h2>AppSec — résumé</h2></div>
+<div class="card"><div class="card-title">Statut</div><pre class="logs">{{ appsec_status or 'Indisponible' }}</pre></div>
+{% endif %}
+{% if not crowdsec_enabled %}
+<div class="card mt-3">
+    <div class="empty">
+        <span class="empty-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </span>
+        <span class="empty-title">CrowdSec désactivé</span>
+        <span class="empty-text">Activez CrowdSec via la page Configuration.</span>
+    </div>
 </div>
 {% endif %}
+{% endif %}
 
+{# ── CrowdSec ───────────────────────────────────────────── #}
+{% if tab == 'crowdsec' %}
+<div class="mt-3">
 {% if not crowdsec_enabled %}
 <div class="card">
     <div class="empty">
@@ -83,8 +82,131 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         </span>
         <span class="empty-title">CrowdSec désactivé</span>
-        <span class="empty-text">Activez CrowdSec dans la configuration KSF pour protéger votre instance.</span>
+        <span class="empty-text">Activez CrowdSec via la page Configuration.</span>
     </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-title">Bannir une IP</div>
+    <form hx-post="/security/crowdsec/ban"
+          hx-swap="none"
+          hx-on::after-request="if(event.detail.xhr.status===200){var j=JSON.parse(event.detail.xhr.responseText);if(j.job_id)window.location='/jobs/'+j.job_id;}else{showToast(JSON.parse(event.detail.xhr.responseText).detail,false)}"
+          class="flex gap-2 wrap acenter">
+        <label class="muted sm">IP :</label>
+        <input type="text" name="ip" class="form-input" placeholder="1.2.3.4" pattern="[0-9a-fA-F.:]+" required style="width:14rem">
+        <label class="muted sm">Durée :</label>
+        <input type="text" name="duration" class="form-input" value="10m" pattern="[0-9]+[mhd]" required style="width:6rem">
+        <button class="btn btn-danger" type="submit" {% if not actions_enabled %}disabled{% endif %}>Bannir</button>
+    </form>
+</div>
+<div class="section-head">
+    <h2>Décisions actives</h2>
+    <div class="flex gap-2">
+        <button class="btn btn-sm btn-warn"
+                hx-post="/security/crowdsec/flush"
+                hx-swap="none"
+                hx-on::after-request="if(event.detail.xhr.status===200){var j=JSON.parse(event.detail.xhr.responseText);if(j.job_id)window.location='/jobs/'+j.job_id;}"
+                data-confirm2="Supprimer toutes les décisions actives ?"
+                {% if not actions_enabled %}disabled{% endif %}>Flush all</button>
+        <button class="btn btn-sm"
+                hx-post="/security/crowdsec/restart"
+                hx-swap="none"
+                hx-on::after-request="if(event.detail.xhr.status===200){var j=JSON.parse(event.detail.xhr.responseText);if(j.job_id)window.location='/jobs/'+j.job_id;}"
+                data-confirm="Redémarrer le service CrowdSec ?"
+                {% if not actions_enabled %}disabled{% endif %}>Restart service</button>
+    </div>
+</div>
+<div class="card">
+    <pre class="logs" hx-get="/api/security/crowdsec/decisions" hx-trigger="every 30s" hx-swap="outerHTML">{{ decisions }}</pre>
+</div>
+{% endif %}
+</div>
+{% endif %}
+
+{# ── AppSec / WAF ───────────────────────────────────────── #}
+{% if tab == 'appsec' %}
+<div class="mt-3">
+<div class="card">
+    <div class="card-title">État</div>
+    <div class="slist">
+        <div class="srow">
+            <span>Activé dans ksf.env</span>
+            <span class="badge {% if appsec_enabled %}b-green{% else %}b-gray{% endif %}">
+                {{ 'oui' if appsec_enabled else 'non' }}
+            </span>
+        </div>
+        <div class="srow">
+            <span>État runtime</span>
+            <span class="badge {% if appsec_state == 'active' %}b-green{% elif appsec_state == 'inactive' %}b-gray{% else %}b-orange{% endif %}">
+                {{ appsec_state }}
+            </span>
+        </div>
+    </div>
+</div>
+<div class="card">
+    <div class="card-title">Configuration</div>
+    <div class="slist">
+        <div class="srow"><span>Host</span><span class="mono sm">{{ ksf_env.get('CROWDSEC_APPSEC_HOST') or '—' }}</span></div>
+        <div class="srow"><span>Listen address</span><span class="mono sm">{{ ksf_env.get('CROWDSEC_APPSEC_LISTEN_ADDR') or '—' }}</span></div>
+        <div class="srow"><span>Failure block</span><span class="badge {{ 'b-green' if ksf_env.get('CROWDSEC_APPSEC_FAILURE_BLOCK', 'true')|lower == 'true' else 'b-gray' }}">{{ ksf_env.get('CROWDSEC_APPSEC_FAILURE_BLOCK', 'true') }}</span></div>
+        <div class="srow"><span>Unreachable block</span><span class="badge {{ 'b-green' if ksf_env.get('CROWDSEC_APPSEC_UNREACHABLE_BLOCK', 'false')|lower == 'true' else 'b-gray' }}">{{ ksf_env.get('CROWDSEC_APPSEC_UNREACHABLE_BLOCK', 'false') }}</span></div>
+        <div class="srow"><span>Collections</span><span class="mono sm">{{ ksf_env.get('CROWDSEC_APPSEC_COLLECTIONS') or '—' }}</span></div>
+    </div>
+</div>
+<div class="card">
+    <div class="card-title">Action</div>
+    <p class="muted sm">Le toggle ci-dessous appelle <code>ksf.sh crowdsec appsec enable|disable</code> en arrière-plan (job tracké).</p>
+    <div class="mt-3 flex gap-2">
+        {% if appsec_enabled %}
+        <button class="btn btn-warn"
+                hx-post="/security/appsec/toggle?enabled=false"
+                hx-swap="none"
+                hx-on::after-request="if(event.detail.xhr.status===200){var j=JSON.parse(event.detail.xhr.responseText);if(j.job_id)window.location='/jobs/'+j.job_id;}"
+                data-confirm2="Désactiver AppSec ? Le WAF ne filtrera plus les requêtes."
+                {% if not actions_enabled %}disabled{% endif %}>
+            Désactiver AppSec
+        </button>
+        {% else %}
+        <button class="btn btn-primary"
+                hx-post="/security/appsec/toggle?enabled=true"
+                hx-swap="none"
+                hx-on::after-request="if(event.detail.xhr.status===200){var j=JSON.parse(event.detail.xhr.responseText);if(j.job_id)window.location='/jobs/'+j.job_id;}"
+                data-confirm2="Activer AppSec ? Le WAF sera ajouté aux routes Traefik."
+                {% if not actions_enabled %}disabled{% endif %}>
+            Activer AppSec
+        </button>
+        {% endif %}
+    </div>
+</div>
+</div>
+{% endif %}
+
+{# ── Trusted IPs ────────────────────────────────────────── #}
+{% if tab == 'trusted-ips' %}
+<div class="mt-3">
+<div class="card">
+    <div class="card-title">CIDR Cloudflare actuels</div>
+    <pre class="logs" hx-get="/api/security/trusted-ips" hx-trigger="every 60s" hx-swap="outerHTML">{{ trusted_ips_cidrs }}</pre>
+</div>
+<div class="card card-warn">
+    <div class="flex acenter gap-3">
+        <span class="dot dot-warn" aria-hidden="true"></span>
+        <div>
+            <strong class="orange">Appliquer les CIDR Cloudflare</strong>
+            <p class="muted sm mt-1">Cette opération écrit dans <code>ksf.env</code> et redémarre Traefik (downtime ~5s). Action tracée dans l'audit log.</p>
+        </div>
+    </div>
+    <div class="mt-3">
+        <button class="btn btn-primary"
+                hx-post="/security/trusted-ips/apply?provider=cloudflare"
+                hx-swap="none"
+                hx-on::after-request="if(event.detail.xhr.status===200){var j=JSON.parse(event.detail.xhr.responseText);if(j.job_id)window.location='/jobs/'+j.job_id;}"
+                data-confirm2="Appliquer les CIDR Cloudflare et redémarrer Traefik ?"
+                {% if not actions_enabled %}disabled{% endif %}>
+            Appliquer et redémarrer Traefik
+        </button>
+    </div>
+</div>
 </div>
 {% endif %}
 {% endblock %}

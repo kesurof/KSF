@@ -3,12 +3,12 @@ import logging
 import os
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app import config, docker_client, ksf_commands
 from app.helpers import now_str, require_valid_container
-from app.services import audit, config_editor, jobs, notifications, webhooks
+from app.services import audit, config_editor, jobs, webhooks
 
 logger = logging.getLogger("ksf-web")
 router = APIRouter()
@@ -23,6 +23,11 @@ def set_templates(t: Jinja2Templates) -> None:
 def _T(request: Request):
     assert _templates is not None, "Templates not set"
     return _templates
+
+
+def _T_redirect(request: Request, location: str, status_code: int = 307) -> RedirectResponse:
+    """Helper pour les redirections inter-pages (compat URLs legacy)."""
+    return RedirectResponse(url=location, status_code=status_code)
 
 
 def build_dashboard_data() -> dict:
@@ -171,35 +176,66 @@ async def backups_page(request: Request):
 
 
 @router.get("/security", response_class=HTMLResponse)
-async def security_page(request: Request):
+async def security_page(request: Request, tab: str = "overview"):
+    """Page sécurité unifiée avec 4 onglets : overview, crowdsec, appsec, trusted-ips."""
     crowdsec_enabled, appsec_state = False, "indeterminate"
     crowdsec_status, crowdsec_alerts, crowdsec_bouncers, appsec_status = "", "", "", ""
+    decisions, trusted_ips_cidrs = "", ""
 
     try:
         ksf_env = ksf_commands.get_ksf_env()
         crowdsec_enabled = ksf_env.get("WITH_CROWDSEC", "false").lower() == "true"
+        appsec_enabled = ksf_env.get("CROWDSEC_APPSEC_ENABLED", "false").lower() == "true"
     except Exception:
         logger.exception("Erreur lecture ksf.env")
+        ksf_env, appsec_enabled = {}, False
 
     try:
         appsec_state = ksf_commands.get_appsec_state()
     except Exception:
         appsec_state = "indeterminate"
 
-    if crowdsec_enabled:
+    if crowdsec_enabled and tab in ("overview", "crowdsec"):
         _, crowdsec_status = await ksf_commands.run_command("crowdsec_status")
         _, crowdsec_alerts = await ksf_commands.run_command("crowdsec_alerts")
         _, crowdsec_bouncers = await ksf_commands.run_command("crowdsec_bouncers")
-
-    if appsec_state == "active":
+    if tab == "crowdsec":
+        _, decisions = await ksf_commands.run_command("crowdsec_decisions", timeout=30)
+    if appsec_state == "active" and tab in ("overview", "appsec"):
         _, appsec_status = await ksf_commands.run_command("appsec_status")
+    if tab == "trusted-ips":
+        _, trusted_ips_cidrs = await ksf_commands.run_command("trusted_ips_cloudflare", timeout=30)
 
     return _T(request).TemplateResponse("security.html", {
-        "request": request, "crowdsec_enabled": crowdsec_enabled,
-        "appsec_state": appsec_state, "crowdsec_status": crowdsec_status,
-        "crowdsec_alerts": crowdsec_alerts, "crowdsec_bouncers": crowdsec_bouncers,
-        "appsec_status": appsec_status, "actions_enabled": config.ACTIONS_ENABLED, "now": now_str(),
+        "request": request, "tab": tab,
+        "crowdsec_enabled": crowdsec_enabled,
+        "appsec_enabled": appsec_enabled,
+        "appsec_state": appsec_state,
+        "crowdsec_status": crowdsec_status,
+        "crowdsec_alerts": crowdsec_alerts,
+        "crowdsec_bouncers": crowdsec_bouncers,
+        "appsec_status": appsec_status,
+        "decisions": decisions or "Indisponible",
+        "trusted_ips_cidrs": trusted_ips_cidrs or "Indisponible",
+        "ksf_env": ksf_env,
+        "actions_enabled": config.ACTIONS_ENABLED, "now": now_str(),
     })
+
+
+# Redirections pour les anciennes URLs (compatibilité bookmarks)
+@router.get("/security/crowdsec", response_class=HTMLResponse)
+async def security_crowdsec_legacy(request: Request):
+    return _T_redirect(request, "/security?tab=crowdsec")
+
+
+@router.get("/security/appsec", response_class=HTMLResponse)
+async def security_appsec_legacy(request: Request):
+    return _T_redirect(request, "/security?tab=appsec")
+
+
+@router.get("/security/trusted-ips", response_class=HTMLResponse)
+async def security_trusted_ips_legacy(request: Request):
+    return _T_redirect(request, "/security?tab=trusted-ips")
 
 
 @router.get("/jobs", response_class=HTMLResponse)
@@ -232,15 +268,6 @@ async def audit_page(request: Request,
     })
 
 
-@router.get("/notifications", response_class=HTMLResponse)
-async def notifications_page(request: Request):
-    items = await notifications.list_all(limit=100)
-    unread = await notifications.count_unread()
-    return _T(request).TemplateResponse("notifications.html", {
-        "request": request, "notifications": items, "unread": unread, "now": now_str(),
-    })
-
-
 @router.get("/config", response_class=HTMLResponse)
 async def config_page(request: Request):
     fields = config_editor.form_from_current()
@@ -264,31 +291,8 @@ async def webhooks_page(request: Request):
 
 # ── Phase 3a : pages de gestion plateforme ──────────────────
 
-@router.get("/status", response_class=HTMLResponse)
-async def status_page(request: Request):
-    """Vue d'ensemble globale via ksf.sh status + ksf.sh config."""
-    ksf_status, _ = await ksf_commands.run_command("status", timeout=30)
-    _, ksf_config = await ksf_commands.run_command("config", timeout=30)
-    return _T(request).TemplateResponse("status.html", {
-        "request": request,
-        "ksf_status": ksf_status or "Indisponible",
-        "ksf_config": ksf_config or "Indisponible",
-        "now": now_str(),
-    })
-
-
-@router.get("/routes", response_class=HTMLResponse)
-async def routes_page(request: Request):
-    """Analyse des routes Traefik dynamiques."""
-    _, output = await ksf_commands.run_command("routes", timeout=30)
-    return _T(request).TemplateResponse("routes.html", {
-        "request": request, "output": output or "Indisponible", "now": now_str(),
-    })
-
-
-@router.get("/data", response_class=HTMLResponse)
-async def clean_data_page(request: Request):
-    """Liste les apps avec données préservées."""
+def _list_data_dir() -> list[dict]:
+    """Liste les apps avec données préservées dans ${BASE_DIR}/data."""
     base = config.BASE_DIR
     data_dir = os.path.join(base, "data")
     items = []
@@ -310,10 +314,48 @@ async def clean_data_page(request: Request):
                 items.append({"name": name, "size_bytes": total, "file_count": file_count})
     except Exception:
         logger.exception("Erreur listing data dir")
-    return _T(request).TemplateResponse("clean_data.html", {
-        "request": request, "items": items, "now": now_str(),
+    return items
+
+
+@router.get("/diagnostics", response_class=HTMLResponse)
+async def diagnostics_page(request: Request, tab: str = "status"):
+    """Page unifiée de diagnostics : status, routes, data."""
+    output = {"status": "Indisponible", "routes": "Indisponible", "config": "Indisponible"}
+    data_items: list[dict] = []
+
+    if tab in ("status", "config"):
+        status_out, _ = await ksf_commands.run_command("status", timeout=30)
+        output["status"] = status_out or "Indisponible"
+    if tab == "config":
+        _, config_out = await ksf_commands.run_command("config", timeout=30)
+        output["config"] = config_out or "Indisponible"
+    if tab == "routes":
+        _, routes_out = await ksf_commands.run_command("routes", timeout=30)
+        output["routes"] = routes_out or "Indisponible"
+    if tab == "data":
+        data_items = _list_data_dir()
+
+    return _T(request).TemplateResponse("diagnostics.html", {
+        "request": request, "tab": tab, "output": output,
+        "data_items": data_items, "now": now_str(),
         "actions_enabled": config.ACTIONS_ENABLED,
     })
+
+
+# Redirections pour les anciennes URLs
+@router.get("/status", response_class=HTMLResponse)
+async def status_legacy(request: Request):
+    return _T_redirect(request, "/diagnostics?tab=status")
+
+
+@router.get("/routes", response_class=HTMLResponse)
+async def routes_legacy(request: Request):
+    return _T_redirect(request, "/diagnostics?tab=routes")
+
+
+@router.get("/data", response_class=HTMLResponse)
+async def data_legacy(request: Request):
+    return _T_redirect(request, "/diagnostics?tab=data")
 
 
 @router.get("/maintenance", response_class=HTMLResponse)
@@ -327,41 +369,17 @@ async def maintenance_page(request: Request):
 
 @router.get("/security/crowdsec", response_class=HTMLResponse)
 async def security_crowdsec_page(request: Request):
-    """Page dédiée CrowdSec : décisions, ban/unban/flush."""
-    enabled = False
-    try:
-        ksf_env = ksf_commands.get_ksf_env()
-        enabled = ksf_env.get("WITH_CROWDSEC", "false").lower() == "true"
-    except Exception:
-        logger.exception("Erreur lecture ksf.env")
-    _, decisions = await ksf_commands.run_command("crowdsec_decisions", timeout=30)
-    return _T(request).TemplateResponse("security_crowdsec.html", {
-        "request": request, "crowdsec_enabled": enabled,
-        "decisions": decisions or "Indisponible",
-        "now": now_str(), "actions_enabled": config.ACTIONS_ENABLED,
-    })
+    """Deprecated : redirige vers /security?tab=crowdsec."""
+    return _T_redirect(request, "/security?tab=crowdsec")
 
 
 @router.get("/security/appsec", response_class=HTMLResponse)
 async def security_appsec_page(request: Request):
-    """Page toggle AppSec / WAF."""
-    ksf_env = ksf_commands.get_ksf_env()
-    enabled = ksf_env.get("CROWDSEC_APPSEC_ENABLED", "false").lower() == "true"
-    appsec_state = ksf_commands.get_appsec_state()
-    return _T(request).TemplateResponse("security_appsec.html", {
-        "request": request,
-        "appsec_enabled": enabled,
-        "appsec_state": appsec_state,
-        "ksf_env": ksf_env,
-        "now": now_str(), "actions_enabled": config.ACTIONS_ENABLED,
-    })
+    """Deprecated : redirige vers /security?tab=appsec."""
+    return _T_redirect(request, "/security?tab=appsec")
 
 
 @router.get("/security/trusted-ips", response_class=HTMLResponse)
 async def security_trusted_ips_page(request: Request):
-    """Page trusted IPs Cloudflare."""
-    _, cidrs = await ksf_commands.run_command("trusted_ips_cloudflare", timeout=30)
-    return _T(request).TemplateResponse("security_trusted_ips.html", {
-        "request": request, "cidrs": cidrs or "Indisponible",
-        "now": now_str(), "actions_enabled": config.ACTIONS_ENABLED,
-    })
+    """Deprecated : redirige vers /security?tab=trusted-ips."""
+    return _T_redirect(request, "/security?tab=trusted-ips")

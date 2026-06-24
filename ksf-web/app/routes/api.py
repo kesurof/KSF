@@ -15,7 +15,7 @@ from app.helpers import (
     require_valid_app,
     require_valid_container,
 )
-from app.services import audit, config_editor, jobs, notifications
+from app.services import audit, config_editor, jobs
 from app.routes.pages import _T, build_dashboard_data
 
 logger = logging.getLogger("ksf-web")
@@ -25,10 +25,10 @@ router = APIRouter()
 # ── Dashboard summary (auto-refresh) ───────────────────────
 
 @router.get("/api/dashboard/summary", response_class=HTMLResponse)
-async def dashboard_summary():
+async def dashboard_summary(request: Request):
     data = build_dashboard_data()
-    return _T(Request).TemplateResponse("partials/dashboard_summary.html", {
-        "request": Request,
+    return _T(request).TemplateResponse("partials/dashboard_summary.html", {
+        "request": request,
         "actions_enabled": app_config.ACTIONS_ENABLED,
         **data,
     })
@@ -105,29 +105,29 @@ async def audit_export(fmt: str = "json", action: str | None = None,
                               headers={"Content-Disposition": 'attachment; filename="audit.json"'})
 
 
-# ── Notifications API ──────────────────────────────────────
-
-@router.get("/api/notifications/unread-count")
-async def notification_unread_count():
-    return {"unread": await notifications.count_unread()}
-
-
-@router.get("/api/notifications/list", response_class=HTMLResponse)
-async def notifications_list_partial(request: Request):
-    items = await notifications.list_all(limit=100)
-    unread = await notifications.count_unread()
-    return _T(request).TemplateResponse("partials/notifications_list.html", {
-        "request": request, "notifications": items, "unread": unread,
-    })
-
-
 # ── Config editor ──────────────────────────────────────────
+
+_PREVIEW_COOKIE = "ksf_config_preview"
+
 
 @router.post("/api/config/preview")
 async def config_preview(request: Request):
     form = await request.form()
     values = {k: v for k, v in form.items() if not k.startswith("_")}
     result = await config_editor.preview(values)
+    if result.get("ok") and result.get("preview_id"):
+        # Pose un cookie de session liant l'user à un preview récent.
+        # Le commit doit présenter CE cookie (signature + non expiré).
+        cookie = config_editor._sign_preview_cookie(result["preview_id"])
+        result = JSONResponse(result)
+        result.set_cookie(
+            _PREVIEW_COOKIE, cookie,
+            max_age=config_editor.PREVIEW_TOKEN_MAX_AGE,
+            httponly=True, samesite="lax",
+            secure=False,  # ksf-web est derrière OAuth2 Proxy qui gère TLS
+            path="/",
+        )
+        return result
     return JSONResponse(result)
 
 
@@ -135,13 +135,15 @@ async def config_preview(request: Request):
 async def config_commit(request: Request):
     body = await request.json()
     proposed = body.get("proposed", "")
-    token = body.get("token", "")
     if not proposed:
         raise HTTPException(status_code=400, detail="Contenu vide")
-    if not token:
-        raise HTTPException(status_code=400, detail="Token de binding manquant (relancez la prévisualisation)")
-    result = await config_editor.commit(proposed, token, actor=client_actor(request))
-    return JSONResponse(result)
+    preview_cookie = request.cookies.get(_PREVIEW_COOKIE)
+    result = await config_editor.commit(proposed, preview_cookie, actor=client_actor(request))
+    response = JSONResponse(result)
+    # Sur succès, efface le cookie (un seul commit par preview)
+    if result.get("ok") and result.get("stage") != "noop":
+        response.delete_cookie(_PREVIEW_COOKIE, path="/")
+    return response
 
 
 # ── Backup download ────────────────────────────────────────

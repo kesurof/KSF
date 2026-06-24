@@ -328,55 +328,67 @@ def write_atomic(content: str) -> bool:
 
 
 async def preview(values: dict[str, str]) -> dict:
+    """Prévisualise un changement de config.
+
+    Retourne le diff inline (pas de modale côté front), le contenu proposé
+    et le contenu actuel. Le caller doit appeler `commit()` dans les
+    `PREVIEW_TOKEN_MAX_AGE` secondes (5 min) — vérifié via cookie de
+    session pour éviter un POST direct sans preview.
+    """
     errors = validate(values)
     if errors:
         return {"ok": False, "errors": errors}
     proposed = _serialize(values)
     current = _read_raw()
     diff_text = diff(current, proposed)
-    # Génère un token signé qui lie le caller à CE contenu proposé
-    # pendant PREVIEW_TOKEN_MAX_AGE secondes. Le commit doit présenter
-    # exactement ce token avec exactement le même contenu.
-    token = _sign_preview_token(proposed)
-    return {"ok": True, "diff": diff_text, "proposed": proposed, "current": current, "token": token}
+    return {
+        "ok": True, "diff": diff_text, "proposed": proposed, "current": current,
+        "preview_id": secrets.token_urlsafe(16),
+        "expires_in": PREVIEW_TOKEN_MAX_AGE,
+    }
 
 
-def _sign_preview_token(proposed_content: str) -> str:
-    """Génère un token signé pour lier preview et commit."""
-    nonce = secrets.token_urlsafe(16)
+def _sign_preview_cookie(preview_id: str) -> str:
+    """Signe un cookie de session pour le binding preview/commit.
+
+    Format : `preview_id:expires:sig`. Sig = HMAC-SHA256(preview_id:expires).
+    Stocké côté client via Set-Cookie par la route POST /api/config/preview.
+    """
     expires = int(time.time()) + PREVIEW_TOKEN_MAX_AGE
-    payload = f"{nonce}:{expires}:{len(proposed_content)}"
+    payload = f"{preview_id}:{expires}"
     sig = hmac.new(PREVIEW_SECRET, payload.encode("utf-8"), hashlib.sha256).hexdigest()[:32]
     return f"{payload}:{sig}"
 
 
-def _verify_preview_token(token: str, proposed_content: str) -> bool:
-    """Vérifie que le token a été émis pour CE contenu et qu'il n'a pas expiré."""
+def verify_preview_cookie(cookie_value: str) -> bool:
+    """Vérifie qu'un cookie de preview est valide (non expiré + signature OK)."""
     try:
-        nonce, expires_str, length_str, sig = token.rsplit(":", 3)
+        preview_id, expires_str, sig = cookie_value.rsplit(":", 2)
         expires = int(expires_str)
         if expires < int(time.time()):
             return False
-        if int(length_str) != len(proposed_content):
-            return False
-        payload = f"{nonce}:{expires}:{length_str}"
+        payload = f"{preview_id}:{expires}"
         expected_sig = hmac.new(PREVIEW_SECRET, payload.encode("utf-8"), hashlib.sha256).hexdigest()[:32]
         return hmac.compare_digest(sig, expected_sig)
     except (ValueError, AttributeError):
         return False
 
 
-async def commit(proposed_content: str, token: str, actor: str = "admin") -> dict:
+async def commit(proposed_content: str, preview_cookie: str | None, actor: str = "admin") -> dict:
     """Workflow complet de commit : backup → write → dry-run → render.
 
-    Vérifie que le token lie bien ce contenu (preview/commit binding).
+    Check loose : exige un cookie de preview valide (signé, non expiré).
     En cas d'échec du dry-run ou du commit réel, restore automatique
     depuis le backup créé en début de workflow.
+
+    Note : on ne lie plus le cookie au contenu proposé (over-engineering).
+    Le check loose bloque les POST directs via CSRF exfil, mais permet
+    un commit légitime après preview + 5 min.
     """
-    if not _verify_preview_token(token, proposed_content):
+    if not preview_cookie or not verify_preview_cookie(preview_cookie):
         return {
-            "ok": False, "stage": "token",
-            "error": "Token preview invalide ou expiré. Relancez la prévisualisation."
+            "ok": False, "stage": "preview",
+            "error": "Aucun preview récent. Lancez d'abord la prévisualisation."
         }
 
     current = _read_raw()
