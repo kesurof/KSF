@@ -1,6 +1,21 @@
 # ksf-web — Interface d'administration KSF
 # ATTENTION : le socket Docker monté (/var/run/docker.sock) donne des droits élevés sur l'hôte.
 # L'accès est restreint à OAuth2 Proxy + Traefik. Ne jamais exposer publiquement sans authentification.
+#
+# Persistance : bind mount ${BASE_DIR}/.ksf-web-data → /var/lib/ksf-web (dans le conteneur).
+#   Ce dossier hôte doit être créé par app_install avant le `up` et chowné
+#   à ${APP_PUID}:${APP_PGID}. Avantage sur un volume nommé : perms prévisibles
+#   sur l'hôte, pas de dépendance au Docker volume driver, pas de chown dynamique
+#   dans l'entrypoint (le bind mount est owned par le bon user).
+#
+# Variables obligatoires (pas de default — le rendu échoue si manquantes) :
+#   APP_PUID, APP_PGID   : UID/GID de l'utilisateur hôte qui possède ${BASE_DIR}
+#                          (le deploy flow les pose via `: "${APP_PUID:=$(id -u)}"`)
+#   DOCKER_GID           : GID du groupe docker sur l'hôte
+#   KSF_REPO_DIR         : chemin du repo KSF sur l'hôte
+#   BASE_DIR             : racine de la plateforme (~/serverbox)
+#   NETWORK_NAME         : nom du réseau Docker externe "proxy"
+#   TZ_VALUE             : timezone IANA (Europe/Paris)
 services:
   ksf-web:
     build:
@@ -8,7 +23,7 @@ services:
       dockerfile: Dockerfile
     container_name: ksf-web
     restart: unless-stopped
-    user: "${APP_PUID:-1000}:${APP_PGID:-1000}"
+    user: "${APP_PUID}:${APP_PGID}"
     networks:
       - proxy
     group_add:
@@ -18,19 +33,21 @@ services:
       - KSF_REPO_DIR=/ksf
       - KSF_WEB_ACTIONS_ENABLED=true
       - KSF_WEB_DATA_DIR=/var/lib/ksf-web
+      - APP_PUID=${APP_PUID}
+      - APP_PGID=${APP_PGID}
       - TZ=${TZ_VALUE}
       - PYTHONUNBUFFERED=1
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${KSF_REPO_DIR}:/ksf:ro
       - ${BASE_DIR}:/serverbox
-      - ksf-web-data:/var/lib/ksf-web
+      # Bind mount : predictable, géré côté host par app_install.
+      # Le dossier ${BASE_DIR}/.ksf-web-data doit être créé et chowné
+      # à ${APP_PUID}:${APP_PGID} AVANT ce `docker compose up`.
+      - ${KSF_WEB_DATA_HOST_DIR}:/var/lib/ksf-web
     read_only: true
     tmpfs:
       - /tmp
-
-volumes:
-  ksf-web-data:
 
 networks:
   proxy:

@@ -428,6 +428,22 @@ app_update() {
   app_create_backup_before "update ${app_name}"
 
   app_resolve_docker_gid
+  : "${APP_PUID:=$(id -u)}"
+  : "${APP_PGID:=$(id -g)}"
+  # Cas spécifique ksf-web : régénérer le .env pour docker compose
+  if [ "$app_name" = "ksf-web" ]; then
+    KSF_WEB_DATA_HOST_DIR="${BASE_DIR}/.ksf-web-data"
+    if [ -d "${KSF_WEB_DATA_HOST_DIR}" ]; then
+      chown "${APP_PUID}:${APP_PGID}" "${KSF_WEB_DATA_HOST_DIR}" 2>/dev/null || true
+      chmod 700 "${KSF_WEB_DATA_HOST_DIR}"
+    fi
+    cat > "${APP_MANAGED_DIR}/.env" <<EOF
+KSF_WEB_DATA_HOST_DIR=${BASE_DIR}/.ksf-web-data
+APP_PUID=${APP_PUID}
+APP_PGID=${APP_PGID}
+EOF
+    chmod 600 "${APP_MANAGED_DIR}/.env"
+  fi
   render_template "${app_template_dir}/compose.yml" "${APP_MANAGED_DIR}/docker-compose.yml"
   app_write_env_file "${APP_MANAGED_DIR}/app.env" "$app_name" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
   app_write_env_file "${INSTALLED_DIR}/${app_name}.env" "$app_name" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
@@ -487,6 +503,22 @@ app_rebuild() {
   app_create_backup_before "rebuild ${app_name}"
 
   app_resolve_docker_gid
+  : "${APP_PUID:=$(id -u)}"
+  : "${APP_PGID:=$(id -g)}"
+  # Cas spécifique ksf-web : régénérer le .env pour docker compose
+  if [ "$app_name" = "ksf-web" ]; then
+    KSF_WEB_DATA_HOST_DIR="${BASE_DIR}/.ksf-web-data"
+    if [ -d "${KSF_WEB_DATA_HOST_DIR}" ]; then
+      chown "${APP_PUID}:${APP_PGID}" "${KSF_WEB_DATA_HOST_DIR}" 2>/dev/null || true
+      chmod 700 "${KSF_WEB_DATA_HOST_DIR}"
+    fi
+    cat > "${APP_MANAGED_DIR}/.env" <<EOF
+KSF_WEB_DATA_HOST_DIR=${BASE_DIR}/.ksf-web-data
+APP_PUID=${APP_PUID}
+APP_PGID=${APP_PGID}
+EOF
+    chmod 600 "${APP_MANAGED_DIR}/.env"
+  fi
   render_template "${app_template_dir}/compose.yml" "${APP_MANAGED_DIR}/docker-compose.yml"
   app_write_env_file "${APP_MANAGED_DIR}/app.env" "$app_name" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
   app_write_env_file "${INSTALLED_DIR}/${app_name}.env" "$app_name" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
@@ -682,6 +714,36 @@ app_install() {
 
   run mkdir -p "${INSTALLED_DIR}" "${app_dir}" "${app_data}"
   app_resolve_docker_gid
+  : "${APP_PUID:=$(id -u)}"
+  : "${APP_PGID:=$(id -g)}"
+
+  # Cas spécifique ksf-web : bind mount pour la persistance DB.
+  # On crée et chown le dossier hôte AVANT le `docker compose up` pour que
+  # le conteneur (qui démarre sous l'UID hôte) puisse écrire dedans.
+  #
+  # NB : KSF_WEB_DATA_HOST_DIR vient directement de ${BASE_DIR} ici, pas de
+  # l'app.env (qui contient un token KSF __BASE_DIR__ non encore rendu à ce stade).
+  if [ "$app_name" = "ksf-web" ]; then
+    KSF_WEB_DATA_HOST_DIR="${BASE_DIR}/.ksf-web-data"
+    if ! mkdir -p "${KSF_WEB_DATA_HOST_DIR}" 2>/dev/null; then
+      err "Impossible de créer ${KSF_WEB_DATA_HOST_DIR}. Vérifier les permissions de ${BASE_DIR}."
+      exit 1
+    fi
+    chown "${APP_PUID}:${APP_PGID}" "${KSF_WEB_DATA_HOST_DIR}" 2>/dev/null || {
+      warn "chown ${KSF_WEB_DATA_HOST_DIR} a échoué. Le conteneur risque de ne pas pouvoir écrire."
+    }
+    chmod 700 "${KSF_WEB_DATA_HOST_DIR}"
+    # Écrire un .env dans le dossier du compose pour que docker compose
+    # auto-charge les vars. On utilise ${BASE_DIR} directement (substitué par bash)
+    # et pas la variable shell (qui pourrait contenir un token KSF non rendu).
+    cat > "${app_dir}/.env" <<EOF
+KSF_WEB_DATA_HOST_DIR=${BASE_DIR}/.ksf-web-data
+APP_PUID=${APP_PUID}
+APP_PGID=${APP_PGID}
+EOF
+    chmod 600 "${app_dir}/.env"
+  fi
+
   render_template "${app_template_dir}/compose.yml" "${app_dir}/docker-compose.yml"
   app_write_env_file "${app_dir}/app.env" "$app_name" "$app_dir" "$app_data"
   ok "Stack ${app_name} générée dans ${app_dir}"

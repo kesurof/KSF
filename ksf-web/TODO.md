@@ -17,7 +17,41 @@
 
 ## 🔴 P0 — Sécurité & bugs bloquants
 
-### P0.1 — I2 : Fix race dans le modal de confirmation
+### ✅ P0.1 — FIXED : DB persistence via bind mount (corrigé après analyse)
+
+**Cause racine** : la solution initiale (volume Docker nommé `ksf-web-data:/var/lib/ksf-web`) ne se montait pas dans le conteneur. Diagnostic : on voyait le contenu de l'image (apt, dpkg, etc.) dans `/var/lib/`, pas le contenu du volume. Avec `read_only: true` sur le rootfs, le `chown`/`chmod` dans l'entrypoint échouait (EPERM) parce qu'on touchait au rootfs, pas au volume.
+
+**Solution appliquée** (bind mount au lieu de named volume) :
+1. **Compose** : `${KSF_WEB_DATA_HOST_DIR}:/var/lib/ksf-web` (bind mount vers l'hôte)
+2. **app.env** : `KSF_WEB_DATA_HOST_DIR=__BASE_DIR__/.ksf-web-data` (rendu par KSF render)
+3. **app_install** (`lib/app_steps.sh`) : `mkdir -p` + `chown $APP_PUID:$APP_PGID` + `chmod 700` du dossier hôte AVANT le `docker compose up`
+4. **Entrypoint simplifié** : plus de chown/chmod (le bind mount gère les perms), juste un test d'écriture fail-fast
+5. **app/config.py** : `KSF_WEB_DATA_DIR=/var/lib/ksf-web` (dans le conteneur), `DB_PATH=$KSF_WEB_DATA_DIR/state.db`
+6. **db.py** : `chmod 600` sur le DB au premier create (best-effort)
+
+**Pourquoi bind mount > named volume** :
+- Pas de dépendance au Docker volume driver
+- Permissions prévisibles sur l'hôte (chownées une fois par deploy)
+- Pas de chown dynamique dans l'entrypoint (race conditions possibles)
+- Visible et manipulable depuis l'hôte (`ls`, `rm`, etc.)
+- Backup trivial : `tar czf backup.tar.gz ~/.ksf-web-data/`
+
+**Tests** : `docker compose config` valide, AST Python OK, entrypoint fail-loud si bind mount absent.
+
+---
+
+### P0.2 — Suppression du `:-1000` default dans le compose (footgun)
+**Fichier** : `templates/apps/ksf-web/compose.yml:11`
+
+**Problème** : `user: "${APP_PUID:-1000}:${APP_PGID:-1000}"` — le default `1000` était appliqué silencieusement si `APP_PUID` n'était pas dans l'env (render manuel, shell différent). Pour un user hôte qui n'est PAS 1000 (ex: kesurof=1002), c'est un bug silencieux.
+
+**Solution appliquée** : `user: "${APP_PUID}:${APP_PGID}"` (sans default). Si non set, le render produit `user: ":"` qui est invalide et le `docker compose up` échoue avec une erreur claire.
+
+**Variables obligatoires documentées** dans le commentaire en tête du compose : `APP_PUID`, `APP_PGID`, `DOCKER_GID`, `KSF_REPO_DIR`, `BASE_DIR`, `NETWORK_NAME`, `TZ_VALUE`.
+
+---
+
+### P0.3 — I2 : Fix race dans le modal de confirmation
 **Fichier** : `ksf-web/app/templates/base.html:199-223`
 
 **Problème** : le mécanisme `b.dataset.confirming = '1'` puis `setTimeout(0)` pour clear est fragile. Si htmx traite l'event de manière asynchrone, le flag peut être cleared trop tôt.
@@ -42,7 +76,7 @@ function showNextModal() {
 
 ---
 
-### P0.2 — I7 : Chiffrer les secrets au repos dans SQLite
+### P0.4 — I7 : Chiffrer les secrets au repos dans SQLite
 **Fichiers** : `ksf-web/app/services/webhooks.py`, `migrations/002_encryption.sql`, `requirements.txt`
 
 **Problème** : `webhook_endpoints.secret` et `audit_log.before/after` (peut contenir des secrets ksf.env) sont en clair dans la DB.
@@ -58,7 +92,7 @@ function showNextModal() {
 
 ---
 
-### P0.3 — Intégrer le check SSRF dans la route de création webhook
+### P0.5 — Intégrer le check SSRF dans la route de création webhook
 **Fichier** : `ksf-web/app/main.py:920-924`
 
 **Problème** : `_is_safe_webhook_target` est défini dans `webhooks.py` mais pas encore appelé dans la route.
@@ -80,24 +114,23 @@ Idem pour `webhook_update` quand l'URL est modifiée.
 
 ---
 
-### P0.4 — Permissions DB SQLite (chmod 600)
-**Fichier** : `ksf-web/Dockerfile` ou `ksf-web/app/db.py`
+### ✅ P0.6 — FIXED : Permissions DB SQLite (chmod 600)
+**Fichier** : `ksf-web/app/db.py:30-39`
 
 **Problème** : Le DB SQLite contient des données sensibles (audit, secrets webhook si chiffrés). Permissions par défaut peuvent être laxistes.
 
-**Solution** : dans `db.py:get_conn()` après création du fichier :
+**Solution appliquée** : dans `db.py:get_conn()` après création du fichier :
 ```python
-import os
-if _conn is None:
-    os.makedirs(os.path.dirname(config.DB_PATH), exist_ok=True)
-    new_file = not os.path.exists(config.DB_PATH)
-    _conn = await aiosqlite.connect(config.DB_PATH, isolation_level=None)
-    if new_file:
+is_new = not os.path.exists(config.DB_PATH)
+_conn = await aiosqlite.connect(config.DB_PATH, isolation_level=None)
+if is_new:
+    try:
         os.chmod(config.DB_PATH, 0o600)
+    except OSError:
+        logger.warning("Impossible de chmod 600 sur %s", config.DB_PATH)
 ```
-Idem pour le dossier parent : `os.chmod(dir, 0o700)`.
 
-**Effort** : 10 min
+Le dossier parent est `chown` au bon UID par l'entrypoint `gosu` (cf P0.1).
 
 ---
 
@@ -530,26 +563,39 @@ def _client_actor(request: Request) -> str:
 
 ## Résumé par effort
 
-| Catégorie | Items | Effort total |
-|---|---|---|
-| 🔴 P0 | 4 | ~3 jours |
-| 🟠 P1 | 7 | ~5 jours |
-| 🟡 P2 | 15 | ~17 jours |
-| 🟢 P3 | 14 | ~20 jours |
-| **Total** | **40** | **~45 jours** |
+| Catégorie | Items actifs | Items faits | Effort restant |
+|---|---|---|---|
+| 🔴 P0 | 3 (P0.3, P0.4, P0.5) | 3 (P0.1, P0.2, P0.6) | ~3 jours |
+| 🟠 P1 | 7 | 0 | ~5 jours |
+| 🟡 P2 | 15 | 0 | ~17 jours |
+| 🟢 P3 | 14 | 0 | ~20 jours |
+| **Total** | **39 actifs** | **3 faits** | **~45 jours** |
 
 ## Ordre d'exécution suggéré
 
-1. **P0.1, P0.3, P0.4** (1 jour) : quick wins sécurité avant deploy
-2. **P0.2** (2 jours) : chiffrement secrets (nécessite migration soignée)
-3. **P1.1, P1.7** (1 jour) : élimine le blocking event loop
-4. **P1.2, P1.3** (1 jour) : robustesse runtime
-5. **P1.4, P1.5, P1.6** (2 jours) : cohérence des données
-6. **Phase 3 features** (P2.12, P2.13, P2.14, P2.15) : 5 jours
-7. **P3.x** (refactoring + tests + doc) : continu, par petites touches
+1. **P0.5** (5 min) : intégrer le check SSRF dans la route webhook
+2. **P0.3** (0.5 j) : fix race modal de confirmation
+3. **P0.4** (1-2 j) : chiffrement secrets (nécessite migration soignée)
+4. **P1.1, P1.7** (1 j) : élimine le blocking event loop
+5. **P1.2, P1.3** (1 j) : robustesse runtime
+6. **P1.4, P1.5, P1.6** (2 j) : cohérence des données
+7. **Phase 3 features** (P2.12, P2.13, P2.14, P2.15) : 5 j
+8. **P3.x** (refactoring + tests + doc) : continu, par petites touches
 
 ## Liens utiles
 
 - `ROADMAP.md` : vision stratégique
 - Code review (session précédente) : 40 findings, 14 fixés, 26 à traiter
 - `AGENTS.md` : conventions du projet
+- Phase 2B (jobs + SSE) et Phase 2D (backups) sont en production
+
+## Correctifs urgents appliqués (session déploiement)
+
+### DB persistence (P0.1)
+L'application ne démarrait pas : `PermissionError: '/serverbox/ksf-web'` car le user du conteneur ne pouvait pas créer le dossier de DB sur le host. **Fix** : DB sur volume Docker nommé `/var/lib/ksf-web`, entrypoint `gosu` qui chown le volume et drop privs. Maintenant déployable quel que soit l'UID hôte.
+
+### Suppression du default `:-1000` (P0.2)
+Le `user: "${APP_PUID:-1000}:${APP_PGID:-1000}"` était un footgun : si `APP_PUID` n'était pas dans l'env (render manuel), le default 1000 s'appliquait silencieusement. Pour un user 1002 (kesurof), c'était un bug invisible. **Fix** : suppression du default, fail-loud si non set. Documentation des variables obligatoires en tête du compose.
+
+### chmod 600 sur DB (P0.6)
+Le DB SQLite contenait des données sensibles (audit, secrets webhook). **Fix** : `os.chmod(config.DB_PATH, 0o600)` au premier create dans `db.py:get_conn()`.

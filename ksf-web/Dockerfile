@@ -18,13 +18,15 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
+COPY migrations/ ./migrations/
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 RUN chown -R appuser:appuser /app
 
-# L'entrypoint s'exécute en root pour chown le volume DB, puis drop privs via gosu.
-# C'est nécessaire car les volumes Docker nommés sont root:root 755 par défaut.
+# L'entrypoint s'exécute en root pour valider les perms du bind mount,
+# puis drop privs via gosu. Le bind mount (${BASE_DIR}/.ksf-web-data)
+# est créé et chowné côté host par app_install.
 USER root
 
 ENTRYPOINT ["/entrypoint.sh"]
