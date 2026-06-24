@@ -1,4 +1,5 @@
 """Webhooks : CRUD endpoints + dispatch avec HMAC + retry."""
+import asyncio
 import hmac
 import hashlib
 import ipaddress
@@ -9,10 +10,10 @@ import secrets
 import urllib.request
 import urllib.error
 import uuid
-from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from app import db
+from app.utils import utcnow_str as _utcnow
 
 logger = logging.getLogger("ksf-web.webhooks")
 
@@ -23,6 +24,7 @@ def _is_safe_webhook_target(url: str, allow_private: bool = False) -> tuple[bool
     """Bloque les targets dangereuses (SSRF).
 
     - Scheme doit être http(s)
+    - URL doit avoir un host et un path (au moins "/")
     - Host doit résoudre en IP
     - IP cible ne doit pas être dans un range privé/loopback/link-local
       (sauf si allow_private=True, pour les déploiements internes intentionnels)
@@ -33,6 +35,8 @@ def _is_safe_webhook_target(url: str, allow_private: bool = False) -> tuple[bool
         return False, f"URL invalide : {e}"
     if parsed.scheme not in ("http", "https"):
         return False, f"Schéma non autorisé : {parsed.scheme}"
+    if not parsed.netloc:
+        return False, "Host manquant dans l'URL"
     host = parsed.hostname
     if not host:
         return False, "Host manquant"
@@ -52,10 +56,6 @@ def _is_safe_webhook_target(url: str, allow_private: bool = False) -> tuple[bool
         ):
             return False, f"IP privée/interdite : {ip_str} ({host})"
     return True, ""
-
-
-def _utcnow() -> str:
-    return datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
 async def list_all() -> list[dict]:
@@ -92,14 +92,18 @@ async def get(endpoint_id: str) -> dict | None:
 
 
 async def create(name: str, url: str, events_list: list[str], secret: str | None = None) -> str:
+    import aiosqlite
     eid = uuid.uuid4().hex
-    async for conn in db.get_conn():
-        await conn.execute(
-            "INSERT INTO webhook_endpoints (id, name, url, secret, events, enabled, created_at) "
-            "VALUES (?, ?, ?, ?, ?, 1, ?)",
-            (eid, name, url, secret, json.dumps(events_list), _utcnow()),
-        )
-        await conn.commit()
+    try:
+        async for conn in db.get_conn():
+            await conn.execute(
+                "INSERT INTO webhook_endpoints (id, name, url, secret, events, enabled, created_at) "
+                "VALUES (?, ?, ?, ?, ?, 1, ?)",
+                (eid, name, url, secret, json.dumps(events_list), _utcnow()),
+            )
+            await conn.commit()
+    except aiosqlite.IntegrityError as e:
+        raise ValueError(f"Un webhook avec le même nom/URL existe déjà") from e
     return eid
 
 
@@ -129,17 +133,22 @@ async def delete(endpoint_id: str) -> bool:
 async def dispatch(category: str, notif_payload: dict) -> int:
     """Dispatch une notification aux webhooks qui matchent la catégorie.
 
-    Renvoie le nombre de webhooks notifiés (succès ou échec)."""
+    Renvoie le nombre de webhooks notifiés (succès ou échec).
+    Dispatch en parallèle via asyncio.gather (1 slow webhook ne bloque pas les autres).
+    """
     endpoints = await list_all()
-    sent = 0
-    for ep in endpoints:
-        if not ep.get("enabled"):
-            continue
-        if "*" not in ep["events"] and category not in ep["events"]:
-            continue
-        await _send_with_retry(ep, notif_payload)
-        sent += 1
-    return sent
+    matching = [
+        ep for ep in endpoints
+        if ep.get("enabled") and ("*" in ep["events"] or category in ep["events"])
+    ]
+    if not matching:
+        return 0
+    # gather avec return_exceptions pour qu'un crash d'un webhook ne crashe pas les autres
+    await asyncio.gather(
+        *[_send_with_retry(ep, notif_payload) for ep in matching],
+        return_exceptions=True,
+    )
+    return len(matching)
 
 
 async def _send_with_retry(ep: dict, payload: dict) -> None:
@@ -154,15 +163,18 @@ async def _send_with_retry(ep: dict, payload: dict) -> None:
     attempts = 3
     for attempt in range(1, attempts + 1):
         try:
+            # asyncio.to_thread pour ne pas bloquer l'event loop (urllib est sync)
             req = urllib.request.Request(ep["url"], data=body, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            resp = await asyncio.to_thread(urllib.request.urlopen, req, 10)
+            try:
                 if 200 <= resp.status < 300:
                     logger.info("Webhook %s livré (status=%d)", ep["name"], resp.status)
                     return
                 logger.warning("Webhook %s status=%d (attempt %d)", ep["name"], resp.status, attempt)
+            finally:
+                resp.close()
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as e:
             logger.warning("Webhook %s erreur: %s (attempt %d)", ep["name"], e, attempt)
         if attempt < attempts:
-            import asyncio
             await asyncio.sleep(2 ** attempt)
     logger.error("Webhook %s échoué après %d tentatives", ep["name"], attempts)

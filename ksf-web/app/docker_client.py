@@ -1,3 +1,4 @@
+import asyncio
 import os
 import time
 import threading
@@ -8,7 +9,9 @@ from typing import Iterator
 
 logger = logging.getLogger("ksf-web")
 
-_docker_client = None
+_docker_client: docker.DockerClient | None = None
+_docker_client_lock = asyncio.Lock()
+_docker_client_healthy = False
 
 KSF_CORE_CONTAINERS = {"traefik", "oauth2-proxy", "crowdsec"}
 
@@ -18,6 +21,11 @@ INSTALLED_DIR = os.path.join(
 
 
 def get_client() -> docker.DockerClient | None:
+    """Retourne (ou crée) le client Docker singleton.
+
+    Version sync, utilisée par les helpers bas-niveau (list_containers, etc.)
+    qui sont eux-mêmes sync. Pas de health check ici pour rester simple.
+    """
     global _docker_client
     if _docker_client is not None:
         return _docker_client
@@ -29,6 +37,41 @@ def get_client() -> docker.DockerClient | None:
     except Exception:
         logger.exception("Connexion Docker impossible")
         return None
+
+
+async def get_client_async() -> docker.DockerClient | None:
+    """Version async avec health check et reset automatique.
+
+    - Verrou async pour éviter la double-init en cas d'appels concurrents
+    - Health check via client.ping() avant de retourner
+    - Reset + recréation si la connexion est morte
+
+    À utiliser dans les handlers FastAPI pour bénéficier du health check
+    et du reset sur connexion perdue.
+    """
+    global _docker_client, _docker_client_healthy
+
+    async with _docker_client_lock:
+        if _docker_client is not None and _docker_client_healthy:
+            try:
+                await asyncio.to_thread(_docker_client.ping)
+                return _docker_client
+            except Exception:
+                logger.warning("Docker ping a échoué, reset du client")
+                _docker_client = None
+                _docker_client_healthy = False
+
+        new_client = get_client()
+        if new_client is None:
+            return None
+        try:
+            await asyncio.to_thread(new_client.ping)
+            _docker_client = new_client
+            _docker_client_healthy = True
+            return _docker_client
+        except Exception:
+            logger.exception("Docker ping a échoué sur un nouveau client")
+            return None
 
 
 def _container_type(name: str, labels: dict) -> str:

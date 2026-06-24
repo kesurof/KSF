@@ -22,8 +22,6 @@ from app.services import notifications, webhooks
 
 logger = logging.getLogger("ksf-web")
 
-app = FastAPI(title="KSF Web", docs_url=None, redoc_url=None)
-
 
 @asynccontextmanager
 async def lifespan(app):
@@ -37,7 +35,7 @@ async def lifespan(app):
         await db.close()
 
 
-app.router.lifespan_context = lifespan
+app = FastAPI(title="KSF Web", docs_url=None, redoc_url=None, lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=config.TEMPLATE_DIR)
@@ -183,8 +181,11 @@ def _client_actor(request: Request) -> str:
     """Identifie l'acteur : X-Forwarded-User/Email posé par OAuth2 Proxy, sinon 'admin'."""
     user = request.headers.get("x-forwarded-user") or request.headers.get("x-forwarded-email")
     if user:
-        return user
-    return "admin"
+        # Normalisation : strip + max 64 chars, alphanumeric + quelques spéciaux
+        user = user.strip()[:64]
+        # Rejeter caractères de contrôle / null bytes
+        user = "".join(c for c in user if c.isprintable())
+    return user or "admin"
 
 
 def _client_ip(request: Request) -> str | None:
@@ -534,12 +535,12 @@ async def security_page(request: Request):
         appsec_state = "indeterminate"
 
     if crowdsec_enabled:
-        _, crowdsec_status = ksf_commands.run_command("crowdsec_status")
-        _, crowdsec_alerts = ksf_commands.run_command("crowdsec_alerts")
-        _, crowdsec_bouncers = ksf_commands.run_command("crowdsec_bouncers")
+        _, crowdsec_status = await ksf_commands.run_command("crowdsec_status")
+        _, crowdsec_alerts = await ksf_commands.run_command("crowdsec_alerts")
+        _, crowdsec_bouncers = await ksf_commands.run_command("crowdsec_bouncers")
 
     if appsec_state == "active":
-        _, appsec_status = ksf_commands.run_command("appsec_status")
+        _, appsec_status = await ksf_commands.run_command("appsec_status")
 
     return templates.TemplateResponse("security.html", {
         "request": request, "crowdsec_enabled": crowdsec_enabled,
@@ -690,7 +691,7 @@ async def app_install(
     else:
         extra_args.append("--no-auth")
 
-    ok, output = ksf_commands.run_app_command(app_name, "install", extra_args=extra_args)
+    ok, output = await ksf_commands.run_app_command(app_name, "install", extra_args=extra_args)
     log_path = _save_full_output(f"install-{app_name}", output) if ok or output else ""
     await _audit(request, "app.install", app_name,
                   after={"subdomain": subdomain, "port": port, "protected": protected})
@@ -706,7 +707,7 @@ async def app_install(
 async def app_update(app_name: str):
     _require_action()
     _require_valid_app(app_name)
-    ok, output = ksf_commands.run_app_command(app_name, "update")
+    ok, output = await ksf_commands.run_app_command(app_name, "update")
     log_path = _save_full_output(f"update-{app_name}", output)
     return _action_result(ok, f"Mise a jour de {app_name} lancee." if ok else f"Echec de la mise a jour de {app_name}.", output, log_path=log_path or None)
 
@@ -715,7 +716,7 @@ async def app_update(app_name: str):
 async def app_restart(app_name: str):
     _require_action()
     _require_valid_app(app_name)
-    ok, output = ksf_commands.run_app_command(app_name, "restart")
+    ok, output = await ksf_commands.run_app_command(app_name, "restart")
     log_path = _save_full_output(f"restart-{app_name}", output)
     return _action_result(ok, f"Redemarrage de {app_name} lance." if ok else f"Echec du redemarrage de {app_name}.", output, log_path=log_path or None)
 
@@ -724,7 +725,7 @@ async def app_restart(app_name: str):
 async def app_start(app_name: str):
     _require_action()
     _require_valid_app(app_name)
-    ok, output = ksf_commands.run_app_command(app_name, "start")
+    ok, output = await ksf_commands.run_app_command(app_name, "start")
     log_path = _save_full_output(f"start-{app_name}", output)
     return _action_result(ok, f"Demarrage de {app_name} lance." if ok else f"Echec du demarrage de {app_name}.", output, log_path=log_path or None)
 
@@ -733,7 +734,7 @@ async def app_start(app_name: str):
 async def app_stop(app_name: str):
     _require_action()
     _require_valid_app(app_name)
-    ok, output = ksf_commands.run_app_command(app_name, "stop")
+    ok, output = await ksf_commands.run_app_command(app_name, "stop")
     log_path = _save_full_output(f"stop-{app_name}", output)
     return _action_result(ok, f"Arret de {app_name} lance." if ok else f"Echec de l'arret de {app_name}.", output, log_path=log_path or None)
 
@@ -742,7 +743,7 @@ async def app_stop(app_name: str):
 async def app_disable(app_name: str):
     _require_action()
     _require_valid_app(app_name)
-    ok, output = ksf_commands.run_app_command(app_name, "disable")
+    ok, output = await ksf_commands.run_app_command(app_name, "disable")
     log_path = _save_full_output(f"disable-{app_name}", output)
     return _action_result(ok, f"Desactivation de {app_name} lancee." if ok else f"Echec de la desactivation de {app_name}.", output, log_path=log_path or None)
 
@@ -751,7 +752,7 @@ async def app_disable(app_name: str):
 async def app_remove(app_name: str, request: Request):
     _require_action()
     _require_valid_app(app_name)
-    ok, output = ksf_commands.run_app_command(app_name, "remove")
+    ok, output = await ksf_commands.run_app_command(app_name, "remove")
     log_path = _save_full_output(f"remove-{app_name}", output)
     await _audit(request, "app.remove", app_name)
     return _action_result(ok, f"Suppression de {app_name} lancee." if ok else f"Echec de la suppression de {app_name}.", output, log_path=log_path or None)
@@ -946,7 +947,13 @@ async def webhook_create(request: Request):
     secret = (body.get("secret") or "").strip() or None
     if not name or not url.startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="name et url (http/https) requis")
-    eid = await webhooks.create(name, url, events_list, secret)
+    ok, err = webhooks._is_safe_webhook_target(url, allow_private=False)
+    if not ok:
+        raise HTTPException(status_code=400, detail=f"URL refusée : {err}")
+    try:
+        eid = await webhooks.create(name, url, events_list, secret)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     await _audit(request, "webhook.create", eid, after={"name": name})
     return {"success": True, "id": eid}
 
@@ -954,6 +961,10 @@ async def webhook_create(request: Request):
 @app.post("/api/webhooks/{endpoint_id}")
 async def webhook_update(endpoint_id: str, request: Request):
     body = await request.json()
+    if "url" in body:
+        ok, err = webhooks._is_safe_webhook_target(str(body["url"]), allow_private=False)
+        if not ok:
+            raise HTTPException(status_code=400, detail=f"URL refusée : {err}")
     await webhooks.update(endpoint_id, **body)
     await _audit(request, "webhook.update", endpoint_id, after=body)
     return {"success": True}
@@ -1008,9 +1019,12 @@ async def config_preview(request: Request):
 async def config_commit(request: Request):
     body = await request.json()
     proposed = body.get("proposed", "")
+    token = body.get("token", "")
     if not proposed:
         raise HTTPException(status_code=400, detail="Contenu vide")
-    result = await config_editor.commit(proposed)
+    if not token:
+        raise HTTPException(status_code=400, detail="Token de binding manquant (relancez la prévisualisation)")
+    result = await config_editor.commit(proposed, token)
     return JSONResponse(result)
 
 
@@ -1023,10 +1037,10 @@ async def security_refresh():
     try:
         ksf_env = ksf_commands.get_ksf_env()
         if ksf_env.get("WITH_CROWDSEC", "false").lower() == "true":
-            ok1, out1 = ksf_commands.run_command("crowdsec_alerts")
+            ok1, out1 = await ksf_commands.run_command("crowdsec_alerts")
             log1 = _save_full_output("crowdsec-alerts", out1)
             results["alerts"] = _action_result(ok1, "Alertes rafraichies.", out1, log_path=log1 or None)
-            ok2, out2 = ksf_commands.run_command("crowdsec_bouncers")
+            ok2, out2 = await ksf_commands.run_command("crowdsec_bouncers")
             log2 = _save_full_output("crowdsec-bouncers", out2)
             results["bouncers"] = _action_result(ok2, "Bouncers rafraichis.", out2, log_path=log2 or None)
     except Exception:

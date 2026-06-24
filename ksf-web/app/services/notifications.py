@@ -5,21 +5,18 @@ Quand une notification est créée, elle est :
 2. Publiée sur le bus d'events (canal "notifications", sub-kanal = category)
 3. Dispatchée aux webhooks actifs qui matchent la catégorie
 """
+import asyncio
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
 
 from app import db
 from app.services import events
+from app.utils import utcnow_str as _utcnow
 
 logger = logging.getLogger("ksf-web.notifications")
 
 LEVELS = frozenset({"info", "warn", "error", "critical"})
-
-
-def _utcnow() -> str:
-    return datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
 async def create(
@@ -45,13 +42,35 @@ async def create(
     await events.bus.publish("notifications", "new", payload)
     await events.bus.publish(f"notifications:{category}", "new", payload)
 
+    # Dispatch webhooks en fire-and-forget : on ne bloque pas la réponse
+    # user sur la latence des webhooks (3 retries × 10s = 30s par webhook).
+    # Le callback d'erreur capture les exceptions asyncio silencieuses.
     try:
         from app.services import webhooks
-        await webhooks.dispatch(category, payload)
+        task = asyncio.create_task(webhooks.dispatch(category, payload))
+        task.add_done_callback(_log_webhook_dispatch_result)
+    except RuntimeError:
+        # Si pas de loop active (rare), dispatch sync comme fallback
+        try:
+            await webhooks.dispatch(category, payload)
+        except Exception:
+            logger.exception("Erreur dispatch webhooks pour notif %s", nid)
     except Exception:
-        logger.exception("Erreur dispatch webhooks pour notif %s", nid)
+        logger.exception("Erreur scheduling dispatch webhooks pour notif %s", nid)
 
     return nid
+
+
+def _log_webhook_dispatch_result(task: asyncio.Task) -> None:
+    """Callback appelé quand la task fire-and-forget se termine.
+
+    Sans ce callback, les exceptions dans une task asyncio.create_task
+    sont silencieusement perdues (warning dans les logs Python récents)."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc:
+        logger.exception("Erreur fire-and-forget dispatch webhooks: %s", exc)
 
 
 async def list_all(limit: int = 100, unread_only: bool = False) -> list[dict]:

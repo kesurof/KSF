@@ -105,6 +105,7 @@
 
 <script>
     var proposedContent = null;
+    var previewToken = null;
     document.getElementById('preview-btn').addEventListener('click', function () {
         var form = document.getElementById('config-form');
         var data = new FormData(form);
@@ -129,6 +130,7 @@
                     return;
                 }
                 proposedContent = j.proposed;
+                previewToken = j.token;
                 document.getElementById('diff-content').textContent = j.diff;
                 document.getElementById('diff-summary').textContent = 'Relisez attentivement. Un clic sur « Appliquer » écrira le fichier, fera un dry-run, puis un render réel.';
                 document.getElementById('diff-modal').hidden = false;
@@ -145,7 +147,7 @@
         fetch('/api/config/commit', {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'X-CSRF-Token': getCookie('ksf_csrf')},
-            body: JSON.stringify({proposed: proposedContent})
+            body: JSON.stringify({proposed: proposedContent, token: previewToken})
         }).then(function (r) { return r.json(); })
           .then(function (j) {
               btn.disabled = false; btn.textContent = 'Appliquer';

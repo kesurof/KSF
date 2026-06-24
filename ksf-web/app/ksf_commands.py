@@ -1,4 +1,5 @@
 import os
+import asyncio
 import subprocess
 import re
 import logging
@@ -41,10 +42,8 @@ def _validate_app_name(name: str) -> bool:
     return bool(re.fullmatch(r"[a-z0-9]([a-z0-9\-]*[a-z0-9])?", name))
 
 
-def run_command(key: str, timeout: int = 120) -> tuple[bool, str]:
-    if key not in ALLOWED_COMMANDS:
-        return False, f"Commande non autorisee : {key}"
-    cmd = ALLOWED_COMMANDS[key]
+def _run_subprocess_sync(cmd: list[str], timeout: int) -> tuple[bool, str]:
+    """Helper synchrone (à appeler via asyncio.to_thread)."""
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=timeout,
@@ -57,11 +56,19 @@ def run_command(key: str, timeout: int = 120) -> tuple[bool, str]:
     except FileNotFoundError:
         return False, f"Script introuvable : {cmd[0]}"
     except Exception as e:
-        logger.exception("Erreur lors de l'execution de %s", key)
+        logger.exception("Erreur lors de l'execution de %s", cmd)
         return False, f"Erreur interne : {type(e).__name__}"
 
 
-def run_app_command(app_name: str, action: str, extra_args: list[str] | None = None, timeout: int = 120) -> tuple[bool, str]:
+async def run_command(key: str, timeout: int = 120) -> tuple[bool, str]:
+    """Async wrapper qui ne bloque pas l'event loop."""
+    if key not in ALLOWED_COMMANDS:
+        return False, f"Commande non autorisee : {key}"
+    return await asyncio.to_thread(_run_subprocess_sync, ALLOWED_COMMANDS[key], timeout)
+
+
+async def run_app_command(app_name: str, action: str, extra_args: list[str] | None = None, timeout: int = 120) -> tuple[bool, str]:
+    """Async wrapper qui ne bloque pas l'event loop."""
     if not _validate_app_name(app_name):
         return False, "Nom d'application invalide."
     if action not in ALLOWED_APP_ACTIONS:
@@ -71,20 +78,7 @@ def run_app_command(app_name: str, action: str, extra_args: list[str] | None = N
         cmd.extend(extra_args)
     if action in APP_ACTIONS_WITH_YES:
         cmd.append("--yes")
-    try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout,
-            cwd=KSF_REPO_DIR, env=EXEC_ENV,
-        )
-        output = _mask_secrets(result.stdout + result.stderr)
-        return result.returncode == 0, output.strip()
-    except subprocess.TimeoutExpired:
-        return False, "La commande a expire (timeout)."
-    except FileNotFoundError:
-        return False, f"Script introuvable : {cmd[0]}"
-    except Exception as e:
-        logger.exception("Erreur lors de l'execution de %s %s", action, app_name)
-        return False, f"Erreur interne : {type(e).__name__}"
+    return await asyncio.to_thread(_run_subprocess_sync, cmd, timeout)
 
 
 def list_installed_apps() -> list[dict]:

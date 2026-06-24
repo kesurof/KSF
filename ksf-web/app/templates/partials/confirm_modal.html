@@ -1,8 +1,8 @@
-<div class="modal-bg confirm-modal-bg" id="confirm-modal" onclick="if(event.target===this)closeConfirmModal(false)" role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-body" hidden>
+<div class="modal-bg confirm-modal-bg" id="confirm-modal" onclick="if(event.target===this)confirmDialogResolve(false)" role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-body" hidden>
     <div class="modal confirm-modal">
         <div class="modal-head">
             <h2 id="confirm-title">Confirmer</h2>
-            <button class="modal-x" type="button" aria-label="Annuler" onclick="closeConfirmModal(false)">&times;</button>
+            <button class="modal-x" type="button" aria-label="Annuler" onclick="confirmDialogResolve(false)">&times;</button>
         </div>
         <div class="modal-body">
             <p id="confirm-body" class="confirm-message">Êtes-vous sûr ?</p>
@@ -12,15 +12,21 @@
             </div>
         </div>
         <div class="modal-foot">
-            <button type="button" class="btn" id="confirm-cancel" onclick="closeConfirmModal(false)">Annuler</button>
-            <button type="button" class="btn btn-danger" id="confirm-ok" onclick="confirmResolve()">Confirmer</button>
+            <button type="button" class="btn" id="confirm-cancel" onclick="confirmDialogResolve(false)">Annuler</button>
+            <button type="button" class="btn btn-danger" id="confirm-ok" onclick="confirmDialogResolve(true)">Confirmer</button>
         </div>
     </div>
 </div>
 <script>
     (function () {
+        // Queue de confirmations : si plusieurs appels à openConfirm sont faits
+        // pendant qu'une modale est ouverte, ils sont enfilés et résolus
+        // séquentiellement. Pas de race possible entre htmx et l'utilisateur.
+        var queue = [];
+        var current = null;  // { resolve, opts } de la confirmation en cours
+        var pendingAction = null;  // Function à appeler si confirmé
+
         var modal, titleEl, bodyEl, typedWrap, typedInput, typedLabel, okBtn, cancelBtn;
-        var pending = null;
 
         function getRefs() {
             modal = document.getElementById('confirm-modal');
@@ -35,16 +41,26 @@
             return true;
         }
 
-        function openConfirm(opts) {
-            if (!getRefs()) return Promise.resolve(false);
-            opts = opts || {};
-            titleEl.textContent = opts.title || 'Confirmer';
-            bodyEl.textContent = opts.body || 'Êtes-vous sûr ?';
-            okBtn.textContent = opts.okLabel || 'Confirmer';
-            okBtn.className = 'btn ' + (opts.dangerous ? 'btn-danger' : 'btn-primary');
-            if (opts.typed) {
+        function showNext() {
+            if (queue.length === 0) {
+                current = null;
+                pendingAction = null;
+                if (modal) {
+                    modal.classList.remove('on');
+                    modal.hidden = true;
+                }
+                document.body.style.overflow = '';
+                return;
+            }
+            current = queue.shift();
+            pendingAction = current.opts.action;
+            titleEl.textContent = current.opts.title || 'Confirmer';
+            bodyEl.textContent = current.opts.body || 'Êtes-vous sûr ?';
+            okBtn.textContent = current.opts.okLabel || 'Confirmer';
+            okBtn.className = 'btn ' + (current.opts.dangerous ? 'btn-danger' : 'btn-primary');
+            if (current.opts.typed) {
                 typedWrap.hidden = false;
-                typedLabel.textContent = 'Tapez « ' + opts.typed + ' » pour confirmer :';
+                typedLabel.textContent = 'Tapez « ' + current.opts.typed + ' » pour confirmer :';
                 typedInput.value = '';
                 okBtn.disabled = true;
             } else {
@@ -55,49 +71,78 @@
             requestAnimationFrame(function () { modal.classList.add('on'); });
             document.body.style.overflow = 'hidden';
             setTimeout(function () { cancelBtn.focus(); }, 30);
+        }
+
+        function resolveCurrent(ok) {
+            if (!current) return;
+            var resolver = current.resolve;
+            var action = pendingAction;
+            current = null;
+            pendingAction = null;
+            resolver(ok);
+            if (ok && action) {
+                try { action(); } catch (e) { console.error('confirm action failed', e); }
+            }
+            // Petite pause pour laisser l'animation de fermeture jouer
+            setTimeout(showNext, 100);
+        }
+
+        function openConfirm(opts) {
+            if (!getRefs()) return Promise.resolve(false);
+            opts = opts || {};
+            // Si une confirmation est déjà en cours, on enfile celle-ci.
+            // Le caller reçoit une Promise qui sera résolue à son tour.
             return new Promise(function (resolve) {
-                pending = { resolve: resolve, typed: opts.typed || null };
+                queue.push({
+                    resolve: resolve,
+                    opts: {
+                        title: opts.title || 'Confirmer',
+                        body: opts.body || 'Êtes-vous sûr ?',
+                        okLabel: opts.okLabel || 'Confirmer',
+                        dangerous: opts.dangerous,
+                        typed: opts.typed || null,
+                        action: opts.action || null,
+                    },
+                });
+                if (queue.length === 1 && !current) {
+                    showNext();
+                }
             });
         }
 
-        window.openConfirm = openConfirm;
-
-        window.closeConfirmModal = function (ok) {
-            if (!getRefs()) return;
-            modal.classList.remove('on');
-            modal.hidden = true;
-            document.body.style.overflow = '';
-            if (pending) {
-                var r = pending.resolve;
-                pending = null;
-                r(ok);
-            }
-        };
-
-        window.confirmResolve = function () {
-            if (pending && pending.typed) {
-                if (typedInput.value !== pending.typed) {
+        if (getRefs()) {
+            // On attache les listeners une seule fois, sur le bouton "Confirmer"
+            // et sur la frappe dans l'input "typed"
+            okBtn.addEventListener('click', function () {
+                if (!current) return;
+                if (current.opts.typed && typedInput.value !== current.opts.typed) {
                     typedInput.focus();
                     typedInput.classList.add('form-input-err');
                     setTimeout(function () { typedInput.classList.remove('form-input-err'); }, 600);
                     return;
                 }
-            }
-            window.closeConfirmModal(true);
-        };
-
-        if (getRefs()) {
+                resolveCurrent(true);
+            });
+            cancelBtn.addEventListener('click', function () { resolveCurrent(false); });
+            // La fermeture par clic sur le backdrop (modal-bg) résout aussi
+            modal.addEventListener('click', function (e) {
+                if (e.target === modal) resolveCurrent(false);
+            });
             typedInput.addEventListener('input', function () {
-                if (pending && pending.typed) {
-                    okBtn.disabled = (typedInput.value !== pending.typed);
+                if (current && current.opts.typed) {
+                    okBtn.disabled = (typedInput.value !== current.opts.typed);
+                }
+            });
+            typedInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' && !okBtn.disabled) {
+                    e.preventDefault();
+                    resolveCurrent(true);
                 }
             });
         }
 
-        document.addEventListener('keydown', function (e) {
-            if (!getRefs() || modal.hidden) return;
-            if (e.key === 'Escape') { e.preventDefault(); window.closeConfirmModal(false); }
-            if (e.key === 'Enter' && !okBtn.disabled) { e.preventDefault(); window.confirmResolve(); }
-        });
+        // Expose l'API globale (utilisée par base.html)
+        window.openConfirm = openConfirm;
+        window.confirmDialogResolve = resolveCurrent;
     })();
 </script>

@@ -1,16 +1,24 @@
 """Audit log : traçabilité des actions utilisateur et système."""
 import json
 import logging
-from datetime import datetime, timezone
 from typing import Any
 
 from app import db
+from app.utils import utcnow_str as _utcnow
 
 logger = logging.getLogger("ksf-web.audit")
 
+# Cap la taille des before/after pour éviter qu'un payload géant (dump
+# complet d'un ksf.env, par ex) n'explose la DB. Tronqué avec un marqueur.
+_MAX_BEFORE_AFTER_BYTES = 8192
 
-def _utcnow() -> str:
-    return datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+def _truncate(s: str | None) -> str | None:
+    if s is None:
+        return None
+    if len(s) <= _MAX_BEFORE_AFTER_BYTES:
+        return s
+    return s[:_MAX_BEFORE_AFTER_BYTES] + f"... [truncated, original {len(s)} bytes]"
 
 
 async def log(
@@ -24,10 +32,13 @@ async def log(
     ua: str | None = None,
 ) -> int:
     try:
-        before_s = json.dumps(before, default=str) if before is not None else None
-        after_s = json.dumps(after, default=str) if after is not None else None
+        before_s = _truncate(json.dumps(before, default=str) if before is not None else None)
+        after_s = _truncate(json.dumps(after, default=str) if after is not None else None)
     except (TypeError, ValueError):
-        before_s, after_s = str(before), str(after)
+        # Fallback: str() peut produire un output enorme, on truncate
+        before_s = _truncate(str(before) if before is not None else None)
+        after_s = _truncate(str(after) if after is not None else None)
+        logger.warning("audit.log: sérialisation JSON échouée pour %s/%s, fallback str()", action, target)
 
     async for conn in db.get_conn():
         cur = await conn.execute(

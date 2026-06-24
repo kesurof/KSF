@@ -74,6 +74,15 @@ async def _ensure_schema() -> None:
             with open(path) as f:
                 sql = f.read()
             try:
+                # NOTE : on n'utilise pas BEGIN/COMMIT/ROLLBACK ici car
+                # sqlite3.executescript() fait un COMMIT implicite avant
+                # d'exécuter le script, ce qui invaliderait notre transaction.
+                # À la place, on compte sur l'idempotence des migrations :
+                # CREATE TABLE IF NOT EXISTS est un no-op si la table existe.
+                # Si le process crashe entre executescript et l'INSERT,
+                # la migration est partiellement appliquée mais sera
+                # réessayée au prochain restart (le IF NOT EXISTS rend
+                # executescript idempotent, et l'INSERT réussit ensuite).
                 await db.executescript(sql)
                 from datetime import datetime, timezone
                 ts = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")

@@ -17,15 +17,20 @@ import signal
 import subprocess
 import time
 import uuid
-from datetime import datetime, timezone
 from typing import Any
 
 import aiosqlite
 
 from app import config, db
 from app.services import events
+from app.utils import utcnow_str as _utcnow
 
 logger = logging.getLogger("ksf-web.jobs")
+
+# Marqueur posé par cancel() dans le champ "error" du job pour signaler
+# au worker qu'il doit terminer en "cancelled" plutôt qu'en success/failed.
+# C'est moche mais permet d'éviter une colonne DB supplémentaire.
+CANCEL_MARKER = "(cancelled by user)"
 
 JOB_KINDS = frozenset({
     "backup.create",
@@ -45,10 +50,6 @@ ALLOWED_COMMANDS: dict[str, list[str]] = {
     "ksf.sh": [config.REPO_DIR + "/ksf.sh"],
     "app.sh": [config.REPO_DIR + "/app.sh"],
 }
-
-
-def _utcnow() -> str:
-    return datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
 def _new_id() -> str:
@@ -151,20 +152,9 @@ async def cancel(job_id: str) -> bool:
             pass
     # On flag l'annulation ; c'est le worker qui marquera "cancelled" quand il détecte
     # la fin du subprocess, pour éviter une race avec _update final du worker.
-    await _update(job_id, error="(cancelled by user)")
+    await _update(job_id, error=CANCEL_MARKER)
     await events.bus.publish("jobs", "cancel-requested", {"id": job_id})
     return True
-
-
-async def mark_cancelled_if_requested(job_id: str) -> None:
-    """Appelé par le worker quand le subprocess se termine après une demande de cancel.
-    Vérifie si un cancel a été demandé et marque 'cancelled' le cas échéant."""
-    job = await get(job_id)
-    if not job:
-        return
-    if job["status"] == "running" and job.get("error") == "(cancelled by user)":
-        await _update(job_id, status="cancelled", finished_at=_utcnow(), error=None)
-        await events.bus.publish("jobs", "cancelled", {"id": job_id})
 
 
 # ── Worker loop ──────────────────────────────────────────────────
@@ -282,42 +272,64 @@ async def _run_job(job: dict) -> None:
             proc = await asyncio.create_subprocess_exec(
                 *command,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
+                stderr=asyncio.subprocess.PIPE,
                 cwd=config.REPO_DIR,
                 env=env,
                 start_new_session=True,
             )
             await _update(job_id, pid=proc.pid)
 
-            line_count = 0
-            buf = b""
-            while True:
-                chunk = await proc.stdout.read(4096)
-                if not chunk:
-                    break
-                logf.write(chunk)
-                buf += chunk
-                while b"\n" in buf:
-                    line, buf = buf.split(b"\n", 1)
-                    line_count += 1
+            # Compteur de lignes partagé entre stdout et stderr pour unicité
+            # des numéros de ligne côté front. Verrou car asyncio.gather exécute
+            # les 2 streams en parallèle.
+            counter_lock = asyncio.Lock()
+            counter = {"n": 0}
+
+            async def read_stream(stream, prefix: str):
+                buf = b""
+                while True:
+                    chunk = await stream.read(4096)
+                    if not chunk:
+                        break
+                    logf.write(chunk)
+                    buf += chunk
+                    while b"\n" in buf:
+                        line, buf = buf.split(b"\n", 1)
+                        async with counter_lock:
+                            counter["n"] += 1
+                            n = counter["n"]
+                        text = line.decode("utf-8", errors="replace")
+                        if prefix:
+                            text = prefix + text
+                        await events.bus.publish(
+                            f"jobs:{job_id}", "line",
+                            {"n": n, "text": text, "stream": "stderr" if prefix else "stdout"},
+                        )
+                if buf:
+                    async with counter_lock:
+                        counter["n"] += 1
+                        n = counter["n"]
+                    logf.write(b"\n")
+                    text = buf.decode("utf-8", errors="replace")
+                    if prefix:
+                        text = prefix + text
                     await events.bus.publish(
                         f"jobs:{job_id}", "line",
-                        {"n": line_count, "text": line.decode("utf-8", errors="replace")},
+                        {"n": n, "text": text, "stream": "stderr" if prefix else "stdout"},
                     )
-            if buf:
-                line_count += 1
-                logf.write(b"\n")
-                await events.bus.publish(
-                    f"jobs:{job_id}", "line",
-                    {"n": line_count, "text": buf.decode("utf-8", errors="replace")},
-                )
+
+            # Lecture parallèle de stdout et stderr avec préfixe pour stderr
+            await asyncio.gather(
+                read_stream(proc.stdout, ""),
+                read_stream(proc.stderr, "[stderr] "),
+            )
 
             await proc.wait()
 
         size = os.path.getsize(log_path)
         # Si l'utilisateur a demandé l'annulation, on termine en 'cancelled' quel que soit
         # le code retour (le proc a été tué par SIGTERM → exit -15).
-        if job.get("error") == "(cancelled by user)":
+        if job.get("error") == CANCEL_MARKER:
             new_status = "cancelled"
             await _update(
                 job_id, status=new_status, exit_code=proc.returncode,

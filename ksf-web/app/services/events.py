@@ -23,7 +23,10 @@ class EventBus:
             try:
                 q.put_nowait(payload)
             except asyncio.QueueFull:
-                pass
+                logger.warning(
+                    "EventBus: queue full, message dropped (channel=%s, event=%s, queue=%d/%d)",
+                    channel, event, q.qsize(), q.maxsize,
+                )
 
     async def subscribe(self, channel: str) -> AsyncIterator[dict]:
         q: asyncio.Queue = asyncio.Queue(maxsize=200)

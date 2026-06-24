@@ -196,9 +196,11 @@
             fetch('/api/notifications/unread-count').then(function (r) { return r.json(); }).then(function (d) { refreshNotifBadge(d.unread || 0); });
 
             // Confirmation prompts (custom modal, async). Intercepts htmx-triggered actions.
+            // Le bouton ne déclenche pas l'action tant que l'user n'a pas confirmé.
+            // On rejoue ensuite l'action via htmx.trigger pour bénéficier des headers CSRF.
             document.body.addEventListener('click', function (e) {
                 var b = e.target.closest('[data-confirm], [data-confirm2]');
-                if (!b || b.dataset.confirming === '1') return;
+                if (!b) return;
                 e.preventDefault();
                 e.stopImmediatePropagation();
 
@@ -207,17 +209,24 @@
                 var dangerous = b.classList.contains('btn-danger') || b.classList.contains('btn-warn');
                 var typed = b.getAttribute('data-confirm-typed') || null;
 
+                // Action à exécuter si l'user confirme. On retire les attributs
+                // data-confirm* temporairement pour éviter la récursion, puis
+                // on re-déclenche le click (htmx récupère et envoie la requête).
                 var proceed = function () {
-                    b.dataset.confirming = '1';
-                    b.click();
-                    setTimeout(function () { delete b.dataset.confirming; }, 0);
+                    var c1 = b.getAttribute('data-confirm');
+                    var c2 = b.getAttribute('data-confirm2');
+                    b.removeAttribute('data-confirm');
+                    b.removeAttribute('data-confirm2');
+                    htmx.trigger(b, 'click');
+                    if (c1) b.setAttribute('data-confirm', c1);
+                    if (c2) b.setAttribute('data-confirm2', c2);
                 };
 
-                window.openConfirm({ title: 'Confirmation', body: first, dangerous: dangerous, typed: typed })
+                window.openConfirm({ title: 'Confirmation', body: first, dangerous: dangerous, typed: typed, action: null })
                     .then(function (ok1) {
                         if (!ok1) return;
                         if (!second) { proceed(); return; }
-                        window.openConfirm({ title: 'Confirmation (2/2)', body: second, dangerous: true })
+                        window.openConfirm({ title: 'Confirmation (2/2)', body: second, dangerous: true, action: null })
                             .then(function (ok2) { if (ok2) proceed(); });
                     });
             }, true);

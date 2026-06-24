@@ -49,27 +49,3 @@ def delete_backup(name: str) -> tuple[bool, str]:
         return True, f"Backup {name} supprimé."
     except OSError as e:
         return False, f"Suppression impossible : {e}"
-
-
-def backup_file_size(name: str) -> int | None:
-    path = _safe_path(name)
-    if path is None or not os.path.isfile(path):
-        return None
-    try:
-        return os.path.getsize(path)
-    except OSError:
-        return None
-
-
-def list_for_restore() -> list[str]:
-    """Liste les backups disponibles pour restore (max 20 plus récents)."""
-    if not os.path.isdir(BACKUPS_DIR):
-        return []
-    try:
-        files = [
-            f for f in os.listdir(BACKUPS_DIR)
-            if f.endswith(".tar.gz") and _BACKUP_NAME_RE.fullmatch(f)
-        ]
-    except (PermissionError, OSError):
-        return []
-    return sorted(files, reverse=True)[:20]
