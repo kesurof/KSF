@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Page introuvable — KSF{% endblock %}
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">404</h1>
+        <p class="page-sub">La page demandée n'existe pas.</p>
+    </div>
+</div>
+<div class="card">
+    <div class="empty">
+        <span class="empty-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </span>
+        <span class="empty-title">Page introuvable</span>
+        <span class="empty-text">{{ path or 'L\'URL demandée' }} n'a pas été trouvée sur ce serveur.</span>
+        <div class="empty-actions">
+            <a href="/" class="btn btn-primary">Retour au tableau de bord</a>
+            <a href="/containers" class="btn">Voir les containers</a>
+            <a href="/apps" class="btn">Voir les applications</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

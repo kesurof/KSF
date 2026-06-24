@@ -1,8 +1,10 @@
 import os
 import time
+import threading
 import logging
 import docker
 from docker.errors import NotFound, APIError
+from typing import Iterator
 
 logger = logging.getLogger("ksf-web")
 
@@ -179,6 +181,32 @@ def get_container_logs(container_id: str, tail: int = 200) -> str:
         return c.logs(tail=tail, timestamps=False, follow=False).decode("utf-8", errors="replace")
     except Exception:
         return ""
+
+
+def stream_container_logs(container_id: str, tail: int = 100, stop_event: threading.Event | None = None) -> Iterator[str]:
+    """Yield lignes de logs en streaming depuis Docker. S'arrête quand stop_event est set."""
+    client = get_client()
+    if client is None:
+        return
+    try:
+        c = client.containers.get(container_id)
+    except (NotFound, APIError, Exception):
+        return
+    try:
+        gen = c.logs(stream=True, follow=True, tail=tail, stdout=True, stderr=True)
+        for raw in gen:
+            if stop_event is not None and stop_event.is_set():
+                try:
+                    gen.close()
+                except Exception:
+                    pass
+                return
+            line = raw.decode("utf-8", errors="replace")
+            if line.endswith("\n"):
+                line = line[:-1]
+            yield line
+    except Exception:
+        return
 
 
 def restart_container(container_id: str) -> bool:

@@ -29,6 +29,7 @@ APP_NAME=""
 APP_HOST_OVERRIDE=""
 APP_SUBDOMAIN_OVERRIDE=""
 APP_DOMAIN_OVERRIDE=""
+APP_PORT_OVERRIDE=""
 APP_AUTH_CHOICE="ask"
 APP_LOCAL_ONLY=false
 
@@ -55,6 +56,7 @@ Options:
   --domain DOMAIN       Domaine principal pour cette app
   --subdomain NAME      Sous-domaine de l'app (défaut: nom de l'app)
   --host HOST           Hostname complet de l'app
+  --port PORT           Port de l'app (override le port du template)
   --auth                Protège l'app avec OAuth2 Proxy (si OAuth2 Proxy est configuré)
   --no-auth             N'applique pas OAuth2 à cette app
   --local-only          Ne génère pas de route Traefik
@@ -101,6 +103,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --host)
       APP_HOST_OVERRIDE="$2"
+      shift 2
+      ;;
+    --port)
+      APP_PORT_OVERRIDE="$2"
       shift 2
       ;;
     --auth)

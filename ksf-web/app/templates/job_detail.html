@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Job {{ job.id[:8] }} — KSF{% endblock %}
+{% block content %}
+<div class="bread" aria-label="Fil d'Ariane">
+    <a href="/jobs">Jobs</a>
+    <span class="bread-sep" aria-hidden="true">/</span>
+    <span class="mono">{{ job.id[:8] }}</span>
+</div>
+<div class="page-head">
+    <div>
+        <h1 class="page-title mono">{{ job.id[:12] }}</h1>
+        <div class="flex acenter gap-1 wrap mt-1">
+            <span class="badge
+                {% if job.status == 'running' %}b-blue
+                {% elif job.status == 'success' %}b-green
+                {% elif job.status == 'failed' %}b-red
+                {% elif job.status == 'cancelled' %}b-gray
+                {% elif job.status == 'interrupted' %}b-orange
+                {% else %}b-gray{% endif %}">{{ job.status }}</span>
+            <span class="badge b-blue no-dot">{{ job.kind }}</span>
+            {% if job.lock_key %}<span class="badge b-orange no-dot">lock: {{ job.lock_key }}</span>{% endif %}
+        </div>
+    </div>
+    <div class="btn-group">
+        {% if job.status in ('queued', 'running') %}
+        <button class="btn btn-danger"
+                hx-post="/jobs/{{ job.id }}/cancel"
+                hx-swap="none"
+                data-confirm="Annuler ce job ?">Annuler</button>
+        {% endif %}
+        {% if job.output_path %}
+        <a href="/jobs/{{ job.id }}/log" class="btn" target="_blank">Voir log brut</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="grid g2">
+    <div class="card">
+        <div class="card-title">Informations</div>
+        <div class="slist">
+            <div class="srow"><span>ID</span><span class="mono sm">{{ job.id }}</span></div>
+            <div class="srow"><span>Type</span><span class="mono sm">{{ job.kind }}</span></div>
+            <div class="srow"><span>État</span><span>{{ job.status }}</span></div>
+            <div class="srow"><span>Code retour</span><span>{{ job.exit_code if job.exit_code is not none else '—' }}</span></div>
+            <div class="srow"><span>Déclenché par</span><span>{{ job.triggered_by or '—' }}</span></div>
+            <div class="srow"><span>Créé le</span><span>{{ job.created_at }}</span></div>
+            <div class="srow"><span>Démarré le</span><span>{{ job.started_at or '—' }}</span></div>
+            <div class="srow"><span>Terminé le</span><span>{{ job.finished_at or '—' }}</span></div>
+            <div class="srow"><span>Taille sortie</span><span>{{ (job.output_size or 0) // 1024 }} Ko</span></div>
+            {% if job.error %}
+            <div class="srow"><span>Erreur</span><span class="red">{{ job.error }}</span></div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-title">Commande</div>
+        <pre class="logs">{{ job.command }}</pre>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-title">
+        <span>Sortie en direct</span>
+        <span id="stream-status">
+            {% if job.status == 'running' %}<span class="badge b-blue"><span class="dot dot-on blink"></span> streaming</span>
+            {% elif job.status in ('success', 'failed', 'cancelled', 'interrupted') %}<span class="badge b-gray">terminé</span>
+            {% else %}<span class="badge b-gray">en attente</span>{% endif %}
+        </span>
+    </div>
+    <pre id="job-stream" class="logs logs-sm" aria-live="polite"></pre>
+    <script>
+        (function () {
+            var stream = document.getElementById('job-stream');
+            var statusEl = document.getElementById('stream-status');
+            if (!stream || !window.EventSource) return;
+            var es = new EventSource('/jobs/{{ job.id }}/stream');
+            es.addEventListener('line', function (e) {
+                try {
+                    var d = JSON.parse(e.data);
+                    stream.textContent += d.text + '\n';
+                    stream.scrollTop = stream.scrollHeight;
+                } catch (err) {}
+            });
+            es.addEventListener('finished', function (e) {
+                try {
+                    var d = JSON.parse(e.data);
+                    if (statusEl) statusEl.innerHTML = '<span class="badge b-' + (d.status === 'success' ? 'green' : 'red') + '">' + d.status + '</span>';
+                    stream.textContent += '\n--- Job terminé (exit=' + d.exit_code + ') ---\n';
+                } catch (err) {}
+                es.close();
+                // Recharger la page pour mettre à jour les infos (started/finished times, etc.)
+                setTimeout(function () { window.location.reload(); }, 1500);
+            });
+            es.addEventListener('snapshot', function (e) {
+                try {
+                    var d = JSON.parse(e.data);
+                    if (d.output_size > 0) {
+                        fetch('/jobs/{{ job.id }}/log').then(function (r) { return r.text(); }).then(function (t) {
+                            stream.textContent = t;
+                            stream.scrollTop = stream.scrollHeight;
+                        });
+                    }
+                } catch (err) {}
+            });
+        })();
+    </script>
+</div>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Jobs — KSF{% endblock %}
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Jobs</h1>
+        <p class="page-sub"><span>{{ jobs|length }} job(s)</span> <span class="muted" aria-hidden="true">·</span> <span>{{ now }}</span></p>
+    </div>
+</div>
+
+{% if not jobs %}
+<div class="card">
+    <div class="empty">
+        <span class="empty-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </span>
+        <span class="empty-title">Aucun job</span>
+        <span class="empty-text">Les opérations longues (backup, mise à jour, restauration) apparaîtront ici.</span>
+    </div>
+</div>
+{% else %}
+<div id="jobs-list-wrap"
+     hx-get="/api/jobs/list" hx-trigger="every 5s" hx-swap="outerHTML">
+    {% include "partials/jobs_list.html" %}
+</div>
+{% endif %}
+{% endblock %}

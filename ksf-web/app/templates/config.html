@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Configuration — KSF{% endblock %}
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Configuration (ksf.env)</h1>
+        <p class="page-sub"><span class="muted">Édition structurée avec validation, dry-run et rollback automatique</span> <span class="muted" aria-hidden="true">·</span> <span>{{ now }}</span></p>
+    </div>
+</div>
+
+<div class="card card-warn-err">
+    <div class="flex acenter gap-3">
+        <span class="dot dot-warn" aria-hidden="true"></span>
+        <div>
+            <strong class="orange">Attention :</strong>
+            <p class="muted sm mt-1">Toute modification est sauvegardée avant écriture. Un dry-run est lancé automatiquement. En cas d'échec, le fichier est restauré.</p>
+        </div>
+    </div>
+</div>
+
+<form id="config-form">
+{% for section, items in sections.items() %}
+<div class="card">
+    <div class="card-title">{{ section }}</div>
+    <div class="form-grid">
+        {% for f in items %}
+        <div class="form-field">
+            <label for="cfg-{{ f.key }}">
+                <span class="form-label">{{ f.key }}</span>
+                {% if f.secret %}<span class="badge b-orange no-dot" style="margin-left:0.3rem">secret</span>{% endif %}
+                {% if f.required %}<span class="form-required" aria-label="requis">*</span>{% endif %}
+                {% if f.advanced %}<span class="badge b-gray no-dot" style="margin-left:0.3rem">avancé</span>{% endif %}
+            </label>
+            {% if f.type == 'bool' %}
+            <label class="form-checkbox">
+                <input type="checkbox" id="cfg-{{ f.key }}" name="{{ f.key }}" {% if f.value|lower in ('true', '1', 'yes') %}checked{% endif %}>
+                Activé
+            </label>
+            {% else %}
+            <input type="{% if f.secret %}password{% else %}text{% endif %}"
+                   id="cfg-{{ f.key }}" name="{{ f.key }}"
+                   value="{{ f.value }}"
+                   class="form-input"
+                   {% if f.required %}required{% endif %}
+                   autocomplete="off">
+            {% endif %}
+            {% if f.help %}<p class="form-help">{{ f.help }}</p>{% endif %}
+            <p class="form-error" id="err-{{ f.key }}"></p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endfor %}
+
+<div class="card">
+    <div class="card-title">Actions</div>
+    <div class="btn-group">
+        <button type="button" class="btn btn-primary" id="preview-btn">Prévisualiser (dry-run)</button>
+        <button type="reset" class="btn">Réinitialiser</button>
+    </div>
+    <div id="preview-result" class="mt-3"></div>
+</div>
+</form>
+
+{% if versions %}
+<div class="card">
+    <div class="card-title">Historique des versions</div>
+    <div class="tbl-wrap">
+        <table>
+            <thead>
+                <tr><th>#</th><th>Date</th><th>Acteur</th><th>Raison</th><th>Taille</th></tr>
+            </thead>
+            <tbody>
+                {% for v in versions %}
+                <tr>
+                    <td class="mono sm">v{{ v.id }}</td>
+                    <td class="mono sm">{{ v.created_at }}</td>
+                    <td>{{ v.actor }}</td>
+                    <td>{{ v.reason }}</td>
+                    <td class="mono sm">{{ v.size }} octets</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<div class="modal-bg" id="diff-modal" onclick="if(event.target===this)closeDiffModal()" role="dialog" aria-modal="true" hidden>
+    <div class="modal modal-lg">
+        <div class="modal-head">
+            <h2>Diff : actuel vs proposé</h2>
+            <button class="modal-x" type="button" aria-label="Fermer" onclick="closeDiffModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p class="muted sm" id="diff-summary"></p>
+            <pre id="diff-content" class="logs"></pre>
+        </div>
+        <div class="modal-foot">
+            <button class="btn" onclick="closeDiffModal()">Annuler</button>
+            <button class="btn btn-primary" id="commit-btn" onclick="commitChange()">Appliquer</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    var proposedContent = null;
+    document.getElementById('preview-btn').addEventListener('click', function () {
+        var form = document.getElementById('config-form');
+        var data = new FormData(form);
+        document.querySelectorAll('.form-error').forEach(function (e) { e.textContent = ''; });
+        fetch('/api/config/preview', { method: 'POST', body: data, headers: {'X-CSRF-Token': getCookie('ksf_csrf')} })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (!j.ok) {
+                    if (j.errors) {
+                        j.errors.forEach(function (er) {
+                            var el = document.getElementById('err-' + er.key);
+                            if (el) el.textContent = er.error;
+                        });
+                    }
+                    document.getElementById('preview-result').innerHTML =
+                        '<div class="card card-warn"><span class="red">Validation échouée. Voir les erreurs ci-dessus.</span></div>';
+                    return;
+                }
+                if (j.proposed === j.current) {
+                    document.getElementById('preview-result').innerHTML =
+                        '<div class="card"><span class="muted">Aucun changement.</span></div>';
+                    return;
+                }
+                proposedContent = j.proposed;
+                document.getElementById('diff-content').textContent = j.diff;
+                document.getElementById('diff-summary').textContent = 'Relisez attentivement. Un clic sur « Appliquer » écrira le fichier, fera un dry-run, puis un render réel.';
+                document.getElementById('diff-modal').hidden = false;
+                document.getElementById('diff-modal').classList.add('on');
+            });
+    });
+    function closeDiffModal() {
+        var m = document.getElementById('diff-modal');
+        m.classList.remove('on'); m.hidden = true;
+    }
+    function commitChange() {
+        var btn = document.getElementById('commit-btn');
+        btn.disabled = true; btn.textContent = 'Application…';
+        fetch('/api/config/commit', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRF-Token': getCookie('ksf_csrf')},
+            body: JSON.stringify({proposed: proposedContent})
+        }).then(function (r) { return r.json(); })
+          .then(function (j) {
+              btn.disabled = false; btn.textContent = 'Appliquer';
+              closeDiffModal();
+              document.getElementById('preview-result').innerHTML =
+                  '<div class="card ' + (j.ok ? '' : 'card-warn-err') + '"><pre class="logs">' +
+                  (j.output || JSON.stringify(j, null, 2)) + '</pre></div>';
+              if (j.ok) setTimeout(function () { window.location.reload(); }, 2000);
+          });
+    }
+    function getCookie(name) {
+        var m = document.cookie.match(new RegExp('(^|; )' + name + '=([^;]*)'));
+        return m ? decodeURIComponent(m[2]) : '';
+    }
+</script>
+{% endblock %}

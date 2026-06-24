@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Erreur serveur — KSF{% endblock %}
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">{{ status|default('500') }}</h1>
+        <p class="page-sub">Une erreur est survenue côté serveur.</p>
+    </div>
+</div>
+<div class="card card-warn-err">
+    <div class="flex acenter gap-3">
+        <span class="dot dot-err" aria-hidden="true"></span>
+        <div>
+            <strong class="red">Erreur interne.</strong>
+            <p class="muted sm mt-1">L'incident a été journalisé. Vous pouvez tenter de recharger la page ou revenir au tableau de bord.</p>
+        </div>
+    </div>
+</div>
+{% if message %}
+<div class="card">
+    <div class="card-title">Détails</div>
+    <pre class="logs">{{ message }}</pre>
+</div>
+{% endif %}
+<div class="card">
+    <div class="empty">
+        <span class="empty-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </span>
+        <span class="empty-title">Que faire ?</span>
+        <span class="empty-text">Vérifiez l'état de la plateforme depuis le tableau de bord ou lancez un diagnostic.</span>
+        <div class="empty-actions">
+            <a href="/" class="btn btn-primary">Tableau de bord</a>
+            <button class="btn"
+                    hx-post="/system/doctor"
+                    hx-target="#doc-result"
+                    hx-swap="innerHTML">Lancer le diagnostic</button>
+        </div>
+        <div id="doc-result" class="action-result mt-3" aria-live="polite"></div>
+    </div>
+</div>
+{% endblock %}

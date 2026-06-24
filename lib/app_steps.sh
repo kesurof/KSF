@@ -461,6 +461,10 @@ app_update() {
   fi
 
   ok "App ${APP_MANAGED_NAME} mise a jour."
+
+  if [ "${app_name}" = "ksf-web" ] && declare -F cf_purge_cache >/dev/null 2>&1; then
+    cf_purge_cache
+  fi
 }
 
 app_rebuild() {
@@ -505,6 +509,10 @@ app_rebuild() {
   (cd "${APP_MANAGED_DIR}" && docker compose up -d --force-recreate) || { err "Echec docker compose up -d --force-recreate pour ${APP_MANAGED_NAME}."; exit 1; }
 
   ok "App ${APP_MANAGED_NAME} reconstruite."
+
+  if [ "${app_name}" = "ksf-web" ] && declare -F cf_purge_cache >/dev/null 2>&1; then
+    cf_purge_cache
+  fi
 }
 
 app_disable() {
@@ -651,7 +659,7 @@ app_install() {
 
   source "${app_template_dir}/app.env"
   APP_DEFAULT_HOST="${APP_DEFAULT_HOST:-${APP_HOST:-${APP_NAME:-${app_name}}}}"
-  APP_PORT="${APP_PORT:-${APP_INTERNAL_PORT:-}}"
+  APP_PORT="${APP_PORT_OVERRIDE:-${APP_PORT:-${APP_INTERNAL_PORT:-}}}"
   APP_PROTECTED="${APP_PROTECTED:-true}"
   APP_PUBLIC="${APP_PUBLIC:-true}"
 

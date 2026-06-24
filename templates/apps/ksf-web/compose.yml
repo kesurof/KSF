@@ -8,6 +8,7 @@ services:
       dockerfile: Dockerfile
     container_name: ksf-web
     restart: unless-stopped
+    user: "${APP_PUID:-1000}:${APP_PGID:-1000}"
     networks:
       - proxy
     group_add:
@@ -16,15 +17,20 @@ services:
       - KSF_BASE_DIR=/serverbox
       - KSF_REPO_DIR=/ksf
       - KSF_WEB_ACTIONS_ENABLED=true
+      - KSF_WEB_DATA_DIR=/var/lib/ksf-web
       - TZ=${TZ_VALUE}
       - PYTHONUNBUFFERED=1
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${KSF_REPO_DIR}:/ksf:ro
       - ${BASE_DIR}:/serverbox
+      - ksf-web-data:/var/lib/ksf-web
     read_only: true
     tmpfs:
       - /tmp
+
+volumes:
+  ksf-web-data:
 
 networks:
   proxy:

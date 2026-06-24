@@ -5,6 +5,7 @@ RUN apt-get update && \
       bash \
       curl \
       docker.io \
+      gosu \
       tini && \
     rm -rf /var/lib/apt/lists/*
 
@@ -17,10 +18,14 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 RUN chown -R appuser:appuser /app
 
-USER appuser
+# L'entrypoint s'exécute en root pour chown le volume DB, puis drop privs via gosu.
+# C'est nécessaire car les volumes Docker nommés sont root:root 755 par défaut.
+USER root
 
-ENTRYPOINT ["tini", "--"]
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8400"]

@@ -61,12 +61,14 @@ def run_command(key: str, timeout: int = 120) -> tuple[bool, str]:
         return False, f"Erreur interne : {type(e).__name__}"
 
 
-def run_app_command(app_name: str, action: str, timeout: int = 120) -> tuple[bool, str]:
+def run_app_command(app_name: str, action: str, extra_args: list[str] | None = None, timeout: int = 120) -> tuple[bool, str]:
     if not _validate_app_name(app_name):
         return False, "Nom d'application invalide."
     if action not in ALLOWED_APP_ACTIONS:
         return False, f"Action non autorisee : {action}"
     cmd = [APP_BIN, action, app_name]
+    if extra_args:
+        cmd.extend(extra_args)
     if action in APP_ACTIONS_WITH_YES:
         cmd.append("--yes")
     try:
@@ -183,10 +185,14 @@ def list_backups() -> tuple[list[dict], str | None]:
     backups_dir = os.path.join(KSF_BASE_DIR, "backups")
     if not os.path.isdir(backups_dir):
         return [], None
+    if not os.access(backups_dir, os.R_OK):
+        return [], "Accès en lecture refusé sur le dossier de sauvegardes. Vérifiez les permissions (UID/GID du conteneur ksf-web)."
     try:
         all_files = os.listdir(backups_dir)
-    except (PermissionError, OSError) as e:
-        return [], f"Backups non lisibles : {e}"
+    except PermissionError:
+        return [], "Accès en lecture refusé sur le dossier de sauvegardes. Vérifiez les permissions (UID/GID du conteneur ksf-web)."
+    except OSError as e:
+        return [], f"Erreur de lecture du dossier de sauvegardes ({e.errno})."
 
     backups = []
     for fname in sorted(all_files, reverse=True):

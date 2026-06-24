@@ -23,6 +23,8 @@
                 hx-get="/containers/{{ container.name }}/logs?lines=200"
                 hx-target="#logs"
                 hx-swap="innerHTML">Rafraîchir les logs</button>
+        <button class="btn" id="live-btn"
+                onclick="toggleLiveLogs('{{ container.name }}', this)">▶ Live</button>
         <button class="btn btn-warn"
                 hx-post="/containers/{{ container.name }}/restart"
                 data-confirm="Redémarrer {{ container.name }} ?">Redémarrer</button>
@@ -109,8 +111,36 @@
 <div class="card">
     <div class="card-title">
         <span>Logs</span>
-        <span class="muted sm">200 dernières lignes</span>
+        <span id="logs-mode" class="muted sm">200 dernières lignes</span>
     </div>
     <pre id="logs" class="logs" aria-live="polite">{{ logs }}</pre>
 </div>
+<script>
+    var liveEs = null;
+    function toggleLiveLogs(name, btn) {
+        var pre = document.getElementById('logs');
+        var mode = document.getElementById('logs-mode');
+        if (liveEs) {
+            liveEs.close();
+            liveEs = null;
+            btn.textContent = '▶ Live';
+            btn.classList.remove('btn-primary');
+            if (mode) mode.textContent = '200 dernières lignes';
+            return;
+        }
+        liveEs = new EventSource('/containers/' + name + '/logs/stream');
+        pre.textContent = '';
+        liveEs.addEventListener('line', function (e) {
+            try { pre.textContent += JSON.parse(e.data).text + '\n'; } catch (err) {}
+            pre.scrollTop = pre.scrollHeight;
+        });
+        liveEs.addEventListener('end', function () {
+            if (mode) mode.textContent = 'Stream terminé';
+        });
+        btn.textContent = '■ Stop';
+        btn.classList.add('btn-primary');
+        if (mode) mode.textContent = 'Streaming en direct';
+    }
+    window.addEventListener('beforeunload', function () { if (liveEs) liveEs.close(); });
+</script>
 {% endblock %}

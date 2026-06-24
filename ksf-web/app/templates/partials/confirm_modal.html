@@ -1,0 +1,103 @@
+<div class="modal-bg confirm-modal-bg" id="confirm-modal" onclick="if(event.target===this)closeConfirmModal(false)" role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-body" hidden>
+    <div class="modal confirm-modal">
+        <div class="modal-head">
+            <h2 id="confirm-title">Confirmer</h2>
+            <button class="modal-x" type="button" aria-label="Annuler" onclick="closeConfirmModal(false)">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p id="confirm-body" class="confirm-message">Êtes-vous sûr ?</p>
+            <div id="confirm-typed" class="confirm-typed" hidden>
+                <label for="confirm-typed-input" id="confirm-typed-label">Tapez la valeur ci-dessous pour confirmer :</label>
+                <input type="text" id="confirm-typed-input" class="form-input" autocomplete="off">
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button type="button" class="btn" id="confirm-cancel" onclick="closeConfirmModal(false)">Annuler</button>
+            <button type="button" class="btn btn-danger" id="confirm-ok" onclick="confirmResolve()">Confirmer</button>
+        </div>
+    </div>
+</div>
+<script>
+    (function () {
+        var modal, titleEl, bodyEl, typedWrap, typedInput, typedLabel, okBtn, cancelBtn;
+        var pending = null;
+
+        function getRefs() {
+            modal = document.getElementById('confirm-modal');
+            if (!modal) return false;
+            titleEl = document.getElementById('confirm-title');
+            bodyEl = document.getElementById('confirm-body');
+            typedWrap = document.getElementById('confirm-typed');
+            typedInput = document.getElementById('confirm-typed-input');
+            typedLabel = document.getElementById('confirm-typed-label');
+            okBtn = document.getElementById('confirm-ok');
+            cancelBtn = document.getElementById('confirm-cancel');
+            return true;
+        }
+
+        function openConfirm(opts) {
+            if (!getRefs()) return Promise.resolve(false);
+            opts = opts || {};
+            titleEl.textContent = opts.title || 'Confirmer';
+            bodyEl.textContent = opts.body || 'Êtes-vous sûr ?';
+            okBtn.textContent = opts.okLabel || 'Confirmer';
+            okBtn.className = 'btn ' + (opts.dangerous ? 'btn-danger' : 'btn-primary');
+            if (opts.typed) {
+                typedWrap.hidden = false;
+                typedLabel.textContent = 'Tapez « ' + opts.typed + ' » pour confirmer :';
+                typedInput.value = '';
+                okBtn.disabled = true;
+            } else {
+                typedWrap.hidden = true;
+                okBtn.disabled = false;
+            }
+            modal.hidden = false;
+            requestAnimationFrame(function () { modal.classList.add('on'); });
+            document.body.style.overflow = 'hidden';
+            setTimeout(function () { cancelBtn.focus(); }, 30);
+            return new Promise(function (resolve) {
+                pending = { resolve: resolve, typed: opts.typed || null };
+            });
+        }
+
+        window.openConfirm = openConfirm;
+
+        window.closeConfirmModal = function (ok) {
+            if (!getRefs()) return;
+            modal.classList.remove('on');
+            modal.hidden = true;
+            document.body.style.overflow = '';
+            if (pending) {
+                var r = pending.resolve;
+                pending = null;
+                r(ok);
+            }
+        };
+
+        window.confirmResolve = function () {
+            if (pending && pending.typed) {
+                if (typedInput.value !== pending.typed) {
+                    typedInput.focus();
+                    typedInput.classList.add('form-input-err');
+                    setTimeout(function () { typedInput.classList.remove('form-input-err'); }, 600);
+                    return;
+                }
+            }
+            window.closeConfirmModal(true);
+        };
+
+        if (getRefs()) {
+            typedInput.addEventListener('input', function () {
+                if (pending && pending.typed) {
+                    okBtn.disabled = (typedInput.value !== pending.typed);
+                }
+            });
+        }
+
+        document.addEventListener('keydown', function (e) {
+            if (!getRefs() || modal.hidden) return;
+            if (e.key === 'Escape') { e.preventDefault(); window.closeConfirmModal(false); }
+            if (e.key === 'Enter' && !okBtn.disabled) { e.preventDefault(); window.confirmResolve(); }
+        });
+    })();
+</script>

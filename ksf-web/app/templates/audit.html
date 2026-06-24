@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Audit — KSF{% endblock %}
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Journal d'audit</h1>
+        <p class="page-sub"><span>{{ entries|length }} entrée(s)</span> <span class="muted" aria-hidden="true">·</span> <span>{{ now }}</span></p>
+    </div>
+    <div class="btn-group">
+        <a href="/api/audit/export?fmt=json{% if action %}&action={{ action }}{% endif %}{% if target %}&target={{ target }}{% endif %}" class="btn">↓ JSON</a>
+        <a href="/api/audit/export?fmt=csv{% if action %}&action={{ action }}{% endif %}{% if target %}&target={{ target }}{% endif %}" class="btn">↓ CSV</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-title">Filtres</div>
+    <form method="get" action="/audit" class="flex gap-2 wrap acenter">
+        <label class="muted sm">Action :</label>
+        <input type="text" name="action" value="{{ action or '' }}" class="form-input" placeholder="ex: app.install" style="width:14rem">
+        <label class="muted sm">Target :</label>
+        <input type="text" name="target" value="{{ target or '' }}" class="form-input" placeholder="ex: ksf-web" style="width:14rem">
+        <button type="submit" class="btn btn-sm btn-primary">Filtrer</button>
+        <a href="/audit" class="btn btn-sm">Reset</a>
+    </form>
+</div>
+
+{% if not entries %}
+<div class="card">
+    <div class="empty">
+        <span class="empty-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </span>
+        <span class="empty-title">Aucune entrée d'audit</span>
+        <span class="empty-text">Les actions effectuées via ksf-web apparaîtront ici.</span>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="tbl-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Acteur</th>
+                    <th>Action</th>
+                    <th>Cible</th>
+                    <th>Job</th>
+                    <th>Détails</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in entries %}
+                <tr>
+                    <td class="mono sm">{{ e.created_at }}</td>
+                    <td>{{ e.actor }}</td>
+                    <td><span class="badge b-blue no-dot">{{ e.action }}</span></td>
+                    <td class="mono sm">{{ e.target or '—' }}</td>
+                    <td class="mono sm">
+                        {% if e.job_id %}<a href="/jobs/{{ e.job_id }}">{{ e.job_id[:8] }}</a>{% else %}—{% endif %}
+                    </td>
+                    <td>
+                        {% if e.before or e.after %}
+                        <details>
+                            <summary class="muted sm" style="cursor:pointer">Voir diff</summary>
+                            <pre class="logs logs-sm mt-1">
+{% if e.before %}--- avant
+{{ e.before }}
+{% endif %}{% if e.after %}+++ après
+{{ e.after }}
+{% endif %}</pre>
+                        </details>
+                        {% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
