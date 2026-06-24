@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Routes Traefik — KSF{% endblock %}
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Routes Traefik</h1>
+        <p class="page-sub muted">Analyse des routes dynamiques — <code>ksf.sh routes</code></p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-title">Routes actives</div>
+    <pre class="logs" hx-get="/api/routes" hx-trigger="every 30s" hx-swap="outerHTML">{{ output }}</pre>
+</div>
+{% endblock %}

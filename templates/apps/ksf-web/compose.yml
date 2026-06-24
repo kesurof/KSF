@@ -33,6 +33,7 @@ services:
       - KSF_REPO_DIR=/ksf
       - KSF_WEB_ACTIONS_ENABLED=true
       - KSF_WEB_DATA_DIR=/var/lib/ksf-web
+      - KSF_WEB_SECRET_KEY=${KSF_WEB_SECRET_KEY:-}
       - APP_PUID=${APP_PUID}
       - APP_PGID=${APP_PGID}
       - TZ=${TZ_VALUE}

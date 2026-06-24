@@ -39,11 +39,20 @@ JOB_KINDS = frozenset({
     "backup.prune",
     "system.update",
     "system.doctor",
+    "system.restart",
+    "system.update_service",
+    "system.clean_data",
     "app.install",
     "app.update",
     "app.rebuild",
     "app.remove",
     "config.update",
+    "ksf.trusted_ips_apply",
+    "ksf.appsec_toggle",
+    "ksf.crowdsec_ban",
+    "ksf.crowdsec_unban",
+    "ksf.crowdsec_flush",
+    "ksf.crowdsec_restart",
 })
 
 ALLOWED_COMMANDS: dict[str, list[str]] = {
@@ -214,26 +223,39 @@ async def recover_interrupted() -> int:
 
 
 async def _next_queued() -> dict | None:
-    """Trouve le prochain job 'queued' qui n'est pas bloqué par un lock."""
+    """Trouve le prochain job 'queued' qui n'est pas bloqué par un lock.
+
+    Itère sur TOUS les jobs queued (par ordre de création) et retourne le
+    premier dont le lock_key n'est pas tenu par un running. Sans cette
+    itération, un seul job queued avec un lock tenu bloque tous les jobs
+    queued plus récents qui ont un lock libre.
+    """
     async for conn in db.get_conn():
         cur = await conn.execute(
-            "SELECT * FROM jobs WHERE status='queued' ORDER BY created_at ASC LIMIT 1"
+            "SELECT * FROM jobs WHERE status='queued' ORDER BY created_at ASC"
         )
-        row = await cur.fetchone()
+        rows = await cur.fetchall()
         await cur.close()
-        if not row:
-            return None
-        job = await _row_to_job(row)
-        if job.get("lock_key"):
-            cur = await conn.execute(
-                "SELECT COUNT(*) as c FROM jobs WHERE status='running' AND lock_key=?",
-                (job["lock_key"],),
-            )
-            r = await cur.fetchone()
-            await cur.close()
-            if r["c"] > 0:
-                return None
-        return job
+        for row in rows:
+            job = await _row_to_job(row)
+            # Vérifier si annulé pendant qu'il était en queue (status=queued
+            # mais error=CANCEL_MARKER posé par cancel())
+            if job.get("error") == CANCEL_MARKER:
+                await _update(job["id"], status="cancelled", finished_at=_utcnow(),
+                              error=None)
+                await events.bus.publish("jobs", "cancelled", {"id": job["id"]})
+                continue
+            if job.get("lock_key"):
+                cur = await conn.execute(
+                    "SELECT COUNT(*) as c FROM jobs WHERE status='running' AND lock_key=?",
+                    (job["lock_key"],),
+                )
+                r = await cur.fetchone()
+                await cur.close()
+                if r["c"] > 0:
+                    continue  # Lock tenu, essayer le suivant
+            return job
+        return None
 
 
 async def _worker_loop() -> None:

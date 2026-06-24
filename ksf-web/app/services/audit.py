@@ -3,7 +3,7 @@ import json
 import logging
 from typing import Any
 
-from app import db
+from app import crypto, db
 from app.utils import utcnow_str as _utcnow
 
 logger = logging.getLogger("ksf-web.audit")
@@ -21,6 +21,17 @@ def _truncate(s: str | None) -> str | None:
     return s[:_MAX_BEFORE_AFTER_BYTES] + f"... [truncated, original {len(s)} bytes]"
 
 
+def _serialize_payload(value: Any) -> str | None:
+    """JSON serialize + truncate. Fallback sur str() si non-sérialisable."""
+    if value is None:
+        return None
+    try:
+        return _truncate(json.dumps(value, default=str))
+    except (TypeError, ValueError):
+        logger.warning("audit.log: sérialisation JSON échouée, fallback str()")
+        return _truncate(str(value))
+
+
 async def log(
     actor: str,
     action: str,
@@ -31,20 +42,18 @@ async def log(
     ip: str | None = None,
     ua: str | None = None,
 ) -> int:
-    try:
-        before_s = _truncate(json.dumps(before, default=str) if before is not None else None)
-        after_s = _truncate(json.dumps(after, default=str) if after is not None else None)
-    except (TypeError, ValueError):
-        # Fallback: str() peut produire un output enorme, on truncate
-        before_s = _truncate(str(before) if before is not None else None)
-        after_s = _truncate(str(after) if after is not None else None)
-        logger.warning("audit.log: sérialisation JSON échouée pour %s/%s, fallback str()", action, target)
+    before_s = _serialize_payload(before)
+    after_s = _serialize_payload(after)
+    before_enc = crypto.maybe_encrypt(before_s, "before_encrypted") if before_s else None
+    after_enc = crypto.maybe_encrypt(after_s, "after_encrypted") if after_s else None
 
     async for conn in db.get_conn():
         cur = await conn.execute(
-            "INSERT INTO audit_log (actor, action, target, before, after, job_id, ip, ua, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (actor, action, target, before_s, after_s, job_id, ip, ua, _utcnow()),
+            "INSERT INTO audit_log (actor, action, target, before, after, "
+            "before_encrypted, after_encrypted, job_id, ip, ua, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (actor, action, target, None, None,
+             before_enc, after_enc, job_id, ip, ua, _utcnow()),
         )
         await conn.commit()
         return cur.lastrowid
@@ -73,7 +82,64 @@ async def list_entries(
         cur = await conn.execute(query, params)
         rows = await cur.fetchall()
         await cur.close()
-        return [dict(r) for r in rows]
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["before"] = _decrypt_field(d, "before")
+            d["after"] = _decrypt_field(d, "after")
+            out.append(d)
+        return out
+
+
+def _decrypt_field(row: dict, plain_column: str) -> str | None:
+    """Déchiffre `*_encrypted` ; fallback sur la colonne legacy en clair."""
+    enc_col = plain_column + "_encrypted"
+    if row.get(enc_col) is not None:
+        return crypto.maybe_decrypt(row[enc_col], enc_col)
+    return row.get(plain_column)
+
+
+async def get_entry(entry_id: int) -> dict | None:
+    """Charge une entrée unique avec before/after déchiffrés (utilisé pour lazy-load)."""
+    async for conn in db.get_conn():
+        cur = await conn.execute("SELECT * FROM audit_log WHERE id=?", (entry_id,))
+        row = await cur.fetchone()
+        await cur.close()
+        if not row:
+            return None
+        d = dict(row)
+        d["before"] = _decrypt_field(d, "before")
+        d["after"] = _decrypt_field(d, "after")
+        return d
+
+
+async def backfill_legacy_payloads() -> int:
+    """Au démarrage, chiffre les `before`/`after` legacy vers `*_encrypted`.
+
+    Idempotent : ne fait rien si la colonne chiffrée est déjà non-NULL.
+    Renvoie le nombre de rows migrées.
+    """
+    n = 0
+    async for conn in db.get_conn():
+        cur = await conn.execute(
+            "SELECT id, before, after FROM audit_log "
+            "WHERE (before IS NOT NULL AND before_encrypted IS NULL) "
+            "   OR (after IS NOT NULL AND after_encrypted IS NULL)"
+        )
+        rows = await cur.fetchall()
+        await cur.close()
+        for r in rows:
+            before_enc = crypto.maybe_encrypt(r["before"], "before_encrypted") if r["before"] else None
+            after_enc = crypto.maybe_encrypt(r["after"], "after_encrypted") if r["after"] else None
+            await conn.execute(
+                "UPDATE audit_log SET before_encrypted=?, after_encrypted=?, before=NULL, after=NULL WHERE id=?",
+                (before_enc, after_enc, r["id"]),
+            )
+            n += 1
+        if n:
+            await conn.commit()
+            logger.info("Backfill: %d entrée(s) audit migrée(s) vers *_encrypted", n)
+    return n
 
 
 def export_json(entries: list[dict]) -> str:

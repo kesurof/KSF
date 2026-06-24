@@ -31,3 +31,11 @@ CSRF_MAX_AGE = 60 * 60 * 8
 CSRF_SALT = "ksf-web-csrf-v1"
 CSRF_SECRET = os.environ.get("KSF_WEB_SECRET_KEY") or BASE_DIR + "-csrf-default"
 CSRF_COOKIE_SECURE = os.environ.get("KSF_WEB_COOKIE_SECURE", "true").lower() == "true"
+
+# ── Encryption (Fernet) ───────────────────────────────────
+# KSF_WEB_SECRET_KEY est la clé Fernet dédiée (optionnelle : si absente,
+# `app/crypto.py` génère et persiste une clé dans FERNET_KEY_PATH au premier
+# accès). Cette clé chiffre les secrets au repos dans SQLite (webhooks,
+# audit log before/after).
+KSF_WEB_SECRET_KEY = os.environ.get("KSF_WEB_SECRET_KEY")
+FERNET_KEY_PATH = os.path.join(_DATA_DIR, "secret.key")

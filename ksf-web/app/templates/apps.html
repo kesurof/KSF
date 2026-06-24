@@ -100,6 +100,12 @@
                     hx-post="/apps/{{ app.name }}/update"
                     data-confirm="Mettre à jour {{ app.name }} ?"
                     {% if not actions_enabled %}disabled{% endif %}>Update</button>
+            <button class="btn btn-sm"
+                    hx-post="/apps/{{ app.name }}/rebuild"
+                    hx-swap="none"
+                    hx-on::after-request="if(event.detail.xhr.status===200){var j=JSON.parse(event.detail.xhr.responseText);if(j.job_id)window.location='/jobs/'+j.job_id;}"
+                    data-confirm2="Rebuild {{ app.name }} ? (re-pull image + relance)"
+                    {% if not actions_enabled %}disabled{% endif %}>Rebuild</button>
             {% if app.disabled %}
             <button class="btn btn-sm btn-danger"
                     hx-post="/apps/{{ app.name }}/remove"

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}État global — KSF{% endblock %}
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">État global</h1>
+        <p class="page-sub muted">Sortie brute de <code>ksf.sh status</code> et <code>ksf.sh config</code></p>
+    </div>
+    <div class="btn-group">
+        <a href="/routes" class="btn">Voir les routes Traefik →</a>
+    </div>
+</div>
+
+<div class="grid g2">
+    <div class="card">
+        <div class="card-title">ksf.sh status</div>
+        <pre class="logs">{{ ksf_status }}</pre>
+    </div>
+    <div class="card">
+        <div class="card-title">ksf.sh config</div>
+        <pre class="logs">{{ ksf_config }}</pre>
+    </div>
+</div>
+{% endblock %}

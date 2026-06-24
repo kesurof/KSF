@@ -10,6 +10,8 @@ import json
 import logging
 import uuid
 
+import aiosqlite
+
 from app import db
 from app.services import events
 from app.utils import utcnow_str as _utcnow
@@ -25,18 +27,74 @@ async def create(
     title: str,
     body: str | None = None,
     link: str | None = None,
+    dedup_key: str | None = None,
 ) -> str:
     if level not in LEVELS:
         raise ValueError(f"level invalide: {level}")
-    nid = uuid.uuid4().hex
     now = _utcnow()
+    nid: str | None = None
+    payload: dict
+
     async for conn in db.get_conn():
-        await conn.execute(
-            "INSERT INTO notifications (id, level, category, title, body, link, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (nid, level, category, title, body, link, now),
-        )
-        await conn.commit()
+        if dedup_key:
+            # Cherche une notif identique (même dedup_key) créée dans la fenêtre
+            # de l'index unique partiel (1 jour). Si trouvée, incrémente
+            # `repeat_count` au lieu de créer une nouvelle ligne.
+            cur = await conn.execute(
+                "SELECT id, repeat_count FROM notifications "
+                "WHERE dedup_key=? AND created_at > datetime('now', '-1 day') "
+                "ORDER BY created_at DESC LIMIT 1",
+                (dedup_key,),
+            )
+            row = await cur.fetchone()
+            await cur.close()
+            if row:
+                await conn.execute(
+                    "UPDATE notifications SET repeat_count=repeat_count+1 WHERE id=?",
+                    (row["id"],),
+                )
+                await conn.commit()
+                nid = row["id"]
+                # On publie aussi l'update pour rafraîchir l'UI
+                payload = {"id": nid, "level": level, "category": category,
+                           "title": title, "body": body, "link": link,
+                           "dedup": True, "repeat_count": row["repeat_count"] + 1}
+                await events.bus.publish("notifications", "dedup", payload)
+                await events.bus.publish(f"notifications:{category}", "dedup", payload)
+                # Pas de dispatch webhook pour les dédup (sinon spam)
+                return nid
+
+        nid = uuid.uuid4().hex
+        try:
+            await conn.execute(
+                "INSERT INTO notifications (id, level, category, title, body, link, "
+                "dedup_key, repeat_count, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)",
+                (nid, level, category, title, body, link, dedup_key, now),
+            )
+            await conn.commit()
+        except aiosqlite.IntegrityError:
+            # Race condition : un autre worker a inséré la même dedup_key
+            # entre notre SELECT et notre INSERT (l'index unique partiel
+            # `idx_notif_dedup` couvre 1 jour). On bascule sur UPDATE.
+            logger.info("Dedup race condition sur %s, fallback UPDATE", dedup_key)
+            cur = await conn.execute(
+                "SELECT id, repeat_count FROM notifications "
+                "WHERE dedup_key=? AND created_at > datetime('now', '-1 day') "
+                "ORDER BY created_at DESC LIMIT 1",
+                (dedup_key,),
+            )
+            row = await cur.fetchone()
+            await cur.close()
+            if row:
+                await conn.execute(
+                    "UPDATE notifications SET repeat_count=repeat_count+1 WHERE id=?",
+                    (row["id"],),
+                )
+                await conn.commit()
+                return row["id"]
+            # Si row None (très improbable), on propage
+            raise
 
     payload = {"id": nid, "level": level, "category": category, "title": title, "body": body, "link": link}
     await events.bus.publish("notifications", "new", payload)

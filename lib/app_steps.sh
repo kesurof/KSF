@@ -437,10 +437,14 @@ app_update() {
       chown "${APP_PUID}:${APP_PGID}" "${KSF_WEB_DATA_HOST_DIR}" 2>/dev/null || true
       chmod 700 "${KSF_WEB_DATA_HOST_DIR}"
     fi
+    # Si KSF_WEB_SECRET_KEY est set dans le shell, on la persiste ici aussi
+    # (sinon perte de clé de chiffrement au prochain up). Le user peut aussi
+    # l'éditer manuellement dans ${APP_MANAGED_DIR}/.env après install.
     cat > "${APP_MANAGED_DIR}/.env" <<EOF
 KSF_WEB_DATA_HOST_DIR=${BASE_DIR}/.ksf-web-data
 APP_PUID=${APP_PUID}
 APP_PGID=${APP_PGID}
+KSF_WEB_SECRET_KEY=${KSF_WEB_SECRET_KEY:-}
 EOF
     chmod 600 "${APP_MANAGED_DIR}/.env"
   fi
@@ -512,10 +516,14 @@ app_rebuild() {
       chown "${APP_PUID}:${APP_PGID}" "${KSF_WEB_DATA_HOST_DIR}" 2>/dev/null || true
       chmod 700 "${KSF_WEB_DATA_HOST_DIR}"
     fi
+    # Si KSF_WEB_SECRET_KEY est set dans le shell, on la persiste ici aussi
+    # (sinon perte de clé de chiffrement au prochain up). Le user peut aussi
+    # l'éditer manuellement dans ${APP_MANAGED_DIR}/.env après install.
     cat > "${APP_MANAGED_DIR}/.env" <<EOF
 KSF_WEB_DATA_HOST_DIR=${BASE_DIR}/.ksf-web-data
 APP_PUID=${APP_PUID}
 APP_PGID=${APP_PGID}
+KSF_WEB_SECRET_KEY=${KSF_WEB_SECRET_KEY:-}
 EOF
     chmod 600 "${APP_MANAGED_DIR}/.env"
   fi
@@ -736,10 +744,16 @@ app_install() {
     # Écrire un .env dans le dossier du compose pour que docker compose
     # auto-charge les vars. On utilise ${BASE_DIR} directement (substitué par bash)
     # et pas la variable shell (qui pourrait contenir un token KSF non rendu).
+    #
+    # Si KSF_WEB_SECRET_KEY est set dans le shell de l'user au moment de
+    # l'install, on la persiste dans le .env de l'app pour que les futurs
+    # `up` la passent au conteneur (sinon, perte de clé de chiffrement au
+    # prochain reboot/rebuild).
     cat > "${app_dir}/.env" <<EOF
 KSF_WEB_DATA_HOST_DIR=${BASE_DIR}/.ksf-web-data
 APP_PUID=${APP_PUID}
 APP_PGID=${APP_PGID}
+KSF_WEB_SECRET_KEY=${KSF_WEB_SECRET_KEY:-}
 EOF
     chmod 600 "${app_dir}/.env"
   fi

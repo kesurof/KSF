@@ -40,6 +40,101 @@ PREVIEW_SECRET = (config.CSRF_SECRET + ":config-editor").encode("utf-8")
 PREVIEW_TOKEN_MAX_AGE = 300  # 5 minutes
 
 
+# ── Schéma des variables ksf.env ───────────────────────────
+#
+# Chaque entrée est un dict :
+#   key        : nom de la variable d'environnement
+#   type       : 'text' | 'bool' | 'int' | 'email' | 'domain'
+#   required   : True si la valeur doit être non-vide
+#   required_if: dict {"clé_dépendance": "valeur"} → requis si dépendance == valeur
+#   secret     : True si le champ est sensible (affichage masqué dans l'UI)
+#   advanced   : True si le champ n'est affiché que dans le panneau "Avancé"
+#   default    : valeur par défaut si non présente dans ksf.env
+#   help       : aide courte affichée sous le champ
+#   section    : nom du groupe affiché dans la page /config
+#
+# Les variables hors-schéma sont préservées en bas du fichier sous
+# « # Variables personnalisées (non schématisées) ».
+
+SCHEMA: list[dict] = [
+    # ── Platform ──
+    {"key": "TZ_VALUE", "type": "text", "default": "Europe/Paris",
+     "help": "Timezone IANA (ex: Europe/Paris, UTC).",
+     "section": "Platform"},
+    {"key": "BACKUP_KEEP", "type": "int", "default": "5", "advanced": True,
+     "help": "Nombre de sauvegardes conservées par ksf.sh backup prune.",
+     "section": "Platform"},
+
+    # ── Traefik ──
+    {"key": "DOMAIN", "type": "domain", "required": True,
+     "help": "Domaine principal (ex: example.com). Requis pour ACME et les routes.",
+     "section": "Traefik"},
+    {"key": "ACME_EMAIL", "type": "email", "required": True,
+     "help": "Email utilisé par Let's Encrypt pour les notifications de certificats.",
+     "section": "Traefik"},
+    {"key": "WITH_TRAEFIK", "type": "bool", "default": "true",
+     "help": "Active le reverse-proxy Traefik.",
+     "section": "Traefik"},
+    {"key": "TRAEFIK_TRUSTED_IPS", "type": "text", "advanced": True,
+     "help": "CIDR de trusted IPs séparés par virgule (Cloudflare, etc.).",
+     "section": "Traefik"},
+    {"key": "TRAEFIK_LOG_LEVEL", "type": "text", "advanced": True, "default": "INFO",
+     "help": "Niveau de log Traefik (DEBUG, INFO, WARN, ERROR).",
+     "section": "Traefik"},
+
+    # ── OAuth2 ──
+    {"key": "WITH_OAUTH2", "type": "bool", "default": "true",
+     "help": "Active OAuth2 Proxy devant les routes protégées.",
+     "section": "OAuth2"},
+    {"key": "OAUTH_PROVIDER", "type": "text", "default": "github",
+     "required_if": {"WITH_OAUTH2": "true"},
+     "help": "Provider OAuth2 (github, google, oidc).",
+     "section": "OAuth2"},
+    {"key": "OAUTH_GITHUB_USER", "type": "text",
+     "required_if": {"WITH_OAUTH2": "true"},
+     "help": "Login GitHub autorisé (ex: monuser).",
+     "section": "OAuth2"},
+    {"key": "OAUTH_CLIENT_ID", "type": "text", "secret": True,
+     "required_if": {"WITH_OAUTH2": "true"},
+     "help": "Client ID OAuth2 (secret).",
+     "section": "OAuth2"},
+    {"key": "OAUTH_CLIENT_SECRET", "type": "text", "secret": True, "advanced": True,
+     "required_if": {"WITH_OAUTH2": "true"},
+     "help": "Client secret OAuth2 (secret).",
+     "section": "OAuth2"},
+    {"key": "OAUTH_COOKIE_SECRET", "type": "text", "secret": True, "advanced": True,
+     "help": "Secret de cookie OAuth2 Proxy (32+ bytes).",
+     "section": "OAuth2"},
+    {"key": "OAUTH_COOKIE_SECURE", "type": "bool", "advanced": True, "default": "true",
+     "help": "Cookie OAuth2 marqué Secure (HTTPS requis).",
+     "section": "OAuth2"},
+
+    # ── CrowdSec ──
+    {"key": "WITH_CROWDSEC", "type": "bool", "default": "false",
+     "help": "Active CrowdSec et ses bouncers.",
+     "section": "CrowdSec"},
+    {"key": "CROWDSEC_APPSEC_ENABLED", "type": "bool", "advanced": True, "default": "false",
+     "help": "Active le module AppSec/WAF de CrowdSec.",
+     "section": "CrowdSec"},
+    {"key": "CROWDSEC_APPSEC_HOST", "type": "text", "advanced": True,
+     "help": "Host sur lequel CrowdSec expose AppSec (ex: crowdsec.local).",
+     "section": "CrowdSec"},
+    {"key": "CROWDSEC_APPSEC_LISTEN_ADDR", "type": "text", "advanced": True, "default": "0.0.0.0:7422",
+     "help": "Adresse d'écoute d'AppSec.",
+     "section": "CrowdSec"},
+    {"key": "CROWDSEC_APPSEC_FAILURE_BLOCK", "type": "bool", "advanced": True, "default": "true",
+     "help": "Bloquer les requêtes en cas d'échec d'AppSec (fail-closed).",
+     "section": "CrowdSec"},
+    {"key": "CROWDSEC_APPSEC_UNREACHABLE_BLOCK", "type": "bool", "advanced": True, "default": "false",
+     "help": "Bloquer les requêtes quand AppSec est injoignable.",
+     "section": "CrowdSec"},
+    {"key": "CROWDSEC_APPSEC_COLLECTIONS", "type": "text", "advanced": True,
+     "default": "crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules",
+     "help": "Collections AppSec installées par ksf.sh.",
+     "section": "CrowdSec"},
+]
+
+
 def read_current() -> dict[str, str]:
     if not os.path.isfile(KSF_ENV_PATH):
         return {}
@@ -61,11 +156,15 @@ def _read_raw() -> str:
         return f.read()
 
 
-def _validate_value(field: dict, value: str) -> str | None:
+def _validate_value(field: dict, value: str, all_values: dict | None = None) -> str | None:
     t = field["type"]
     v = (value or "").strip()
     if field.get("required") and not v:
         return f"{field['key']} est requis"
+    if field.get("required_if") and all_values is not None and not v:
+        for dep_key, dep_value in field["required_if"].items():
+            if str(all_values.get(dep_key, "")).lower() == dep_value.lower():
+                return f"{field['key']} est requis (car {dep_key}={dep_value})"
     if not v:
         return None
     if t == "bool":
@@ -87,7 +186,7 @@ def validate(values: dict[str, str]) -> list[dict[str, str]]:
     errors = []
     for f in SCHEMA:
         v = values.get(f["key"], "")
-        err = _validate_value(f, v)
+        err = _validate_value(f, v, values)
         if err:
             errors.append({"key": f["key"], "error": err})
     return errors

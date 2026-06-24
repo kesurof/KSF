@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}CrowdSec — KSF{% endblock %}
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">CrowdSec</h1>
+        <p class="page-sub">
+            <span class="badge {% if crowdsec_enabled %}b-green{% else %}b-gray{% endif %}">{{ 'activé' if crowdsec_enabled else 'désactivé' }}</span>
+            <span class="muted" aria-hidden="true">·</span>
+            <span>{{ now }}</span>
+        </p>
+    </div>
+</div>
+
+{% if not crowdsec_enabled %}
+<div class="card">
+    <div class="empty">
+        <span class="empty-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </span>
+        <span class="empty-title">CrowdSec désactivé</span>
+        <span class="empty-text">Activez CrowdSec via la page Configuration.</span>
+    </div>
+</div>
+{% else %}
+
+<div class="card">
+    <div class="card-title">Bannir une IP</div>
+    <form hx-post="/security/crowdsec/ban"
+          hx-swap="none"
+          hx-on::after-request="if(event.detail.xhr.status===200){var j=JSON.parse(event.detail.xhr.responseText);if(j.job_id)window.location='/jobs/'+j.job_id;}else{showToast(JSON.parse(event.detail.xhr.responseText).detail,false)}"
+          class="flex gap-2 wrap acenter">
+        <label class="muted sm">IP :</label>
+        <input type="text" name="ip" class="form-input" placeholder="1.2.3.4" pattern="[0-9a-fA-F.:]+" required style="width:14rem">
+        <label class="muted sm">Durée :</label>
+        <input type="text" name="duration" class="form-input" value="10m" pattern="[0-9]+[mhd]" required style="width:6rem">
+        <button class="btn btn-danger" type="submit" {% if not actions_enabled %}disabled{% endif %}>Bannir</button>
+    </form>
+</div>
+
+<div class="section-head">
+    <h2>Décisions actives</h2>
+    <div class="flex gap-2">
+        <button class="btn btn-sm btn-warn"
+                hx-post="/security/crowdsec/flush"
+                hx-swap="none"
+                hx-on::after-request="if(event.detail.xhr.status===200){var j=JSON.parse(event.detail.xhr.responseText);if(j.job_id)window.location='/jobs/'+j.job_id;}"
+                data-confirm2="Supprimer toutes les décisions actives ?"
+                {% if not actions_enabled %}disabled{% endif %}>Flush all</button>
+        <button class="btn btn-sm"
+                hx-post="/security/crowdsec/restart"
+                hx-swap="none"
+                hx-on::after-request="if(event.detail.xhr.status===200){var j=JSON.parse(event.detail.xhr.responseText);if(j.job_id)window.location='/jobs/'+j.job_id;}"
+                data-confirm="Redémarrer le service CrowdSec ?"
+                {% if not actions_enabled %}disabled{% endif %}>Restart service</button>
+    </div>
+</div>
+
+<div class="card">
+    <pre class="logs" hx-get="/api/security/crowdsec/decisions" hx-trigger="every 30s" hx-swap="outerHTML">{{ decisions }}</pre>
+</div>
+{% endif %}
+{% endblock %}

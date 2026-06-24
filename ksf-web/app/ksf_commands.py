@@ -24,18 +24,38 @@ TEMPLATES_DIR = os.path.join(KSF_REPO_DIR, "templates", "apps")
 
 ALLOWED_COMMANDS = {
     "doctor": [KSF_BIN, "doctor"],
+    "status": [KSF_BIN, "status"],
+    "config": [KSF_BIN, "config"],
+    "routes": [KSF_BIN, "routes"],
     "backup_create": [KSF_BIN, "backup", "create"],
     "backup_verify_latest": [KSF_BIN, "backup", "verify", "latest"],
     "backup_restore_latest_dryrun": [KSF_BIN, "backup", "restore", "latest", "--dry-run"],
     "update_all": [KSF_BIN, "update", "all", "--yes"],
+    "update_service": [KSF_BIN, "update"],  # nécessite extra_args: <service>
     "crowdsec_status": [KSF_BIN, "crowdsec", "status"],
     "crowdsec_alerts": [KSF_BIN, "crowdsec", "alerts"],
     "crowdsec_bouncers": [KSF_BIN, "crowdsec", "bouncers"],
+    "crowdsec_decisions": [KSF_BIN, "crowdsec", "decisions"],
+    "crowdsec_ban": [KSF_BIN, "crowdsec", "ban"],  # extra_args: <ip> <duration>
+    "crowdsec_unban": [KSF_BIN, "crowdsec", "unban"],  # extra_args: <ip>
+    "crowdsec_flush_decisions": [KSF_BIN, "crowdsec", "flush-decisions"],
+    "crowdsec_restart": [KSF_BIN, "crowdsec", "restart"],
     "appsec_status": [KSF_BIN, "crowdsec", "appsec", "status"],
+    "appsec_enable": [KSF_BIN, "crowdsec", "appsec", "enable", "--yes"],
+    "appsec_disable": [KSF_BIN, "crowdsec", "appsec", "disable", "--yes"],
+    "restart": [KSF_BIN, "restart", "--yes"],
+    "trusted_ips_cloudflare": [KSF_BIN, "trusted-ips", "cloudflare"],
+    "clean_data": [KSF_BIN, "clean-data"],  # extra_args: <app>
 }
 
-ALLOWED_APP_ACTIONS = {"status", "update", "restart", "start", "stop", "disable", "remove", "install"}
-APP_ACTIONS_WITH_YES = {"update", "disable", "remove", "start", "stop", "install"}
+# Commandes qui requièrent --yes pour ne pas être bloquées par un prompt.
+ALLOWED_COMMANDS_WITH_YES = {
+    "update_service", "appsec_enable", "appsec_disable",
+    "crowdsec_flush_decisions", "crowdsec_restart",
+}
+
+ALLOWED_APP_ACTIONS = {"status", "update", "restart", "start", "stop", "disable", "remove", "install", "rebuild"}
+APP_ACTIONS_WITH_YES = {"update", "disable", "remove", "start", "stop", "install", "rebuild"}
 
 
 def _validate_app_name(name: str) -> bool:
@@ -60,11 +80,23 @@ def _run_subprocess_sync(cmd: list[str], timeout: int) -> tuple[bool, str]:
         return False, f"Erreur interne : {type(e).__name__}"
 
 
-async def run_command(key: str, timeout: int = 120) -> tuple[bool, str]:
-    """Async wrapper qui ne bloque pas l'event loop."""
+async def run_command(key: str, extra_args: list[str] | None = None, timeout: int = 120) -> tuple[bool, str]:
+    """Async wrapper qui ne bloque pas l'event loop.
+
+    `extra_args` est ajouté à la fin de la commande whitelistée après
+    validation. Le caller doit valider chaque argument (IP, duration, app name).
+    """
     if key not in ALLOWED_COMMANDS:
         return False, f"Commande non autorisee : {key}"
-    return await asyncio.to_thread(_run_subprocess_sync, ALLOWED_COMMANDS[key], timeout)
+    cmd = list(ALLOWED_COMMANDS[key])
+    if extra_args:
+        for a in extra_args:
+            if not isinstance(a, str) or not a or "\x00" in a:
+                return False, "Argument invalide (chaîne non-vide requise)"
+        cmd.extend(extra_args)
+    if key in ALLOWED_COMMANDS_WITH_YES and "--yes" not in cmd and "-y" not in cmd:
+        cmd.append("--yes")
+    return await asyncio.to_thread(_run_subprocess_sync, cmd, timeout)
 
 
 async def run_app_command(app_name: str, action: str, extra_args: list[str] | None = None, timeout: int = 120) -> tuple[bool, str]:

@@ -13,10 +13,11 @@
             Protéger avec OAuth2 Proxy
         </label>
     </div>
+    <div id="install-error" class="form-error" hidden></div>
     <button class="btn btn-primary btn-block"
             hx-post="/apps/{{ app_name }}/install"
             hx-include="#install-subdomain, #install-port, #install-protected"
-            hx-on::after-request="if(event.detail.xhr.status===200){closeInstallModal();showToast(JSON.parse(event.detail.xhr.responseText).message,true)}else{showToast(JSON.parse(event.detail.xhr.responseText).detail,false)}">
+            hx-on::after-request="var errEl=document.getElementById('install-error');if(event.detail.xhr.status===200){errEl.hidden=true;closeInstallModal();showToast(JSON.parse(event.detail.xhr.responseText).message,true)}else{var d=JSON.parse(event.detail.xhr.responseText||'{}');errEl.textContent=d.detail||'Erreur';errEl.hidden=false;showToast(d.detail||'Erreur',false)}">
         Confirmer l'installation
     </button>
 </div>

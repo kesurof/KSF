@@ -152,6 +152,40 @@ def list_containers(all_: bool = True) -> tuple[list[dict], str | None]:
     return result, None
 
 
+# ── Cache TTL 3s sur list_containers (Phase 4.3) ────────────
+#
+# 4-5 widgets × 15s = ~20 calls/min. Le cache évite d'écraser le daemon
+# Docker. Invalidé par toute action de mutation (start/stop/restart) ou
+# manuellement via invalidate_list_cache().
+
+import time as _time
+
+_list_cache: list[dict] | None = None
+_list_cache_ts: float = 0.0
+_LIST_CACHE_TTL = 3.0
+
+
+def list_containers_cached(all_: bool = True) -> tuple[list[dict], str | None]:
+    """list_containers avec cache TTL 3s. Pas async — appel synchrone ok."""
+    global _list_cache, _list_cache_ts
+    now = _time.time()
+    if _list_cache is not None and (now - _list_cache_ts) < _LIST_CACHE_TTL:
+        return _list_cache, None
+    result, err = list_containers(all_=all_)
+    _list_cache = result
+    _list_cache_ts = now
+    return result, err
+
+
+def invalidate_list_cache() -> None:
+    global _list_cache, _list_cache_ts
+    _list_cache = None
+    _list_cache_ts = 0.0
+
+
+# Invalide le cache à chaque mutation de container (déjà fait dans restart/stop/start ci-dessus)
+
+
 def get_container(container_id: str) -> dict | None:
     client = get_client()
     if client is None:
@@ -253,6 +287,7 @@ def stream_container_logs(container_id: str, tail: int = 100, stop_event: thread
 
 
 def restart_container(container_id: str) -> bool:
+    invalidate_list_cache()
     client = get_client()
     if client is None:
         return False
@@ -264,6 +299,7 @@ def restart_container(container_id: str) -> bool:
 
 
 def stop_container(container_id: str) -> bool:
+    invalidate_list_cache()
     client = get_client()
     if client is None:
         return False
@@ -275,6 +311,7 @@ def stop_container(container_id: str) -> bool:
 
 
 def start_container(container_id: str) -> bool:
+    invalidate_list_cache()
     client = get_client()
     if client is None:
         return False
