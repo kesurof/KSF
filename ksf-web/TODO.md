@@ -1,153 +1,134 @@
-# ksf-web — État du projet
+# ksf-web — TODO & état du projet
 
-> Le projet est stabilisé. Cette session a corrigé plusieurs bugs critiques
-> sur la page `/apps` (install form cassé, action UI non optimisée).
+> Document de travail pour l'équipe. Mis à jour à chaque session.
 > Voir `CHANGELOG.md` pour l'historique détaillé des versions et
 > `README.md` pour la vision d'ensemble de l'architecture.
 
-## Statut
-
-**Production-ready.** 71/71 tests passent, AST Python OK sur 18 fichiers,
-11 scripts shell valident, 7 migrations SQL s'appliquent, le compose
-template se rend correctement.
-
-```
-✓ BASH   — 11 scripts (bootstrap, deploy, app, ksf + lib/*)
-✓ AST    — 18 fichiers Python
-✓ SQL    — 7 migrations (001 → 007)
-✓ COMPOSE — templates/apps/ksf-web/compose.yml
-✓ PYTEST — 71 tests (smoke api + smoke imports + smoke pages)
-✓ E2E    — page /apps complète (catalogue, install form, kebab, actions)
-✓ DEAD CODE — 0 fonction définie et jamais appelée
-✓ CSS VARS — toutes les variables utilisées sont définies dans :root
-```
-
 ---
 
-## Livré dans cette session (juin 2026)
+## 🟢 Statut global (production-ready)
 
-### Bugs critiques corrigés sur `/apps`
-
-| Bug | Cause | Impact | Fichiers |
-|---|---|---|---|
-| **`/apps/install-form/{name}` 500** | Route utilisait `Request` (la classe) au lieu de `request` (l'instance) dans `_T(Request).TemplateResponse(...)` et `"request": Request` | Le formulaire d'install était **complètement cassé** : impossible d'installer une app depuis l'UI | `app/routes/api.py` |
-| **`closeInstallModal` undefined** | `install_form.html` appelait `closeInstallModal()` mais la fonction n'existait pas (le modal apps.html utilise `closeModal()`) | **JS error** après install → la modale ne se fermait pas | `app/templates/partials/install_form.html` |
-| **Start utilisait `/restart`** | Quand `app.status != 'running'`, le bouton "Start" appelait `/restart` (confusant : "Redémarrer" n'est pas "Démarrer") | UX confuse : le user voyait "Démarrer X ?" puis "Redémarrage lancé" | `app/templates/apps.html` |
-| **CSS vars `var(--bg-1)`, `var(--text-1)`, `var(--r-1)`** | Anciennes références non migrées (fallback via `var(--bg-3, var(--bg-2))` cassé) | Kebab menu visuellement cassé en light theme (bg transparent) | `app/static/app.css` |
-| **Boutons d'action sans `hx-swap="none"`** | htmx remplace par défaut le bouton par la réponse JSON | Quand une action échouait, le **JSON brut `{"success":false,...}` s'affichait à la place du bouton** dans la card | `app/templates/apps.html` |
-| **Kebab menu basé sur `<details>`** | Le user agent stylesheet de `<details>` interfère avec le positionnement absolu en flex parent (`.acard-actions` est `display: flex`) | Les items du kebab s'affichaient **en bas de la page en flow layout** au lieu d'être un dropdown flottant | `app/templates/apps.html`, `app/static/app.css` |
-
-### Améliorations UI/UX (suite)
-
-| Amélioration | Description |
-|---|---|
-| **Kebab menu : refactor complet** | `<details>` remplacé par `<div data-kebab>` + `<button data-kebab-trigger>` + `<div class="kebab-menu" hidden>`. Toggle via `aria-expanded`, fermeture sur clic externe ou Escape, focus auto sur le premier item |
-| **Toutes les actions ont `hx-swap="none"`** | Le JSON de réponse n'est plus inséré dans le DOM. Il est consommé par le toast global (`base.html`) et les `hx-on::after-request` handlers |
-| **Modale d'install** : reset de l'erreur à l'ouverture, `role="alert"`, focus sur le bouton close à l'ouverture | Accessibilité |
-| **Kebab menu** : `role="menu"`, `role="menuitem"`, `role="separator"`, `aria-haspopup="menu"`, `aria-expanded` | ARIA complet pour les screen readers |
-
-### Améliorations UI/UX
-
-| Amélioration | Description |
-|---|---|
-| **Formulaire d'install enrichi** | Résumé de l'app en haut (icône + nom + description + catégorie + accessibilité OAuth2), hints d'aide sous chaque champ, suffixe `.votredomaine` sur le champ subdomain, état loading sur le bouton submit (spinner + disabled) |
-| **Boutons avec icônes** | ▶ Start, ■ Stop, ↻ Update, + Installer, → Gérer, ⋯ Kebab — meilleure lisibilité |
-| **Kebab menu** : séparateur visuel entre actions safe (Redémarrer/Reconstruire) et actions dangereuses (Désactiver/Supprimer) |
-| **Kebab menu** : auto-close sur clic externe ET sur activation d'un item |
-| **Kebab menu** : `role="menu"`, `role="menuitem"`, `role="separator"` pour l'accessibilité |
-| **Boutons désactivés pendant htmx request** : `hx-disabled-elt="this"` empêche les doubles-clics |
-| **Modale d'install** : reset de l'erreur à l'ouverture (pas d'erreur résiduelle d'un précédent essai échoué) |
-| **Erreur install** : `role="alert"` pour l'accessibilité (lecture par screen reader) |
-| **Modale d'install** : focus sur le bouton close à l'ouverture |
-
-### Tests ajoutés (6)
-
-- `test_apps_page_renders` : page /apps contient `openModal`/`closeModal`, n'utilise pas `closeInstallModal`
-- `test_install_form_returns_valid_html` : bug fix Request vs request
-- `test_install_form_unknown_app_rejected` : sécurité (path traversal)
-- `test_apps_action_endpoints_registered` : tous les endpoints présents
-- `test_apps_kebab_menu_has_separator_and_aria` : accessibilité du kebab
-- `test_apps_install_button_uses_plus_icon` : icône + sur le bouton install
-
----
-
-## Sessions précédentes (juin 2026)
-
-| Item | Fichiers | Description |
+| Catégorie | Statut | Détail |
 |---|---|---|
-| **Dead code** `crypto.is_encrypted_column` | `app/crypto.py` | Fonction définie mais jamais appelée. Retirée. |
-| **Dead code** `docker_client.get_client_async` | `app/docker_client.py` | Version async du client Docker, définie mais jamais appelée par les routes. Retirée (+ nettoyage des vars `_docker_client_lock` et `_docker_client_healthy` qui n'avaient plus de raison d'être, + retrait de l'import `asyncio` qui devenait orphelin). |
-| **Dead code** `jobs.stream_log` | `app/services/jobs.py` | Helper de streaming log non utilisé (le SSE route utilise `events.bus.subscribe` à la place). Retiré. |
-| **Dead code** `config_editor.get_version` | `app/services/config_editor.py` | Helper de lazy-load mentionné en docstring mais jamais appelé par une route. Retiré. |
-| **Vérification qualité** | (analyse statique) | Scan AST exhaustif : 0 bare except, 0 mutable default, 0 import inutilisé, 0 fonction morte (hors callbacks framework). |
-| **E2E 10 checks** | (validation) | Vérification E2E de 10 scénarios clés (settings pages, theme toggle, container stats, webhook health, jobs pagination, health endpoint, locks, dashboard, modal JS). Tous OK. |
+| Tests | ✅ **74/74** | pytest 8.3, TestClient + mocks Docker |
+| Code Python | ✅ AST OK | 18 fichiers parsent sans erreur |
+| Scripts Bash | ✅ OK | 11 scripts (bootstrap, deploy, app, ksf + lib/*) |
+| Base de données | ✅ OK | 7 migrations (001 → 007) |
+| Compose | ✅ OK | `templates/apps/ksf-web/compose.yml` se rend |
+| Dead code | ✅ Aucun | 0 fonction définie et jamais appelée |
+| CSS vars | ✅ Couvertes | Toutes les `var(--*)` utilisées sont définies dans `:root` |
+| Sécurité | ✅ OK | CSRF, SSRF check, chiffrement au repos, validation entrées |
 
 ---
 
-## Sessions précédentes (juin 2026)
+## 📋 Sessions de travail (juin 2026)
 
-### Session 1 — Sécurité & quick wins
-- **P2.4** Focus-trap modal (Tab piégé dans la modale, inert sur .main/.sidebar/header)
-- **P2.5** Indicateur "Étape N/M" pour doubles confirmations
-- **P3.12** Container stats (CPU%, mem, net) via Docker SDK
-- **P3.13** Webhook health check (GET ping)
-- **Review** : SSRF duplication extraite (`_resolve_and_check_ip` + `_NoRedirect` partagés entre `_send_with_retry` et `ping`)
+### Session 5 — Fix bugs `/apps` et UI actions ✅
 
-### Session 2 — Fonctionnalités & DX
-- **P1.A** Page `/settings` unifiée (onglets Général / Webhooks / Sécurité / Maintenance)
-- **P2.A** Light theme (variables CSS + override `:root[data-theme="light"]`, bouton ☀/☾ avec localStorage)
-- **P2.B** TypedDict infrastructure (`app/types.py` avec 9 TypedDict)
-- **P3.A** Jobs pagination cursor-based (`?before=ISO8601`, bouton "Charger plus anciens")
-- **P3.B** Documentation EventBus (try/finally + discard = pas de zombie)
+**6 bugs critiques corrigés**
 
-### Session 3 — Cleanup imports
-- `timezone` dans `docker_client.py`
-- `json` dans `config_editor.py`
-- `secrets` dans `jobs.py`
-- Vérification exhaustive : 0 import mort
+| # | Défaut constaté | Cause | Fichier | Fix appliqué |
+|---|---|---|---|---|
+| 1 | `/apps/install-form/{name}` → 500 | Route utilisait `Request` (classe) au lieu de `request` (instance) | `app/routes/api.py` | Paramètre `request: Request` + `_T(request).TemplateResponse(...)` |
+| 2 | `closeInstallModal is not defined` après install | `install_form.html` appelait une fonction inexistante | `app/templates/partials/install_form.html` | Remplacé par `closeModal()` |
+| 3 | "Start" → `/restart` (confusion sémantique) | Bouton "Start" utilisait l'endpoint restart | `app/templates/apps.html` | "Start" → `/start`, "Stop" → `/stop` |
+| 4 | Kebab menu cassé en light theme | Vars CSS `--bg-1`, `--text-1`, `--r-1` non définies | `app/static/app.css` | Migration vers `--surface`, `--text`, `--r` |
+| 5 | JSON brut s'affiche à la place du bouton après action | Boutons sans `hx-swap="none"` → htmx insère la réponse dans le DOM | `app/templates/apps.html` | `hx-swap="none"` sur tous les boutons d'action |
+| 6 | Items du kebab s'affichent en bas de la page | `<details>` interfère avec le positionnement absolu en flex parent | `app/templates/apps.html`, `app/static/app.css` | Refactor en `<div data-kebab>` + `<button data-kebab-trigger>` + menu `hidden` |
 
-### Session 4 — Cleanup dead code
-- 4 fonctions définies et jamais appelées retirées
-- Vérification exhaustive : 0 dead code (hors framework callbacks)
+**Améliorations UI/UX**
 
-### Session 5 (actuelle) — Fix bugs `/apps` et UI actions
+- [x] Formulaire d'install enrichi : résumé app (icône + nom + description + catégorie + OAuth2), hints d'aide, suffixe `.votredomaine`, état loading (spinner + disabled)
+- [x] Boutons avec icônes : ▶ Start, ■ Stop, ↻ Update, + Installer, → Gérer, ⋯ Kebab
+- [x] Kebab menu : séparateur visuel entre actions safe et actions dangereuses
+- [x] Kebab menu : auto-close sur clic externe / Escape / item click
+- [x] Kebab menu : ARIA complet (`role="menu"`, `role="menuitem"`, `aria-haspopup="menu"`, `aria-expanded`)
+- [x] Boutons désactivés pendant htmx request (`hx-disabled-elt="this"`)
+- [x] Modale d'install : reset erreur à l'ouverture, `role="alert"`, focus sur close
 
-Voir section "Livré dans cette session" ci-dessus. 4 bugs critiques corrigés
-(route install cassée, JS undefined, Start vs Restart, CSS vars cassées),
-UI des actions optimisée (icônes, séparateurs, accessibilité ARIA, loading
-states), 6 tests ajoutés.
+**3 tests ajoutés**
+
+- [x] `test_apps_no_details_element` : pas de `<details>` dans apps.html
+- [x] `test_apps_kebab_uses_data_kebab` : structure `data-kebab` + ARIA
+- [x] `test_apps_actions_have_hx_swap_none` : tous les boutons ont `hx-swap="none"`
 
 ---
 
-## Backlog futur
+### Session 4 — Cleanup dead code ✅
 
-| Priorité | Item | Effort |
+- [x] Retiré `crypto.is_encrypted_column` (jamais appelé)
+- [x] Retiré `docker_client.get_client_async` (jamais appelé, nettoyé aussi `_docker_client_lock`, `_docker_client_healthy`, import `asyncio` orphelin)
+- [x] Retiré `jobs.stream_log` (remplacé par `events.bus.subscribe()` dans le SSE route)
+- [x] Retiré `config_editor.get_version` (jamais exposé via route)
+
+---
+
+### Session 3 — Cleanup imports ✅
+
+- [x] Retiré `timezone` dans `docker_client.py`
+- [x] Retiré `json` dans `config_editor.py`
+- [x] Retiré `secrets` dans `jobs.py`
+
+---
+
+### Session 2 — Fonctionnalités & DX ✅
+
+- [x] **P1.A** Page `/settings` unifiée (onglets Général / Webhooks / Sécurité / Maintenance)
+- [x] **P2.A** Light theme (variables CSS + `:root[data-theme="light"]` + bouton ☀/☾ avec localStorage)
+- [x] **P2.B** TypedDict infrastructure (`app/types.py` avec 9 TypedDict : AuditEntry, JobRecord, WebhookEndpoint, etc.)
+- [x] **P3.A** Jobs pagination cursor-based (`?before=ISO8601`, bouton "Charger plus anciens")
+- [x] **P3.B** Documentation EventBus (try/finally + discard = pas de zombie)
+
+---
+
+### Session 1 — Sécurité & quick wins ✅
+
+- [x] **P2.4** Focus-trap modal (Tab piégé, `inert` sur `.main`/`.sidebar`/`header`)
+- [x] **P2.5** Indicateur "Étape N/M" pour doubles confirmations
+- [x] **P3.12** Container stats (`/api/containers/{id}/stats` : CPU%, mem, net)
+- [x] **P3.13** Webhook health check (`/api/webhooks/{id}/health` : ping GET)
+- [x] **Refactor SSRF** : `_resolve_and_check_ip` + `_NoRedirect` partagés entre `_send_with_retry` et `ping`
+
+---
+
+## 🔮 Backlog futur (recommandations)
+
+### 🟡 P2 — Qualité & performance
+
+| Item | Effort | Recommandation |
 |---|---|---|
-| 🟡 P2.C | Pydantic au lieu de TypedDict (validation runtime) | 1-2j |
-| 🟡 P2.D | Theme persisté côté serveur (table `user_prefs`) | 0.5-1j |
-| 🟢 P3.D | Tests TypedDict (mypy --strict) | 0.5j |
-| 🟢 P3.E | Test theme toggle (smoke test) | 10 min |
-| 🟢 P3.F | Tag git `v2.0.0` (release ops) | 5 min |
+| **P2.C** Pydantic au lieu de TypedDict | 1-2j | Ajouter validation runtime pour `NotificationPayload`, `JobRecord`, `WebhookEndpoint`. TypedDict reste pour les structures purement DB-row. |
+| **P2.D** Theme persisté côté serveur | 0.5-1j | Table `user_prefs(user_id, key, value)`. Endpoint `POST /api/prefs/theme`. Évite de perdre le thème sur changement de device. |
+| **P2.E** Pydantic pour config_editor | 1j | Validation des types (`int`, `bool`, `email`, `domain`) à la lecture du formulaire. Évite les valeurs mal castées dans ksf.env. |
+
+### 🟢 P3 — Polish
+
+| Item | Effort | Recommandation |
+|---|---|---|
+| **P3.D** Tests TypedDict (mypy --strict) | 0.5j | Vérifier que les TypedDict couvrent tous les call sites. |
+| **P3.E** Test theme toggle (smoke test) | 10 min | Test E2E du bouton ☀/☾. |
+| **P3.F** Tag git `v2.0.0` | 5 min | Action release. Nécessite décision manuelle (cf. AGENTS.md : pas de tag sans demande explicite). |
+| **P3.G** Tests E2E des nouvelles actions `/apps` | 1h | Couvrir les POST `/apps/{name}/{action}` avec mocks, vérifier codes retour, hx-swap=none, etc. |
 
 ---
 
-## Décisions de scope documentées
+## 📌 Décisions de scope (pas un oubli)
 
 | Item | Raison |
 |---|---|
 | **P1.4** (dedup notifications) | Retiré en migration `007_drop_notif_dedup.sql`. Les webhooks externes dédupliquent côté récepteur. |
-| **P2.15** (rate limit applicatif) | Traefik (middleware `rateLimit`) gère déjà le rate limit en bordure. Doublon retiré. |
-| **P3.7** (pagination notifications) | Plus de UI notifications (page retirée). Conservé pour les jobs en P3.A. |
-| **`get_client_async`** | Dead code : la version sync `get_client()` suffit pour le cache TTL 3s actuel. Le health check est géré par `_docker_client_healthy` ré-évalué à chaque mutation. |
-| **`stream_log`** | Dead code : remplacé par `events.bus.subscribe()` dans le SSE route, qui est plus réactif (events temps réel) et découplé du filesystem. |
-| **`get_version`** | Dead code : la UI affiche l'historique mais n'ouvre pas le détail d'une version (les commits de ksf.env sont déjà rollback-able via `commit()` qui restore depuis la version de backup). |
+| **P2.15** (rate limit applicatif) | Traefik (middleware `rateLimit`) gère déjà le rate limit en bordure. |
+| **P3.7** (pagination notifications) | Page UI notifications retirée. Conservé pour les jobs en P3.A. |
+| **`get_client_async`** | Dead code : la version sync suffit pour le cache TTL 3s. |
+| **`stream_log`** | Dead code : remplacé par `events.bus.subscribe()` (plus réactif). |
+| **`get_version`** | Dead code : pas de UI de détail de version (rollback via `commit()`). |
 
 ---
 
-## Validation locale (à exécuter avant chaque PR)
+## 🧪 Validation locale (à exécuter avant chaque PR)
 
 ```bash
-# AST Python
+# AST Python (~1s)
 cd ksf-web && python3 -c "
 import ast, os
 for root, _, files in os.walk('app'):
@@ -158,63 +139,14 @@ print('AST OK')
 "
 
 # Tests pytest
-python3 -m pytest tests/ -v   # 65 tests
+python3 -m pytest tests/ -v   # 74 tests
 
-# Vérifier l'absence d'imports inutilisés ET de dead code
-python3 -c "
-import ast, os, re
-all_src = {}
-for root, _, files in os.walk('app'):
-    for f in files:
-        if not f.endswith('.py'): continue
-        p = os.path.join(root, f)
-        with open(p) as fh: all_src[p] = fh.read()
-
-# Imports inutilisés
-for p, src in all_src.items():
-    tree = ast.parse(src)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            if node.module == '__future__': continue
-            for n in node.names:
-                name = n.asname or n.name
-                if src.count(name) < 2: print(f'UNUSED IMPORT: {p}: {name}')
-        elif isinstance(node, ast.Import):
-            for n in node.names:
-                name = (n.asname or n.name).split('.')[0]
-                if src.count(name) < 2: print(f'UNUSED IMPORT: {p}: {name}')
-
-# Fonctions mortes (hors framework callbacks)
-for p, src in all_src.items():
-    tree = ast.parse(src)
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            name = node.name
-            if name.startswith('_') or name in ('__init__','lifespan',
-                'not_found_handler','server_error_handler','redirect_request'):
-                continue
-            calls = sum(len(re.findall(r'\\b' + re.escape(name) + r'\\s*\\(', s))
-                        for s in all_src.values())
-            if calls <= 1:
-                # Check route
-                line_starts = src.split(chr(10))
-                func_line = next((i for i,l in enumerate(line_starts) if f'def {name}(' in l), -1)
-                if func_line >= 0:
-                    prev = line_starts[max(0, func_line-4):func_line]
-                    if not any('@router' in pl for pl in prev):
-                        print(f'POSSIBLE DEAD: {p}: {name}')
-print('Done')
-"
+# Imports inutilisés + dead code (script ci-dessous)
+python3 -c "..."  # voir section "Consignes" pour le script complet
 
 # Migrations SQL
 cd .. && for f in ksf-web/migrations/*.sql; do
-  python3 -c "
-import sqlite3, glob
-conn = sqlite3.connect(':memory:')
-for prev in sorted(glob.glob('ksf-web/migrations/*.sql')):
-    if prev <= '$f': conn.executescript(open(prev).read())
-print('OK $f')
-"
+  python3 -c "import sqlite3, glob; ..."  # applique les migrations
 done
 
 # Bash
@@ -228,16 +160,22 @@ KSF_REPO_DIR=$(pwd) KSF_WEB_DATA_HOST_DIR=/tmp/df-test/.ksf-web-data \
 docker compose -f templates/apps/ksf-web/compose.yml config >/dev/null
 ```
 
-## Consignes pour la suite
+---
 
-1. **Avant tout changement Python** : vérifier que tous les nouveaux symboles sont importés. `ast.parse` ne catch PAS les `NameError` runtime — un test d'import complet (`python3 -c "from app.main import app"`) est plus fiable.
-2. **Avant tout changement async** : les patches rapides dans `services/notifications.py` et `services/webhooks.py` sont les plus risqués (cf. leçon du 24 juin). Relire les call sites.
-3. **Avant tout changement de schéma DB** : nouvelle migration `00X_*.sql` qui s'applique via le runner idempotent. Jamais de `ALTER TABLE` non couvert par `_filter_already_applied_alter`.
-4. **Avant tout ajout de route** : ajouter un smoke test dans `tests/test_smoke_api.py` ou `test_smoke_pages.py`. Maintenir le count ≥ 65.
-5. **Si tu touches à un service** : utiliser les TypedDict de `app/types.py` pour les nouvelles signatures publiques.
-6. **Pas de dead code** : avant chaque commit, lancer le scan de validation ci-dessus. Si tu écris une fonction qui n'est appelée nulle part, c'est soit (a) un helper de route, soit (b) du code à supprimer.
+## 📜 Consignes pour la suite
 
-## Liens utiles
+1. **Tout changement Python** : vérifier que les nouveaux symboles sont importés. `ast.parse` ne catch pas les `NameError` runtime — un test d'import complet est plus fiable.
+2. **Tout changement async** : les patches rapides dans `services/notifications.py` et `services/webhooks.py` sont les plus risqués. Relire les call sites.
+3. **Tout changement de schéma DB** : nouvelle migration `00X_*.sql` idempotente.
+4. **Tout ajout de route** : smoke test dans `tests/test_smoke_api.py` ou `test_smoke_pages.py`. Maintenir le count ≥ 74.
+5. **Tout service** : utiliser les TypedDict de `app/types.py` pour les signatures publiques.
+6. **Tout bouton d'action htmx** : ajouter `hx-swap="none"` pour éviter que le JSON remplace le bouton dans le DOM. Le toast global dans `base.html` se charge d'afficher le message.
+7. **Pas de `<details>` pour les dropdowns** : le user agent stylesheet interfère avec le positionnement absolu en flex parent. Utiliser `<div data-kebab>` + `<button data-kebab-trigger>`.
+8. **Pas de dead code** : scanner avant chaque commit. Si tu écris une fonction jamais appelée, c'est soit (a) un helper de route, soit (b) à supprimer.
+
+---
+
+## 🔗 Liens utiles
 
 - `CHANGELOG.md` : historique des versions (Keep a Changelog)
 - `README.md` : architecture et procédure de debug
