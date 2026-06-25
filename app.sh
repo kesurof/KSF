@@ -21,7 +21,9 @@ SCRIPT_DIR="$(_app_resolve_script_dir)"
 source "${SCRIPT_DIR}/lib/common.sh"
 source "${SCRIPT_DIR}/lib/render.sh"
 
-BASE_DIR="${HOME}/serverbox"
+BASE_DIR="${BASE_DIR:-${HOME}/serverbox}"
+: "${NETWORK_NAME:=ksf-proxy}"
+: "${TZ_VALUE:=${TZ:-Europe/Paris}}"
 AUTO_YES=false
 DRY_RUN=false
 COMMAND=""
@@ -150,7 +152,17 @@ fi
 
 KSF_ENV="${BASE_DIR}/config/ksf.env"
 if [ -f "$KSF_ENV" ]; then
+  # Préserve BASE_DIR (et autres variables contrôlées par l'appelant) si elles
+  # sont déjà set : ksf.env peut contenir une valeur différente si la plateforme
+  # a été installée ailleurs. L'env var / --base-dir reste source de vérité.
+  __ksf_saved_BASE_DIR="$BASE_DIR"
+  __ksf_saved_NETWORK_NAME="$NETWORK_NAME"
+  __ksf_saved_TZ_VALUE="$TZ_VALUE"
   source "$KSF_ENV"
+  BASE_DIR="${__ksf_saved_BASE_DIR:-$BASE_DIR}"
+  NETWORK_NAME="${__ksf_saved_NETWORK_NAME:-$NETWORK_NAME}"
+  TZ_VALUE="${__ksf_saved_TZ_VALUE:-$TZ_VALUE}"
+  unset __ksf_saved_BASE_DIR __ksf_saved_NETWORK_NAME __ksf_saved_TZ_VALUE
 fi
 
 source "${SCRIPT_DIR}/lib/app_steps.sh"

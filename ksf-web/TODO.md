@@ -10,18 +10,98 @@
 
 | Catégorie | Statut | Détail |
 |---|---|---|
-| Tests | ✅ **74/74** | pytest 8.3, TestClient + mocks Docker |
-| Code Python | ✅ AST OK | 18 fichiers parsent sans erreur |
+| Tests | ✅ **88/88** | pytest 8.3, TestClient + mocks Docker |
+| Code Python | ✅ AST OK | 21 fichiers parsent sans erreur |
 | Scripts Bash | ✅ OK | 11 scripts (bootstrap, deploy, app, ksf + lib/*) |
-| Base de données | ✅ OK | 7 migrations (001 → 007) |
+| Base de données | ✅ OK | 8 migrations (001 → 008) |
 | Compose | ✅ OK | `templates/apps/ksf-web/compose.yml` se rend |
 | Dead code | ✅ Aucun | 0 fonction définie et jamais appelée |
 | CSS vars | ✅ Couvertes | Toutes les `var(--*)` utilisées sont définies dans `:root` |
 | Sécurité | ✅ OK | CSRF, SSRF check, chiffrement au repos, validation entrées |
+| Logs structurés | ✅ Phase 7 | JSONL rotaté + correlation_id + UI onglet |
 
 ---
 
 ## 📋 Sessions de travail (juin 2026)
+
+### Session 7 — Fix actions apps + système de logs structuré (Phase 7) ✅
+
+**Problème rapporté** : « les actions sur les apps depuis ksf-web ne fonctionne pas »
+
+**Cause racine (P0 bloquant)** : `app.sh` calcule `BASE_DIR="${HOME}/serverbox"`,
+mais `ksf-web` injectait `HOME="/home/appuser"` dans l'env des subprocess
+(`EXEC_ENV` dans `ksf_commands.py` et `env` dans `services/jobs.py`). Donc
+`app.sh` calculait `BASE_DIR=/home/appuser/serverbox` (inexistant) et toute
+commande échouait avec « KSF n'est pas installé ». **Toutes** les actions
+UI (install, restart, stop, start, update, remove, rebuild) étaient cassées.
+
+**Fix** : ajout explicite de `"BASE_DIR": KSF_BASE_DIR` dans `EXEC_ENV` et
+dans l'env du worker jobs. Aucune modif des scripts bash.
+
+**Cause secondaire (manque de debuggabilité)** : logs éclatés en 6 endroits
+non coordonnés (actions/*.log, jobs/*.log, audit_log SQLite, notifications,
+uvicorn stdout, tracebacks Python). Pas de corrélation entre toast UI ↔ log
+action ↔ job ↔ audit row.
+
+**Solution appliquée** :
+
+1. **Fix P0** : `BASE_DIR` forcé dans l'env des subprocess (2 lignes Python).
+2. **Phase 1 — Infrastructure logging** : `app/logging_config.py` (stdlib
+   `logging.config` + `RotatingFileHandler` 10 MB × 5) ; `LOG_FORMAT`,
+   `LOG_LEVEL`, `LOG_FILE_*`, `LOG_RETENTION_DAYS` env vars ; init logging
+   en premier dans le lifespan ; `_log_retention()` unifié.
+3. **Phase 2 — Middleware request** : `app/middleware/request_log.py` ;
+   génère `correlation_id` (uuid 12 chars), le pose via `contextvars`,
+   log `request method=… path=… status=… duration_ms=…` et header
+   `X-Request-Id` dans la réponse.
+4. **Phase 3 — Capture structurée des actions et jobs** : `TeeSubprocess`
+   context manager qui tee vers fichier brut (compat SSE) + logger JSONL.
+   `app.action.start` / `app.action.end` et `job.start` / `job.end` émis
+   autour de chaque run. `audit_log.correlation_id` (migration 008).
+5. **Phase 4 — UI onglet Logs** : `/diagnostics?tab=logs` (5e onglet).
+   Partial `partials/logs_viewer.html` avec filtres niveau/logger/target/cid,
+   auto-refresh 5 s, expand inline charge `/api/logs/correlation/{cid}`.
+   3 nouvelles routes API : `/api/logs/recent`, `/api/logs/correlation/{cid}`,
+   `/api/logs/download`.
+6. **Phase 5 — Tests** : +14 tests (88 total) couvrant les nouveaux endpoints,
+   le header `X-Request-Id`, et les imports des 3 nouveaux modules.
+7. **Phase 6 — Documentation** : section « Logs » dans README avec exemples
+   `jq` ; entrée CHANGELOG 2.1.0.
+
+**Fichiers modifiés** :
+- 4 nouveaux : `app/logging_config.py`, `app/middleware/__init__.py`,
+  `app/middleware/request_log.py`, `app/templates/partials/logs_viewer.html`,
+  `app/templates/partials/log_correlation.html`, `migrations/008_audit_correlation.sql`
+- 13 modifiés : `app/main.py`, `app/config.py`, `app/helpers.py`,
+  `app/ksf_commands.py`, `app/services/audit.py`, `app/services/jobs.py`,
+  `app/routes/api.py`, `app/templates/diagnostics.html`, `app/static/app.css`,
+  `tests/test_smoke_api.py`, `tests/test_smoke_imports.py`, `README.md`,
+  `CHANGELOG.md`, `TODO.md`
+- 0 modifié (volontairement) : `app.sh`, `ksf.sh`, `lib/*.sh`,
+  `templates/apps/ksf-web/compose.yml`
+
+**Critères d'acceptation** :
+- [x] AST Python OK, 8 migrations SQL OK, 88/88 tests pytest OK
+- [x] `bash -n ksf.sh lib/*.sh` OK
+- [x] `docker compose config` OK
+- [x] Chaque réponse HTTP porte `X-Request-Id` (12 chars hex)
+- [x] `app.sh` et `ksf.sh` non modifiés
+- [x] `docker logs ksf-web` reste lisible (format `text` par défaut)
+- [ ] **À vérifier après déploiement** : `POST /apps/dockge/restart` aboutit
+  et `jq 'select(.correlation_id=="X")' ~/serverbox/logs/ksf-web/ksf-web.log`
+  retourne la timeline complète
+
+**Procédure de déploiement** :
+```bash
+cd /home/kesurof/projets/KSF
+./app.sh rebuild ksf-web         # rebuild image (le code Python change)
+docker restart ksf-web           # OU ./app.sh install ksf-web si modif compose
+# Vérifier : docker logs ksf-web | tail -5
+# Attendu : "ksf-web démarré (DB=..., jobs worker actif, log=...)"
+# + 1re ligne JSONL dans ~/serverbox/logs/ksf-web/ksf-web.log
+```
+
+---
 
 ### Session 6 — Kebab dropdown bulletproof (Bootstrap-style) ✅
 

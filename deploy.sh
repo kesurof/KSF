@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/lib/common.sh"
 
 # ---------- Valeurs par défaut ----------
-BASE_DIR="${HOME}/serverbox"
+BASE_DIR="${BASE_DIR:-${HOME}/serverbox}"
 NETWORK_NAME="ksf-proxy"
 TZ_VALUE="${TZ:-Europe/Paris}"
 WITH_TRAEFIK=false

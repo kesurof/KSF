@@ -3,18 +3,24 @@
 Aucun handler n'est défini ici, uniquement des fonctions utilitaires utilisées
 par les blueprints `app/routes/`.
 """
+import asyncio
+import logging
 import os
 import re
+import time
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException, Request
 
 from app import config
+from app.logging_config import get_correlation_id
 
 
-LOG_DIR = config.LOG_DIR
+LOG_DIR = config.ACTIONS_LOG_DIR
 OUTPUT_TRUNCATE_BYTES = config.OUTPUT_TRUNCATE_BYTES
+
+logger = logging.getLogger("ksf-web.actions")
 
 
 def now_str() -> str:
@@ -44,6 +50,12 @@ def action_result(success: bool, message: str, output: str = "", log_path: str |
 
 
 def save_full_output(prefix: str, output: str) -> str:
+    """Écrit la sortie brute dans ${ACTIONS_LOG_DIR}/<prefix>-<ts>.log.
+
+    Conservé pour les chemins qui n'utilisent pas TeeSubprocess (ex: action
+    synchrone d'un script auxiliaire). Les actions principales passent par
+    `run_app_action` qui utilise TeeSubprocess.
+    """
     try:
         os.makedirs(LOG_DIR, exist_ok=True)
         ts = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -53,6 +65,37 @@ def save_full_output(prefix: str, output: str) -> str:
         return path
     except OSError:
         return ""
+
+
+async def _tee_subprocess_with_log(cmd: list[str], log_path: str,
+                                   extra: dict | None = None) -> tuple[bool, str]:
+    """Lance un subprocess via TeeSubprocess, log structuré, retourne (ok, output).
+
+    Lit le fichier brut en fin de run pour l'inclure dans la réponse JSON
+    (compatibilité avec l'UI qui attend `output`).
+    """
+    from app.logging_config import TeeSubprocess
+    output = ""
+    try:
+        async with TeeSubprocess(cmd, log_path,
+                                 logger_name="ksf-web.actions",
+                                 cwd=config.REPO_DIR,
+                                 env=os.environ.copy(),
+                                 extra=extra) as tee:
+            assert tee.process is not None
+            await tee.process.wait()
+        ok = (tee.exit_code == 0)
+        try:
+            with open(log_path, "r", errors="replace") as f:
+                output = f.read()
+        except OSError:
+            output = ""
+        return ok, output
+    except FileNotFoundError:
+        return False, f"Script introuvable : {cmd[0]}"
+    except Exception as e:
+        logger.exception("Erreur lancement subprocess %s", cmd)
+        return False, f"Erreur interne : {type(e).__name__}: {e}"
 
 
 def require_action() -> None:
@@ -103,14 +146,14 @@ def client_ip(request: Request) -> str | None:
 async def audit_log(request: Request, action: str, target: str | None = None,
                     before: Any = None, after: Any = None, job_id: str | None = None) -> None:
     from app.services import audit
-    import logging
-    logger = logging.getLogger("ksf-web")
     actor = client_actor(request)
     ip = client_ip(request)
     ua = request.headers.get("user-agent")
+    cid = get_correlation_id()
     try:
         await audit.log(actor=actor, action=action, target=target,
-                        before=before, after=after, job_id=job_id, ip=ip, ua=ua)
+                        before=before, after=after, job_id=job_id,
+                        ip=ip, ua=ua, correlation_id=cid)
     except Exception:
         logger.exception("Erreur audit %s/%s", action, target)
 
@@ -137,20 +180,46 @@ async def run_app_action(
 
     Centralise :
     - `require_action` + `require_valid_app` (gérés par l'appelant)
-    - `ksf_commands.run_app_command` (async)
-    - `save_full_output` (log)
+    - `ksf_commands.run_app_command` (async via TeeSubprocess)
     - `action_result` (réponse normalisée)
     - `audit_log` (traçabilité)
     - `invalidate_list_cache` (mutations de containers → cache TTL 3s)
     - `notifications.create` (feedback utilisateur)
+    - événements structurés `app.action.start` / `app.action.end` dans le log JSONL
 
     Renvoie le dict prêt à être sérialisé par FastAPI.
     """
     from app import ksf_commands
     from app.services import notifications
 
-    ok, output = await ksf_commands.run_app_command(app_name, action, extra_args=extra_args)
-    log_path = save_full_output(f"{action}-{app_name}", output) if output else ""
+    # Pré-calcul du log_path (timestamp UTC compact) — on le donne à
+    # run_app_command pour qu'il écrive le fichier brut et le log structuré
+    # au même endroit.
+    started = time.monotonic()
+    cid = get_correlation_id()
+    logger.info(
+        "app.action.start",
+        extra={"action": action, "target": app_name, "action_args": extra_args or []},
+    )
+
+    ok, output, log_path = await ksf_commands.run_app_command(
+        app_name, action, extra_args=extra_args, correlation_id=cid
+    )
+
+    duration_ms = int((time.monotonic() - started) * 1000)
+    logger.info(
+        "app.action.end",
+        extra={
+            "action": action,
+            "target": app_name,
+            "ok": ok,
+            "duration_ms": duration_ms,
+            "exit_code": 0 if ok else 1,
+            "output_size": len(output.encode("utf-8", errors="replace")) if output else 0,
+            "log_path": log_path or None,
+        },
+    )
+
     msg_success = success_msg or f"{action} de {app_name} lance."
     msg_fail = fail_msg or f"Échec du {action} de {app_name}."
 

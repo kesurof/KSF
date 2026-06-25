@@ -21,7 +21,7 @@ SCRIPT_DIR="$(_ksf_resolve_script_dir)"
 source "${SCRIPT_DIR}/lib/common.sh"
 source "${SCRIPT_DIR}/lib/render.sh"
 
-BASE_DIR="${HOME}/serverbox"
+BASE_DIR="${BASE_DIR:-${HOME}/serverbox}"
 COMMAND=""
 CLEAN_DATA_APP=""
 BACKUP_COMMAND=""

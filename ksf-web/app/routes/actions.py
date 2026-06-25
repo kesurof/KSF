@@ -77,8 +77,7 @@ async def app_install(
     else:
         extra_args.append("--no-auth")
 
-    ok, output = await ksf_commands.run_app_command(app_name, "install", extra_args=extra_args)
-    log_path = save_full_output(f"install-{app_name}", output) if ok or output else ""
+    ok, output, log_path = await ksf_commands.run_app_command(app_name, "install", extra_args=extra_args)
     await audit_log(request, "app.install", app_name,
                     after={"subdomain": subdomain, "port": port, "protected": protected})
     return action_result(

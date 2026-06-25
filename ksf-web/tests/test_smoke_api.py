@@ -262,3 +262,70 @@ def test_webhook_health_unknown_id(client):
         headers={"X-CSRF-Token": csrf_cookie},
     )
     assert r2.status_code == 404
+
+
+# ── Logs viewer (Phase 7) ─────────────────────────────────────
+
+def test_logs_recent_endpoint(client):
+    """Le partial logs doit être servi en 200, même si le fichier log est vide."""
+    r = client.get("/api/logs/recent?limit=50")
+    assert r.status_code == 200
+    # Le partial doit contenir les classes CSS attendues
+    assert b"logs-list" in r.content or b"empty" in r.content
+
+
+def test_logs_recent_with_filters(client):
+    """Les filtres level/logger/target sont acceptés et propagés."""
+    r = client.get("/api/logs/recent?level=INFO&level=ERROR&logger=ksf-web.actions")
+    assert r.status_code == 200
+    # Au moins le formulaire de filtre est rendu
+    assert b"logs-filters" in r.content
+
+
+def test_logs_correlation_endpoint(client):
+    """Le endpoint correlation_id renvoie un partial HTML (par défaut) ou JSON."""
+    r_html = client.get("/api/logs/correlation/abc123def456")
+    assert r_html.status_code == 200
+    r_json = client.get("/api/logs/correlation/abc123def456?format=json")
+    assert r_json.status_code == 200
+    assert isinstance(r_json.json(), dict)
+    assert "events" in r_json.json()
+    assert "audit" in r_json.json()
+
+
+def test_logs_correlation_invalid_cid_rejected(client):
+    """Un correlation_id mal formé doit être rejeté (sécurité)."""
+    r = client.get("/api/logs/correlation/../etc/passwd")
+    assert r.status_code in (400, 404)
+
+
+def test_logs_download_default(client):
+    """Le download du ksf-web.log est servi (ou 404 si pas encore créé)."""
+    r = client.get("/api/logs/download")
+    # 200 si le fichier existe, 404 sinon (acceptable en environnement test)
+    assert r.status_code in (200, 404)
+
+
+def test_logs_download_invalid_filename_rejected(client):
+    """Un filename mal formé doit être rejeté (sécurité)."""
+    r = client.get("/api/logs/download?file=../../etc/passwd")
+    assert r.status_code == 400
+
+
+def test_diagnostics_logs_tab_renders(client):
+    """L'onglet Logs doit être présent dans /diagnostics."""
+    r = client.get("/diagnostics?tab=logs")
+    assert r.status_code == 200
+    assert b"/api/logs/recent" in r.content
+
+
+def test_x_request_id_header_present(client):
+    """Le middleware RequestLogMiddleware doit poser X-Request-Id sur chaque réponse."""
+    r = client.get("/health")
+    # Le middleware exempt /health, donc on teste sur une autre route
+    r = client.get("/containers")
+    assert "X-Request-Id" in r.headers
+    # Et la valeur doit faire 12 chars (uuid4 hex [:12])
+    cid = r.headers["X-Request-Id"]
+    assert len(cid) == 12
+    assert all(c in "0123456789abcdef" for c in cid)

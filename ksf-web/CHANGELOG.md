@@ -77,6 +77,71 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - CSRF middleware inchangé (double-submit cookie).
 - Rate limiting pour mitiger brute-force / abuse.
 
+## [2.1.0] - 2026-06-25
+
+### Fixed
+- **P0 bloquant** : actions sur les apps (install/restart/stop/start/update/remove/rebuild)
+  depuis ksf-web échouaient toutes avec « KSF n'est pas installé dans /home/appuser/serverbox ».
+  Cause : `app.sh` calcule `BASE_DIR="${HOME}/serverbox"`, mais ksf-web injectait
+  `HOME=/home/appuser` dans l'env des subprocess. Corrections (Python + bash) :
+  - Ajout explicite de `BASE_DIR` dans `EXEC_ENV` (`ksf_commands.py`) et dans
+    l'env du worker jobs (`services/jobs.py`).
+  - 4 scripts bash modifiés : `app.sh`, `ksf.sh`, `deploy.sh`, `bootstrap.sh`
+    utilisent `BASE_DIR="${BASE_DIR:-${HOME}/serverbox}"` (1 ligne chacun)
+    pour respecter le `BASE_DIR` env var.
+  - `app.sh` préserve `BASE_DIR`/`NETWORK_NAME`/`TZ_VALUE` après sourcing de
+    `ksf.env` (sinon ksf.env les écrase avec les valeurs d'origine du host).
+  - `lib/app_steps.sh::app_normalize_loaded` : si `APP_DIR` pointe vers un
+    chemin inexistant mais que `${BASE_DIR}/apps/<app>` existe, bascule
+    automatiquement. Couvre le cas où `installed-apps/<app>.env` contient
+    un ancien chemin de l'hôte mais que la plateforme tourne maintenant
+    dans un conteneur avec un bind mount.
+  - `HOME=/tmp` (au lieu de `/home/appuser`) dans `EXEC_ENV` : contournement
+    du mismatch uid 1000/1002 sur `/home/appuser` (appuser dans l'image vs
+    uid réel de l'hôte). Les scripts n'utilisent plus `$HOME` depuis qu'on
+    force `BASE_DIR`.
+  - `Dockerfile` : installation du binaire `docker` CLI 27.3.1 (statique) +
+    plugin `docker compose` v2.32.4. `docker.io` sur Debian 12 ne fournit
+    que `dockerd`, pas le CLI. Sans ça, `app.sh restart <app>` échoue avec
+    « Docker n'est pas installé ».
+- **500 sur les actions d'app** : `helpers.py::run_app_action` utilisait
+  `"args"` comme clé dans `extra={...}` du `logger.info("app.action.start")`.
+  Or `args` est un attribut réservé de `LogRecord` (positional args du log call),
+  ce qui levait `KeyError: "Attempt to overwrite 'args' in LogRecord"` → 500.
+  Renommé en `action_args`. Audit des autres `extra={...}` : aucun autre conflit.
+
+### Added
+- **Système de logs structuré unifié** (Phase 7) :
+  - `app/logging_config.py` : stdlib `logging.config` + `RotatingFileHandler`
+    (10 MB × 5) vers `~/serverbox/logs/ksf-web/ksf-web.log` (JSONL), stdout
+    conserve un format lisible. Aucune nouvelle dépendance.
+  - `correlation_id` (UUID 12 chars) propagé via `contextvars` à tous les
+    loggers, posé par `RequestLogMiddleware` et renvoyé dans le header
+    `X-Request-Id` de chaque réponse.
+  - `TeeSubprocess` : context manager qui tee la sortie d'un subprocess
+    vers un fichier brut (compat SSE) + un logger structuré (events
+    `subprocess.line` JSONL). Réutilisé par `ksf_commands.run_app_command`
+    et `services/jobs._run_job`.
+  - Events structurés `app.action.start` / `app.action.end` (logger
+    `ksf-web.actions`) et `job.start` / `job.end` (logger `ksf-web.jobs`).
+  - `audit_log.correlation_id` (migration 008).
+  - **Onglet Logs** dans `/diagnostics?tab=logs` : partial `partials/logs_viewer.html`
+    avec filtres (niveau, logger, target, correlation_id), auto-refresh 5 s,
+    expand inline sur clic (charge `/api/logs/correlation/{cid}`).
+  - 3 nouveaux endpoints : `/api/logs/recent`, `/api/logs/correlation/{cid}`,
+    `/api/logs/download`.
+  - 5 nouvelles variables d'env : `KSF_WEB_LOG_FORMAT`, `KSF_WEB_LOG_LEVEL`,
+    `KSF_WEB_LOG_FILE_MAX_BYTES`, `KSF_WEB_LOG_FILE_BACKUPS`, `KSF_WEB_LOG_RETENTION_DAYS`.
+  - Rétention unifiée : `_log_retention()` supprime `actions/*.log`,
+    `jobs/*.log`, `ksf-web.log.*` > 30 jours, en plus de la purge des jobs
+    > 30 jours en DB.
+- **Module middleware** : `app/middleware/{__init__,request_log}.py` (RequestLogMiddleware).
+- **Tests** : +14 tests pytest (88 total, vs 74 avant). 8 nouveaux tests
+  `/api/logs/*` (recent, filters, correlation, cid invalide, download,
+  filename invalide, onglet logs, header `X-Request-Id`). 3 nouveaux modules
+  ajoutés aux tests d'import (couvrent les `NameError` runtime non détectés
+  par AST seul).
+
 ## [1.x] - avant 2026-06
 
 Voir git history.

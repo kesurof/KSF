@@ -21,6 +21,7 @@ from typing import Any
 import aiosqlite
 
 from app import config, db
+from app.logging_config import TeeSubprocess, get_correlation_id
 from app.services import events
 from app.types import JobRecord
 from app.utils import utcnow_str as _utcnow
@@ -303,10 +304,247 @@ async def _run_job(job: dict) -> None:
     await _update(job_id, status="running", started_at=_utcnow(), output_path=log_path)
     await events.bus.publish("jobs", "started", {"id": job_id, "kind": job["kind"]})
 
+    # correlation_id : posé par le worker pour grouper tous les events du job.
+    # Si l'enqueueur l'a déjà (via contextvar, ex: depuis une route), on
+    # le réutilise ; sinon on en génère un.
+    cid = get_correlation_id()
+    if cid == "-":
+        cid = uuid.uuid4().hex[:12]
+    from app.logging_config import set_correlation_id
+    cid_token = set_correlation_id(cid)
+    logger.info("job.start", extra={"job_id": job_id, "kind": job["kind"], "command": command})
+
     env = os.environ.copy()
     env["KSF_BASE_DIR"] = config.BASE_DIR
     env["KSF_REPO_DIR"] = config.REPO_DIR
-    env["HOME"] = "/home/appuser"
+    env["BASE_DIR"] = config.BASE_DIR
+    env["HOME"] = "/tmp"
+    env["XDG_CONFIG_HOME"] = "/tmp"
+    env["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+    proc = None
+    new_status = "failed"
+    try:
+        async def _sse_publish(stream: str, n: int, text: str) -> None:
+            await events.bus.publish(
+                f"jobs:{job_id}", "line",
+                {"n": n, "text": text, "stream": stream},
+            )
+
+        async with TeeSubprocess(
+            command, log_path,
+            logger_name="ksf-web.jobs",
+            cwd=config.REPO_DIR,
+            env=env,
+            correlation_id=cid,
+            extra={"job_id": job_id, "kind": job["kind"]},
+            on_line=_sse_publish,
+        ) as tee:
+            proc = tee.process
+            if proc is not None:
+                await _update(job_id, pid=proc.pid)
+
+            # Attente du process avec détection d'annulation périodique.
+            # Le cancel() pose le CANCEL_MARKER + tue le pgid. La boucle
+            # ci-dessous force l'envoi du SIGTERM si l'user a demandé
+            # l'annulation mais que le script ne réagit pas.
+            while proc is not None and proc.returncode is None:
+                if job.get("error") == CANCEL_MARKER and proc.returncode is None:
+                    try:
+                        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                    except (OSError, ProcessLookupError):
+                        pass
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=0.5)
+                except asyncio.TimeoutError:
+                    continue
+
+        size = os.path.getsize(log_path) if os.path.isfile(log_path) else 0
+        if job.get("error") == CANCEL_MARKER:
+            new_status = "cancelled"
+            await _update(
+                job_id, status=new_status, exit_code=tee.exit_code,
+                output_size=size, pid=None, finished_at=_utcnow(), error=None,
+            )
+        else:
+            new_status = "success" if tee.exit_code == 0 else "failed"
+            await _update(
+                job_id, status=new_status, exit_code=tee.exit_code,
+                output_size=size, pid=None, finished_at=_utcnow(),
+            )
+        await events.bus.publish("jobs", "finished", {
+            "id": job_id, "status": new_status, "exit_code": tee.exit_code, "size": size,
+        })
+        logger.info("job.end", extra={
+            "job_id": job_id, "kind": job["kind"], "status": new_status,
+            "exit_code": tee.exit_code, "duration_ms": tee.duration_ms,
+        })
+
+        try:
+            from app.services import notifications
+            kind = job["kind"]
+            category = kind.split(".")[0] if "." in kind else "system"
+            level = "info" if new_status == "success" else "error"
+            await notifications.create(
+                level=level, category=category,
+                title=f"{kind} {'réussi' if new_status == 'success' else 'échoué'}",
+                body=f"Job {job_id[:8]} terminé en exit {tee.exit_code}.",
+                link=f"/jobs/{job_id}",
+            )
+        except Exception:
+            logger.exception("Erreur création notification pour job %s", job_id)
+    except Exception as e:
+        logger.exception("Erreur d'exécution du job %s", job_id)
+        await _update(
+            job_id, status="failed", error=f"{type(e).__name__}: {e}",
+            finished_at=_utcnow(),
+        )
+        await events.bus.publish("jobs", "failed", {"id": job_id, "error": str(e)})
+        try:
+            from app.services import notifications
+            await notifications.create(
+                level="error", category="system",
+                title=f"Erreur d'exécution du job {job['kind']}",
+                body=str(e), link=f"/jobs/{job_id}",
+            )
+        except Exception:
+            pass
+    finally:
+        from app.logging_config import reset_correlation_id
+        try:
+            reset_correlation_id(cid_token)
+        except Exception:
+            pass
+    # On flag l'annulation ; c'est le worker qui marquera "cancelled" quand il détecte
+    # la fin du subprocess, pour éviter une race avec _update final du worker.
+    await _update(job_id, error=CANCEL_MARKER)
+    await events.bus.publish("jobs", "cancel-requested", {"id": job_id})
+    return True
+
+
+# ── Worker loop ──────────────────────────────────────────────────
+
+_worker_task: asyncio.Task | None = None
+
+
+async def start_worker() -> None:
+    global _worker_task
+    if _worker_task is not None and not _worker_task.done():
+        return
+    await recover_interrupted()
+    _worker_task = asyncio.create_task(_worker_loop(), name="jobs-worker")
+
+
+async def stop_worker() -> None:
+    global _worker_task
+    if _worker_task is None:
+        return
+    _worker_task.cancel()
+    try:
+        await _worker_task
+    except (asyncio.CancelledError, Exception):
+        pass
+    _worker_task = None
+
+
+async def recover_interrupted() -> int:
+    """Marque 'interrupted' les jobs 'running' dont le PID n'existe plus."""
+    recovered = 0
+    async for conn in db.get_conn():
+        cur = await conn.execute("SELECT id, pid FROM jobs WHERE status='running'")
+        rows = await cur.fetchall()
+        await cur.close()
+        dead_ids = []
+        for row in rows:
+            pid = row["pid"]
+            if pid and not _pid_alive(pid):
+                dead_ids.append(row["id"])
+        if not dead_ids:
+            return 0
+        now = _utcnow()
+        await conn.execute(
+            "UPDATE jobs SET status='interrupted', finished_at=?, "
+            "  error='Process terminé de manière inattendue (recovery au démarrage)' "
+            "WHERE id IN ("
+            + ",".join("?" * len(dead_ids)) +
+            ")",
+            [now, *dead_ids],
+        )
+        await conn.commit()
+        recovered = len(dead_ids)
+        for jid in dead_ids:
+            await events.bus.publish("jobs", "interrupted", {"id": jid})
+            logger.warning("Job %s marqué interrupted (PID mort)", jid)
+    return recovered
+
+
+async def _next_queued() -> dict | None:
+    """Trouve le prochain job 'queued' qui n'est pas bloqué par un lock.
+
+    Itère sur TOUS les jobs queued (par ordre de création) et retourne le
+    premier dont le lock_key n'est pas tenu par un running. Sans cette
+    itération, un seul job queued avec un lock tenu bloque tous les jobs
+    queued plus récents qui ont un lock libre.
+    """
+    async for conn in db.get_conn():
+        cur = await conn.execute(
+            "SELECT * FROM jobs WHERE status='queued' ORDER BY created_at ASC"
+        )
+        rows = await cur.fetchall()
+        await cur.close()
+        for row in rows:
+            job = await _row_to_job(row)
+            # Vérifier si annulé pendant qu'il était en queue (status=queued
+            # mais error=CANCEL_MARKER posé par cancel())
+            if job.get("error") == CANCEL_MARKER:
+                await _update(job["id"], status="cancelled", finished_at=_utcnow(),
+                              error=None)
+                await events.bus.publish("jobs", "cancelled", {"id": job["id"]})
+                continue
+            if job.get("lock_key"):
+                cur = await conn.execute(
+                    "SELECT COUNT(*) as c FROM jobs WHERE status='running' AND lock_key=?",
+                    (job["lock_key"],),
+                )
+                r = await cur.fetchone()
+                await cur.close()
+                if r["c"] > 0:
+                    continue  # Lock tenu, essayer le suivant
+            return job
+        return None
+
+
+async def _worker_loop() -> None:
+    logger.info("Job worker démarré")
+    while True:
+        try:
+            job = await _next_queued()
+            if job is None:
+                await asyncio.sleep(1.0)
+                continue
+            await _run_job(job)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Erreur dans le worker loop")
+            await asyncio.sleep(2.0)
+
+
+async def _run_job(job: dict) -> None:
+    job_id = job["id"]
+    command = json.loads(job["command"])
+    os.makedirs(config.JOB_LOG_DIR, exist_ok=True)
+    log_path = os.path.join(config.JOB_LOG_DIR, f"{job_id}.log")
+
+    await _update(job_id, status="running", started_at=_utcnow(), output_path=log_path)
+    await events.bus.publish("jobs", "started", {"id": job_id, "kind": job["kind"]})
+
+    env = os.environ.copy()
+    env["KSF_BASE_DIR"] = config.BASE_DIR
+    env["KSF_REPO_DIR"] = config.REPO_DIR
+    env["BASE_DIR"] = config.BASE_DIR
+    env["HOME"] = "/tmp"
+    env["XDG_CONFIG_HOME"] = "/tmp"
     env["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
     try:

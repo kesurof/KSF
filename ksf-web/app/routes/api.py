@@ -1,10 +1,12 @@
 """Blueprints JSON / partials HTML / fichiers."""
+import json
 import logging
 import os
 import re
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.templating import Jinja2Templates
 
 from app import config as app_config
 from app import db as app_db
@@ -331,3 +333,175 @@ async def webhook_health_check(endpoint_id: str, request: Request):
     result = await webhooks_svc.ping(ep)
     await audit_log(request, "webhook.health", endpoint_id, after=result)
     return result
+
+
+# ── Logs viewer (Phase 7 — structured logs unifiés) ──────────
+
+
+def _read_log_tail(log_path: str, max_lines: int) -> list[dict]:
+    """Lit les N dernières lignes JSONL du fichier log, en ordre DESC puis reverse.
+
+    Robuste aux lignes malformées (skip silencieusement).
+    """
+    out: list[dict] = []
+    if not os.path.isfile(log_path):
+        return out
+    try:
+        # Lecture efficace : seek à la fin, lire par blocs jusqu'à obtenir N lignes.
+        block_size = 8192
+        with open(log_path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            pos = f.tell()
+            buf = b""
+            lines: list[bytes] = []
+            while pos > 0 and len(lines) < max_lines + 50:
+                read_size = min(block_size, pos)
+                pos -= read_size
+                f.seek(pos)
+                buf = f.read(read_size) + buf
+                lines = buf.splitlines()
+            # Tronque au bon nombre et parse
+            for raw in lines[-max_lines:]:
+                try:
+                    out.append(json.loads(raw.decode("utf-8", errors="replace")))
+                except (ValueError, UnicodeDecodeError):
+                    continue
+    except OSError:
+        return out
+    # Garde l'ordre chronologique (DESC → on inverse pour ASC).
+    out.reverse()
+    return out
+
+
+def _filter_events(events: list[dict], levels: list[str] | None,
+                   logger: str | None, target: str | None,
+                   correlation_id: str | None) -> list[dict]:
+    if levels:
+        levels_u = {x.upper() for x in levels}
+        events = [e for e in events if e.get("level", "").upper() in levels_u]
+    if logger:
+        events = [e for e in events if e.get("logger") == logger]
+    if target:
+        t = target.strip().lower()
+        events = [
+            e for e in events
+            if (e.get("target") and t in str(e.get("target")).lower())
+            or (e.get("args") and any(t in str(a).lower() for a in (e.get("args") or [])))
+        ]
+    if correlation_id:
+        cid = correlation_id.strip()
+        events = [e for e in events if e.get("correlation_id") == cid]
+    return events
+
+
+@router.get("/api/logs/recent", response_class=HTMLResponse)
+async def logs_recent(
+    request: Request,
+    level: list[str] | None = None,
+    logger: str | None = None,
+    target: str | None = None,
+    correlation_id: str | None = None,
+    limit: int = 200,
+):
+    """Renvoie un partial HTML avec les derniers events du log structuré.
+
+    `level` peut être fourni plusieurs fois (?level=INFO&level=ERROR) ou en
+    virgules (level=INFO,ERROR). Les deux formes sont acceptées.
+    """
+    if limit > 1000:
+        limit = 1000
+    if limit < 1:
+        limit = 50
+    levels = []
+    if level:
+        for item in level:
+            if not item:
+                continue
+            levels.extend([x.strip().upper() for x in item.split(",") if x.strip()])
+
+    log_path = os.path.join(app_config.LOG_DIR, "ksf-web.log")
+    events = _read_log_tail(log_path, limit)
+    events = _filter_events(events, levels or None, logger, target, correlation_id)
+    # Tronque les events aux fields utiles + formatte la date
+    out = []
+    for e in events[-limit:]:
+        out.append({
+            "ts": e.get("ts", ""),
+            "level": e.get("level", "INFO"),
+            "logger": e.get("logger", ""),
+            "correlation_id": e.get("correlation_id", "-"),
+            "msg": e.get("msg", ""),
+            "stream": e.get("stream"),
+            "target": e.get("target"),
+            "n": e.get("n"),
+        })
+
+    templates = Jinja2Templates(directory=app_config.TEMPLATE_DIR)
+    return templates.TemplateResponse("partials/logs_viewer.html", {
+        "request": request,
+        "events": out,
+        "filters": {
+            "levels": levels or [],
+            "logger": logger or "",
+            "target": target or "",
+            "correlation_id": correlation_id or "",
+            "limit": limit,
+        },
+    })
+
+
+@router.get("/api/logs/correlation/{cid}", response_class=HTMLResponse)
+async def logs_correlation(cid: str, request: Request, format: str = "html"):
+    """Renvoie tous les events d'un correlation_id donné.
+
+    Sources combinées : ksf-web.log (filtre) + audit_log SQLite (col correlation_id).
+    Format par défaut : HTML partial (utilisé par l'expand panel). Avec
+    ?format=json : JSON brut.
+    """
+    if not cid or len(cid) > 64 or not re.fullmatch(r"[a-zA-Z0-9_\-]+", cid):
+        raise HTTPException(status_code=400, detail="correlation_id invalide")
+
+    log_path = os.path.join(app_config.LOG_DIR, "ksf-web.log")
+    raw = _read_log_tail(log_path, 10000)
+    events = [e for e in raw if e.get("correlation_id") == cid]
+    # Audit row lié
+    audit_entry = None
+    try:
+        async for conn in app_db.get_conn():
+            cur = await conn.execute(
+                "SELECT id, actor, action, target, ip, ua, created_at, job_id "
+                "FROM audit_log WHERE correlation_id=? ORDER BY id DESC LIMIT 1",
+                (cid,),
+            )
+            row = await cur.fetchone()
+            await cur.close()
+            if row:
+                audit_entry = dict(row)
+    except Exception:
+        logger.exception("logs_correlation: audit query failed")
+
+    if format == "json":
+        return JSONResponse({"events": events, "audit": audit_entry})
+
+    templates = Jinja2Templates(directory=app_config.TEMPLATE_DIR)
+    return templates.TemplateResponse("partials/log_correlation.html", {
+        "request": request,
+        "events": events,
+        "audit": audit_entry,
+    })
+
+
+@router.get("/api/logs/download", response_class=PlainTextResponse)
+async def logs_download(request: Request, file: str = "ksf-web.log"):
+    """Renvoie le fichier log brut (ksf-web.log ou une rotation ksf-web.log.N)."""
+    if not re.fullmatch(r"ksf-web\.log(\.[0-9]+)?", file):
+        raise HTTPException(status_code=400, detail="Nom de fichier invalide")
+    path = os.path.join(app_config.LOG_DIR, file)
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Log introuvable")
+    try:
+        with open(path, "r", errors="replace") as f:
+            content = f.read()
+    except OSError:
+        raise HTTPException(status_code=500, detail="Impossible de lire le log")
+    return PlainTextResponse(content, media_type="text/plain; charset=utf-8")

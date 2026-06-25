@@ -13,6 +13,7 @@
     <a href="/diagnostics?tab=config" class="tab {% if tab == 'config' %}on{% endif %}" role="tab" aria-selected="{{ 'true' if tab == 'config' else 'false' }}">Configuration</a>
     <a href="/diagnostics?tab=routes" class="tab {% if tab == 'routes' %}on{% endif %}" role="tab" aria-selected="{{ 'true' if tab == 'routes' else 'false' }}">Routes Traefik</a>
     <a href="/diagnostics?tab=data" class="tab {% if tab == 'data' %}on{% endif %}" role="tab" aria-selected="{{ 'true' if tab == 'data' else 'false' }}">Données préservées</a>
+    <a href="/diagnostics?tab=logs" class="tab {% if tab == 'logs' %}on{% endif %}" role="tab" aria-selected="{{ 'true' if tab == 'logs' else 'false' }}">Logs</a>
 </div>
 
 <div class="mt-3">
@@ -72,6 +73,15 @@
         </div>
     </div>
     {% endif %}
+    {% elif tab == 'logs' %}
+    <div class="card">
+        <div hx-get="/api/logs/recent?limit=200"
+             hx-trigger="load, every 5s"
+             hx-swap="innerHTML"
+             id="logs-viewer">
+            <div class="empty"><span class="empty-text">Chargement des logs…</span></div>
+        </div>
+    </div>
     {% endif %}
 </div>
 {% endblock %}

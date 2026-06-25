@@ -192,6 +192,14 @@ app_normalize_loaded() {
     APP_HOST="$(app_template_value "$app_name" APP_HOST)"
   fi
   : "${APP_DIR:=${BASE_DIR}/apps/${app_name}}"
+  # Fallback : si APP_DIR pointe vers un chemin inexistant mais qu'un chemin
+  # équivalent sous BASE_DIR existe (cas typique : APP_DIR est l'ancien chemin
+  # de l'hôte et la plateforme tourne maintenant dans un conteneur avec un
+  # bind mount), on bascule pour que docker compose trouve la stack.
+  if [ ! -d "${APP_DIR}" ] && [ -d "${BASE_DIR}/apps/${app_name}" ]; then
+    warn "APP_DIR ${APP_DIR} introuvable, bascule vers ${BASE_DIR}/apps/${app_name}"
+    APP_DIR="${BASE_DIR}/apps/${app_name}"
+  fi
   : "${APP_DATA:=${BASE_DIR}/data/${app_name}}"
   : "${APP_PUID:=$(id -u)}"
   : "${APP_PGID:=$(id -g)}"

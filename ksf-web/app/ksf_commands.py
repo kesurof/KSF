@@ -3,8 +3,10 @@ import asyncio
 import subprocess
 import re
 import logging
+from datetime import datetime, timezone
 
 from app import utils
+from app.logging_config import TeeSubprocess, get_correlation_id
 
 logger = logging.getLogger("ksf-web")
 
@@ -13,12 +15,19 @@ KSF_REPO_DIR = os.environ.get("KSF_REPO_DIR", "/ksf")
 INSTALLED_DIR = os.path.join(KSF_BASE_DIR, "config", "installed-apps")
 KSF_BIN = os.path.join(KSF_REPO_DIR, "ksf.sh")
 APP_BIN = os.path.join(KSF_REPO_DIR, "app.sh")
+ACTIONS_LOG_DIR = os.path.join(KSF_BASE_DIR, "logs", "ksf-web", "actions")
 
 EXEC_ENV = {
     **os.environ,
     "KSF_BASE_DIR": KSF_BASE_DIR,
     "KSF_REPO_DIR": KSF_REPO_DIR,
-    "HOME": "/home/appuser",
+    "BASE_DIR": KSF_BASE_DIR,
+    # HOME pointe sur /tmp (toujours accessible en écriture) plutôt que
+    # /home/appuser (qui appartient à l'appuser 1000 de l'image, pas à
+    # l'uid réel 1002 de l'hôte). Les scripts n'utilisent plus $HOME
+    # depuis qu'on force BASE_DIR.
+    "HOME": "/tmp",
+    "XDG_CONFIG_HOME": "/tmp",
     "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 }
 
@@ -65,7 +74,10 @@ def _validate_app_name(name: str) -> bool:
 
 
 def _run_subprocess_sync(cmd: list[str], timeout: int) -> tuple[bool, str]:
-    """Helper synchrone (à appeler via asyncio.to_thread)."""
+    """Helper synchrone (à appeler via asyncio.to_thread). Pour les commandes
+    one-shot courtes (doctor, status, config, routes, etc.) qui n'ont pas besoin
+    de capture structurée ligne par ligne.
+    """
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=timeout,
@@ -80,6 +92,12 @@ def _run_subprocess_sync(cmd: list[str], timeout: int) -> tuple[bool, str]:
     except Exception as e:
         logger.exception("Erreur lors de l'execution de %s", cmd)
         return False, f"Erreur interne : {type(e).__name__}"
+
+
+def _actions_log_path(prefix: str) -> str:
+    os.makedirs(ACTIONS_LOG_DIR, exist_ok=True)
+    ts = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return os.path.join(ACTIONS_LOG_DIR, f"{prefix}-{ts}.log")
 
 
 async def run_command(key: str, extra_args: list[str] | None = None, timeout: int = 120) -> tuple[bool, str]:
@@ -101,18 +119,55 @@ async def run_command(key: str, extra_args: list[str] | None = None, timeout: in
     return await asyncio.to_thread(_run_subprocess_sync, cmd, timeout)
 
 
-async def run_app_command(app_name: str, action: str, extra_args: list[str] | None = None, timeout: int = 120) -> tuple[bool, str]:
-    """Async wrapper qui ne bloque pas l'event loop."""
+async def run_app_command(app_name: str, action: str, extra_args: list[str] | None = None,
+                          timeout: int = 120, correlation_id: str | None = None) -> tuple[bool, str, str]:
+    """Async wrapper qui ne bloque pas l'event loop.
+
+    Utilise TeeSubprocess pour teer la sortie vers un fichier brut
+    (`actions/<action>-<app>-<ts>.log`) ET vers le logger structuré
+    `ksf-web.actions` (events `subprocess.line` JSONL).
+
+    Renvoie (ok, output_text, log_path).
+    """
     if not _validate_app_name(app_name):
-        return False, "Nom d'application invalide."
+        return False, "Nom d'application invalide.", ""
     if action not in ALLOWED_APP_ACTIONS:
-        return False, f"Action non autorisee : {action}"
+        return False, f"Action non autorisee : {action}", ""
     cmd = [APP_BIN, action, app_name]
     if extra_args:
         cmd.extend(extra_args)
     if action in APP_ACTIONS_WITH_YES:
         cmd.append("--yes")
-    return await asyncio.to_thread(_run_subprocess_sync, cmd, timeout)
+    log_path = _actions_log_path(f"{action}-{app_name}")
+    cid = correlation_id or get_correlation_id()
+    try:
+        async with TeeSubprocess(
+            cmd, log_path,
+            logger_name="ksf-web.actions",
+            cwd=KSF_REPO_DIR,
+            env=EXEC_ENV,
+            correlation_id=cid,
+            extra={"action": action, "target": app_name},
+        ) as tee:
+            assert tee.process is not None
+            try:
+                await asyncio.wait_for(tee.process.wait(), timeout=timeout)
+            except asyncio.TimeoutError:
+                tee.process.kill()
+                await tee.process.wait()
+                return False, "La commande a expire (timeout).", log_path
+        ok = (tee.exit_code == 0)
+        try:
+            with open(log_path, "r", errors="replace") as f:
+                output = f.read()
+        except OSError:
+            output = ""
+        return ok, output, log_path
+    except FileNotFoundError:
+        return False, f"Script introuvable : {cmd[0]}", ""
+    except Exception as e:
+        logger.exception("Erreur lancement app command %s/%s", action, app_name)
+        return False, f"Erreur interne : {type(e).__name__}: {e}", ""
 
 
 def list_installed_apps() -> list[dict]:

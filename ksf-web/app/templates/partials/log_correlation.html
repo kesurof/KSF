@@ -1,0 +1,25 @@
+{% set events = events or [] %}
+{% set audit = audit or None %}
+{% if not events and not audit %}
+<div class="muted sm">Aucun event trouvé pour ce correlation_id.</div>
+{% else %}
+<div class="log-detail-list">
+    {% if audit %}
+    <div class="ev"><span class="ts mono sm">{{ audit.created_at or '' }}</span>
+        <span class="lvl lvl-INFO">audit</span>
+        <span><strong>{{ audit.action }}</strong> {% if audit.target %}→ <code>{{ audit.target }}</code>{% endif %} <span class="muted sm">par {{ audit.actor or '?' }} {% if audit.ip %}depuis {{ audit.ip }}{% endif %}</span></span>
+    </div>
+    {% endif %}
+    {% for e in events %}
+    <div class="ev">
+        <span class="ts mono sm">{{ (e.ts or '')[11:23] }}</span>
+        <span class="lvl lvl-{{ e.level or 'INFO' }}">{{ e.level or 'INFO' }}</span>
+        <span>
+            <strong>{{ e.logger or '' }}</strong> · {{ e.msg or '' }}
+            {% if e.line %}<pre class="mono sm">{{ e.line }}</pre>{% endif %}
+            {% if e.duration_ms is defined %}<span class="muted sm">duration_ms={{ e.duration_ms }}</span>{% endif %}
+        </span>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}

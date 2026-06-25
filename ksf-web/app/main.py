@@ -3,6 +3,8 @@
 Structure :
 - `app/main.py` (ce fichier) : app, lifespan, middleware, exception handlers, routers.
 - `app/helpers.py` : utilitaires (validation, format, audit).
+- `app/logging_config.py` : logging stdlib + correlation_id + TeeSubprocess.
+- `app/middleware/request_log.py` : RequestLogMiddleware (corrélation + access log).
 - `app/routes/pages.py` : GET HTML.
 - `app/routes/actions.py` : POST/DELETE mutations.
 - `app/routes/api.py` : JSON / partials / fichiers.
@@ -24,6 +26,8 @@ import secrets
 
 from app import config, db
 from app.helpers import wants_json
+from app.logging_config import configure_logging
+from app.middleware.request_log import RequestLogMiddleware
 from app.routes import pages as pages_routes
 from app.routes import actions as actions_routes
 from app.routes import api as api_routes
@@ -35,6 +39,8 @@ logger = logging.getLogger("ksf-web")
 
 @asynccontextmanager
 async def lifespan(app):
+    # 1. Logging D'ABORD pour capturer les erreurs de migration.
+    configure_logging()
     await db.init()
     # Backfill des secrets/payloads en clair vers *_encrypted (Phase 2).
     # Idempotent, no-op si déjà chiffré.
@@ -44,13 +50,14 @@ async def lifespan(app):
         await audit.backfill_legacy_payloads()
     except Exception:
         logger.exception("Backfill chiffrement a échoué (non-bloquant)")
-    # Rétention jobs 30 jours (Phase 4.10) : supprime anciennes entrées + .log.
+    # Rétention logs (jobs > 30j + actions/ orphelins + ksf-web.log.* > 30j).
     try:
-        await _prune_old_jobs()
+        await _log_retention()
     except Exception:
-        logger.exception("Prune jobs a échoué (non-bloquant)")
+        logger.exception("Log retention a échoué (non-bloquant)")
     await jobs.start_worker()
-    logger.info("ksf-web démarré (DB=%s, jobs worker actif)", config.DB_PATH)
+    logger.info("ksf-web démarré (DB=%s, jobs worker actif, log=%s)",
+                config.DB_PATH, config.LOG_DIR)
     try:
         yield
     finally:
@@ -58,41 +65,79 @@ async def lifespan(app):
         await db.close()
 
 
-async def _prune_old_jobs(retention_days: int = 30) -> int:
-    """Supprime les jobs de plus de `retention_days` jours + leurs .log."""
-    import os
+async def _log_retention(retention_days: int | None = None) -> int:
+    """Purge les logs > retention_days.
+
+    - jobs > 30j : DELETE row + suppression .log (compat Phase 4.10)
+    - actions/*.log orphelins et > retention_days : suppression
+    - ksf-web.log.* (rotations) > retention_days : suppression
+    """
     import glob
+    import os
+    import time
+    days = retention_days if retention_days is not None else config.LOG_RETENTION_DAYS
+    removed = 0
+    cutoff = time.time() - days * 86400
+
+    # 1. Jobs anciens en DB
     async for conn in db.get_conn():
         cur = await conn.execute(
             "SELECT id, output_path FROM jobs WHERE created_at < datetime('now', ?)",
-            (f"-{retention_days} days",),
+            (f"-{days} days",),
         )
         rows = await cur.fetchall()
         await cur.close()
-        if not rows:
-            return 0
-        ids = [r["id"] for r in rows]
-        # Supprime les .log
-        for r in rows:
-            if r["output_path"]:
-                try:
-                    if os.path.isfile(r["output_path"]):
-                        os.remove(r["output_path"])
-                except OSError:
-                    pass
-        # Aussi rm les .log orphelins dans JOB_LOG_DIR (pas trackés en DB)
-        for path in glob.glob(os.path.join(config.JOB_LOG_DIR, "*.log")):
+        if rows:
+            for r in rows:
+                if r["output_path"]:
+                    try:
+                        if os.path.isfile(r["output_path"]):
+                            os.remove(r["output_path"])
+                            removed += 1
+                    except OSError:
+                        pass
+            ids = [r["id"] for r in rows]
+            placeholders = ",".join("?" * len(ids))
+            await conn.execute(
+                f"UPDATE jobs SET output_path=NULL WHERE id IN ({placeholders})", ids
+            )
+            await conn.execute(
+                f"DELETE FROM jobs WHERE id IN ({placeholders})", ids
+            )
+            await conn.commit()
+
+    # 2. Actions *.log orphelins (> retention_days)
+    if os.path.isdir(config.ACTIONS_LOG_DIR):
+        for path in glob.glob(os.path.join(config.ACTIONS_LOG_DIR, "*.log")):
             try:
-                if os.path.getmtime(path) < (os.path.getmtime(__file__) - retention_days * 86400):
-                    pass  # best-effort, on n'efface que ceux trackés pour l'instant
+                if os.path.getmtime(path) < cutoff:
+                    os.remove(path)
+                    removed += 1
             except OSError:
                 pass
-        # DELETE en DB
-        placeholders = ",".join("?" * len(ids))
-        await conn.execute(f"DELETE FROM jobs WHERE id IN ({placeholders})", ids)
-        await conn.commit()
-        logger.info("Rétention: %d job(s) > %d jours supprimés", len(ids), retention_days)
-        return len(ids)
+
+    # 3. Jobs *.log orphelins (> retention_days, non trackés en DB)
+    if os.path.isdir(config.JOB_LOG_DIR):
+        for path in glob.glob(os.path.join(config.JOB_LOG_DIR, "*.log")):
+            try:
+                if os.path.getmtime(path) < cutoff:
+                    os.remove(path)
+                    removed += 1
+            except OSError:
+                pass
+
+    # 4. ksf-web.log.* (rotations)
+    for path in glob.glob(os.path.join(config.LOG_DIR, "ksf-web.log.*")):
+        try:
+            if os.path.getmtime(path) < cutoff:
+                os.remove(path)
+                removed += 1
+        except OSError:
+            pass
+
+    if removed:
+        logger.info("Rétention logs: %d fichier(s) supprimés (seuil %dj)", removed, days)
+    return removed
 
 
 app = FastAPI(title="KSF Web", docs_url=None, redoc_url=None, lifespan=lifespan)
@@ -167,6 +212,13 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 return JSONResponse({"detail": "Jeton CSRF manquant (header requis)"}, status_code=403)
 
         return await call_next(request)
+
+
+# ── Request log middleware (corrélation + access log) ──────
+# Doit être ajouté AVANT CSRFMiddleware pour que le status final
+# soit visible (FastAPI exécute les middlewares en ordre inverse
+# d'ajout : le dernier ajouté est le plus extérieur).
+app.add_middleware(RequestLogMiddleware)
 
 
 app.add_middleware(CSRFMiddleware)

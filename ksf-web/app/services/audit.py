@@ -42,6 +42,7 @@ async def log(
     job_id: str | None = None,
     ip: str | None = None,
     ua: str | None = None,
+    correlation_id: str | None = None,
 ) -> int:
     before_s = _serialize_payload(before)
     after_s = _serialize_payload(after)
@@ -51,10 +52,10 @@ async def log(
     async for conn in db.get_conn():
         cur = await conn.execute(
             "INSERT INTO audit_log (actor, action, target, before, after, "
-            "before_encrypted, after_encrypted, job_id, ip, ua, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "before_encrypted, after_encrypted, job_id, ip, ua, created_at, correlation_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (actor, action, target, None, None,
-             before_enc, after_enc, job_id, ip, ua, _utcnow()),
+             before_enc, after_enc, job_id, ip, ua, _utcnow(), correlation_id),
         )
         await conn.commit()
         return cur.lastrowid

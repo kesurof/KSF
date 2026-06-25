@@ -194,11 +194,62 @@ docker logs ksf-web -f
 docker exec -it ksf-web sqlite3 /var/lib/ksf-web/state.db
 sqlite> .tables
 sqlite> SELECT * FROM jobs ORDER BY id DESC LIMIT 5;
-sqlite> SELECT id, actor, action, target FROM audit_log ORDER BY id DESC LIMIT 10;
+sqlite> SELECT id, actor, action, target, correlation_id FROM audit_log ORDER BY id DESC LIMIT 10;
 
 # Replay SSE (curl)
 curl -N -H "Cookie: ksf_csrf=..." http://ksf.example.com/jobs/<id>/stream
 ```
+
+## Logs (Phase 7 — système de logs unifié)
+
+ksf-web émet 2 types de logs :
+
+1. **stdout (text)** : pour `docker logs` — lisible directement.
+2. **fichier `~/serverbox/logs/ksf-web/ksf-web.log` (JSONL)** : un event par ligne,
+   rotaté automatiquement (10 MB × 5 backups). Vue UI : `/diagnostics?tab=logs`.
+
+Chaque event porte un `correlation_id` (UUID 12 chars, posé par `RequestLogMiddleware`
+et propagé via `contextvars` à tous les handlers de log). Toutes les events d'une
+même action partagent le même `correlation_id` : request → app.action.start →
+subprocess.line* → app.action.end → audit.
+
+Chaque réponse HTTP porte un header `X-Request-Id` (12 chars) qui est le
+`correlation_id` de la requête.
+
+### Exemples `jq` (sur le fichier JSONL)
+
+```bash
+# Toutes les erreurs des 30 derniers jours
+jq -c 'select(.level=="ERROR")' ~/serverbox/logs/ksf-web/ksf-web.log
+
+# Timeline complète d'une action (clic UI → résultat)
+CID=$(curl -sI -H "Cookie: ksf_csrf=…" https://ksf.example.com/apps/dockge/restart | awk '/X-Request-Id/ {print $2}' | tr -d '\r')
+jq -c --arg cid "$CID" 'select(.correlation_id == $cid)' ~/serverbox/logs/ksf-web/ksf-web.log
+
+# Toutes les actions sur dockge aujourd'hui
+jq -c 'select(.target=="dockge" and .ts | startswith("2026-06-25"))' ~/serverbox/logs/ksf-web/ksf-web.log
+
+# Compter les erreurs par logger
+jq -r 'select(.level=="ERROR") | .logger' ~/serverbox/logs/ksf-web/ksf-web.log | sort | uniq -c
+```
+
+### Configuration
+
+| Variable env | Défaut | Effet |
+|---|---|---|
+| `KSF_WEB_LOG_FORMAT` | `text` | `text` (lisible stdout) ou `json` (structured) |
+| `KSF_WEB_LOG_LEVEL` | `INFO` | `DEBUG` / `INFO` / `WARNING` / `ERROR` |
+| `KSF_WEB_LOG_FILE_MAX_BYTES` | `10485760` | 10 MB par fichier avant rotation |
+| `KSF_WEB_LOG_FILE_BACKUPS` | `5` | Nombre de rotations conservées |
+| `KSF_WEB_LOG_RETENTION_DAYS` | `30` | Purge des `.log` orphelins et rotations au démarrage |
+
+### Endpoints
+
+- `GET /api/logs/recent?level=INFO&level=ERROR&logger=ksf-web.actions&target=dockge&correlation_id=…&limit=200` :
+  partial HTML pour l'UI onglet Logs. Auto-refresh 5 s.
+- `GET /api/logs/correlation/{cid}` : partial HTML (par défaut) ou JSON (`?format=json`)
+  avec tous les events d'un `correlation_id` + l'event `audit_log` lié.
+- `GET /api/logs/download?file=ksf-web.log` (ou `ksf-web.log.1`, etc.) : fichier brut.
 
 ## Procédure de mise à jour
 
