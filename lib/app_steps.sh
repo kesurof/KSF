@@ -443,6 +443,8 @@ app_update() {
   # APP_NAME est maintenant le nom de template (pas l'instance). On résout
   # le bon template_dir pour le multi-instance.
   app_template_dir="${APP_TEMPLATE_DIR}/${APP_NAME:-${app_name}}"
+  # Exporte pour les hooks (sourcés en sous-shell).
+  export APP_TEMPLATE_DIR="${app_template_dir}"
   if [ ! -f "${app_template_dir}/compose.yml" ]; then
     err "Template Compose absent pour ${APP_NAME:-${app_name}} : ${app_template_dir}/compose.yml"
     exit 1
@@ -525,6 +527,8 @@ app_rebuild() {
   app_require_installed "$app_name"
   # app_require_installed charge l'env file : APP_NAME = template.
   app_template_dir="${APP_TEMPLATE_DIR}/${APP_NAME:-${app_name}}"
+  # Exporte pour les hooks (sourcés en sous-shell).
+  export APP_TEMPLATE_DIR="${app_template_dir}"
   if [ ! -f "${app_template_dir}/compose.yml" ]; then
     err "Template Compose absent pour ${APP_NAME:-${app_name}} : ${app_template_dir}/compose.yml"
     exit 1
@@ -756,16 +760,65 @@ app_run_hook() {
     return 0
   fi
 
+  # Le hook est sourcé dans un sous-shell, ce qui isolerait les variables
+  # locales (notamment app_dir / app_data). On exporte donc le contrat
+  # attendu par les hooks AVANT de sourcer. Les hooks peuvent activer
+  # `set -u` en toute sécurité.
+  app_export_hook_env
+
   if ! ( source "$hook_path" ); then
     err "Échec du hook ${hook_name} pour ${app_name} (voir logs ci-dessus)."
     exit 1
   fi
 }
 
+# Exporte les variables du contrat hook vers l'environnement des sous-shells.
+# Les variables locales des fonctions (app_dir, app_data, etc.) ne sont PAS
+# visibles dans les sous-shells sans export — c'est pour ça que cette
+# fonction existe. Le hook peut donc activer `set -u` sans risque.
+#
+# Variables exposées au hook :
+#   APP_NAME          : nom du template (ex: "wordpress")
+#   APP_INSTANCE      : nom de l'instance (ex: "blog", par défaut = APP_NAME)
+#   APP_DIR           : chemin de la stack générée (${BASE_DIR}/apps/${APP_INSTANCE})
+#   APP_DATA          : chemin des données (${BASE_DIR}/data/${APP_INSTANCE})
+#   APP_PUID, APP_PGID : UID/GID de l'utilisateur hôte
+#   APP_HOST          : hostname public (peut être vide en local-only)
+#   APP_PORT          : port interne
+#   APP_DOMAIN, APP_SUBDOMAIN : composants du hostname
+#   APP_TEMPLATE_DIR  : chemin du template (templates/apps/<template>/)
+#   BASE_DIR          : racine de la plateforme
+#   NETWORK_NAME      : nom du réseau Docker externe
+#   TZ_VALUE          : timezone IANA
+#   DOCKER_GID        : GID du groupe docker
+#   DRY_RUN, AUTO_YES : flags du shell appelant
+app_export_hook_env() {
+  export APP_NAME="${APP_NAME:-}"
+  export APP_INSTANCE="${APP_INSTANCE:-${APP_NAME:-}}"
+  export APP_DIR="${APP_DIR:-${BASE_DIR}/apps/${APP_INSTANCE}}"
+  export APP_DATA="${APP_DATA:-${BASE_DIR}/data/${APP_INSTANCE}}"
+  export APP_PUID="${APP_PUID:-}"
+  export APP_PGID="${APP_PGID:-}"
+  export APP_HOST="${APP_HOST:-}"
+  export APP_PORT="${APP_PORT:-}"
+  export APP_DOMAIN="${APP_DOMAIN:-}"
+  export APP_SUBDOMAIN="${APP_SUBDOMAIN:-}"
+  export APP_TEMPLATE_DIR="${APP_TEMPLATE_DIR:-${SCRIPT_DIR}/templates/apps/${APP_NAME}}"
+  export BASE_DIR="${BASE_DIR:-}"
+  export NETWORK_NAME="${NETWORK_NAME:-}"
+  export TZ_VALUE="${TZ_VALUE:-}"
+  export DOCKER_GID="${DOCKER_GID:-}"
+  export DRY_RUN="${DRY_RUN:-false}"
+  export AUTO_YES="${AUTO_YES:-false}"
+}
+
 app_install() {
   local app_name="$1"
   local app_instance="${APP_INSTANCE_OVERRIDE:-${app_name}}"
   local app_template_dir="${APP_TEMPLATE_DIR}/${app_name}"
+  # Exporte APP_TEMPLATE_DIR avec le chemin complet du template courant
+  # pour que les hooks (sourcés en sous-shell) y accèdent correctement.
+  export APP_TEMPLATE_DIR="${app_template_dir}"
 
   if [ ! -d "${app_template_dir}" ]; then
     err "App inconnue : ${app_name}"

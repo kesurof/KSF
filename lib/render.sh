@@ -237,6 +237,13 @@ render_app_route_from_env() {
   prepare_render_context
   render_normalize_app_vars "${APP_NAME:-}"
 
+  # Pour le multi-instance, l'identité unique de la route (router + service
+  # Traefik, nom du fichier de route) est APP_INSTANCE. Le nom de service
+  # Docker en upstream reste le service name du compose (APP_NAME) puisque
+  # c'est le réseau Docker qui fait la résolution.
+  local route_id="${APP_INSTANCE:-${APP_NAME}}"
+  local upstream_service="${APP_DOCKER_SERVICE:-${APP_NAME}}"
+
   if [ -z "${APP_NAME:-}" ]; then
     err "APP_NAME manquant pour la génération de route applicative."
     exit 1
@@ -269,7 +276,7 @@ render_app_route_from_env() {
   esac
 
   if [ "${DRY_RUN:-false}" = true ]; then
-    warn "[DRY-RUN] Rendu route applicative ${APP_NAME} -> ${destination}"
+    warn "[DRY-RUN] Rendu route applicative ${route_id} -> ${destination}"
     return 0
   fi
 
@@ -277,21 +284,21 @@ render_app_route_from_env() {
   {
     printf 'http:\n'
     printf '  routers:\n'
-    printf '    %s:\n' "$APP_NAME"
+    printf '    %s:\n' "$route_id"
     printf '      rule: "Host(`%s`)"\n' "$APP_HOST"
     printf '      entryPoints:\n'
     printf '        - websecure\n'
-    printf '      service: %s\n' "$APP_NAME"
+    printf '      service: %s\n' "$route_id"
     if [ -n "$middlewares_block" ]; then
       printf '%s\n' "$middlewares_block"
     fi
     printf '      tls:\n'
     printf '        certResolver: letsencrypt\n'
     printf '  services:\n'
-    printf '    %s:\n' "$APP_NAME"
+    printf '    %s:\n' "$route_id"
     printf '      loadBalancer:\n'
     printf '        servers:\n'
-    printf '          - url: http://%s:%s\n' "$APP_NAME" "$APP_PORT"
+    printf '          - url: http://%s:%s\n' "$upstream_service" "$APP_PORT"
   } > "$destination"
 }
 
