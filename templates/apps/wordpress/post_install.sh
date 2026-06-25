@@ -57,6 +57,18 @@ docker exec -u www-data "${WP_CONTAINER}" sh -c '
 
 WP_CLI="php /tmp/wp-cli.phar --allow-root --path=/var/www/html"
 
+# ---------- Garde : site WP pas encore installe via HTTP ----------
+# Tant que l'utilisateur n'a pas complete l'install wizard (5-min install),
+# toute commande wp-cli autre que `core is-installed` echoue avec :
+#   "The site you have requested is not installed."
+# On detecte cet etat une fois pour toutes et on court-circuite le reste.
+if ! docker exec -u www-data "${WP_CONTAINER}" sh -c "${WP_CLI} core is-installed 2>/dev/null"; then
+  info "WordPress pas encore installe sur HTTP : les plugins, l'object cache et les"
+  info "permaliens seront configures automatiquement a la prochaine post-install"
+  info "(relancer apres la 1re visite sur https://${APP_HOST}/)."
+  return 0 2>/dev/null || exit 0
+fi
+
 # ---------- Installation du plugin Redis Object Cache ----------
 info "Installation du plugin Redis Object Cache..."
 if docker exec -u www-data "${WP_CONTAINER}" sh -c "${WP_CLI} plugin is-installed redis-cache 2>/dev/null"; then
@@ -76,7 +88,12 @@ docker exec -u www-data "${WP_CONTAINER}" sh -c "${WP_CLI} redis enable" \
 # (wp-config est initialise, ce qui se passe au premier acces HTTP).
 if docker exec -u www-data "${WP_CONTAINER}" sh -c "${WP_CLI} option get siteurl 2>/dev/null | grep -q http"; then
   info "Configuration des permaliens (postname)..."
-  docker exec -u www-data "${WP_CONTAINER}" sh -c "${WP_CLI} rewrite structure '/%postname%/' --hard" \
+  # wp-cli 2.11.0 n'a pas de flag --skip-rewrite-rules : il tente systematiquement
+  # de regenerer .htaccess apres un rewrite structure, ce qui echoue avec
+  # proc_open() desactive dans php.ini. Inutile ici : nginx gere les permaliens
+  # via try_files, .htaccess n'est pas lu. On utilise wp eval pour toucher
+  # uniquement la DB, en evitant la logique wp-cli qui veut regenerer .htaccess.
+  docker exec -u www-data "${WP_CONTAINER}" sh -c "${WP_CLI} eval 'update_option( \"permalink_structure\", \"/%postname%/\" );'" \
     || warn "Echec configuration permaliens (sera reconfigurable via WP admin)."
 else
   info "Site pas encore configure via HTTP — permaliens a configurer apres la premiere visite."

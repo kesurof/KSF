@@ -241,6 +241,7 @@ app_write_env_file() {
   ksf_env_write_var "$destination" APP_DOMAIN "${APP_DOMAIN:-}"
   ksf_env_write_var "$destination" APP_SUBDOMAIN "${APP_SUBDOMAIN:-}"
   ksf_env_write_var "$destination" APP_PORT "${APP_PORT:-}"
+  ksf_env_write_var "$destination" APP_DOCKER_SERVICE "${APP_DOCKER_SERVICE:-}"
   ksf_env_write_var "$destination" APP_PROTECTED "${APP_PROTECTED:-true}"
   ksf_env_write_var "$destination" APP_AUTH "${APP_PROTECTED:-true}"
   ksf_env_write_var "$destination" APP_PUBLIC "${APP_PUBLIC:-true}"

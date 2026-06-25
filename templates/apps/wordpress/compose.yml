@@ -23,7 +23,7 @@
 # Variables `__BASE_DIR__` / `__APP_INSTANCE__` sont substituees par render_template.
 services:
   wp:
-    image: wordpress:6-fpm-alpine
+    image: wordpress:7-fpm-alpine
     container_name: ${APP_INSTANCE}-wp
     restart: unless-stopped
     networks:
@@ -34,6 +34,9 @@ services:
       cache:
         condition: service_started
     environment:
+      PUID: ${APP_PUID}
+      PGID: ${APP_PGID}
+      TZ: ${TZ_VALUE}
       WORDPRESS_DB_HOST: db:3306
       WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME}
       WORDPRESS_DB_USER: ${WORDPRESS_DB_USER}
@@ -79,6 +82,10 @@ services:
     depends_on:
       wp:
         condition: service_started
+    environment:
+      - PUID=${APP_PUID}
+      - PGID=${APP_PGID}
+      - TZ=${TZ_VALUE}
     volumes:
       - ${BASE_DIR}/data/${APP_INSTANCE}/html:/var/www/html:ro
       - ${BASE_DIR}/data/${APP_INSTANCE}/config/nginx.conf:/etc/nginx/conf.d/default.conf:ro
@@ -96,10 +103,13 @@ services:
     networks:
       - proxy
     environment:
-      MARIADB_DATABASE: ${WORDPRESS_DB_NAME}
-      MARIADB_USER: ${WORDPRESS_DB_USER}
-      MARIADB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
-      MARIADB_RANDOM_ROOT_PASSWORD: "true"
+      - PUID=${APP_PUID}
+      - PGID=${APP_PGID}
+      - TZ=${TZ_VALUE}
+      - MARIADB_DATABASE=${WORDPRESS_DB_NAME}
+      - MARIADB_USER=${WORDPRESS_DB_USER}
+      - MARIADB_PASSWORD=${WORDPRESS_DB_PASSWORD}
+      - MARIADB_RANDOM_ROOT_PASSWORD=true
     volumes:
       - ${BASE_DIR}/data/${APP_INSTANCE}/db:/var/lib/mysql
     healthcheck:
@@ -123,6 +133,10 @@ services:
     restart: unless-stopped
     networks:
       - proxy
+    environment:
+      - PUID=${APP_PUID}
+      - PGID=${APP_PGID}
+      - TZ=${TZ_VALUE}
     volumes:
       - ${BASE_DIR}/data/${APP_INSTANCE}/cache:/data
     command:
