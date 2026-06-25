@@ -118,18 +118,21 @@ def test_apps_no_details_element(client):
     assert "<details" not in src, "Le kebab doit être un div+button, pas <details>"
 
 
-def test_apps_kebab_uses_data_kebab(client):
-    """Le kebab menu doit utiliser la nouvelle structure data-kebab."""
+def test_apps_kebab_uses_data_dropdown(client):
+    """Le kebab menu doit utiliser la nouvelle structure data-dropdown + .is-open."""
     r = client.get("/apps")
-    # Vérifie qu'au moins un kebab est présent (avec app installée)
-    # et utilise la nouvelle structure
     with open("/home/kesurof/projets/KSF/ksf-web/app/templates/apps.html") as f:
         src = f.read()
-    assert "data-kebab" in src
-    assert "data-kebab-trigger" in src
+    assert "data-dropdown" in src
+    assert "data-dropdown-trigger" in src
     assert "kebab-trigger" in src
     assert "aria-haspopup=\"menu\"" in src
     assert "aria-expanded=\"false\"" in src
+    # Le pattern CSS utilise .is-open
+    with open("/home/kesurof/projets/KSF/ksf-web/app/static/app.css") as f:
+        css = f.read()
+    assert ".kebab.is-open" in css
+    assert ".kebab.is-open .kebab-menu" in css
 
 
 def test_apps_actions_have_hx_swap_none(client):
@@ -144,6 +147,60 @@ def test_apps_actions_have_hx_swap_none(client):
     hx_swaps = src.count('hx-swap="none"')
     # On accepte que les hx-post pour les actions doivent tous avoir hx-swap
     assert hx_swaps >= hx_posts - 1, f"hx-post={hx_posts} mais hx-swap={hx_swaps}"
+
+
+def test_apps_kebab_items_match_working_pattern(client):
+    """Les items kebab doivent avoir EXACTEMENT le pattern du bouton /containers/{name}/restart qui marche.
+
+    Pas de hx-trigger="click" (redondant, peut interférer avec data-confirm + htmx.trigger).
+    Pas de hx-disabled-elt="this" (peut bloquer si déjà disabled).
+    Pas de tabindex="-1" (peut bloquer le focus/click dans certains navigateurs).
+    Juste : hx-post + hx-swap="none" + data-confirm/data-confirm2.
+    """
+    import re
+    with open("/home/kesurof/projets/KSF/ksf-web/app/templates/apps.html") as f:
+        src = f.read()
+    # Extraire la section kebab
+    kebab_match = re.search(r'<div class="kebab".*?</div>\s*</div>', src, re.DOTALL)
+    assert kebab_match, "kebab block non trouvé"
+    kebab_src = kebab_match.group(0)
+    # Pas de hx-trigger dans les items (le trigger est sur la div, pas les items)
+    assert 'hx-trigger=' not in kebab_src, "hx-trigger ne doit pas être dans les items kebab"
+    # Pas de hx-disabled-elt dans les items
+    assert 'hx-disabled-elt=' not in kebab_src, "hx-disabled-elt ne doit pas être dans les items kebab"
+    # Pas de tabindex="-1" dans les items
+    assert 'tabindex="-1"' not in kebab_src, "tabindex=-1 ne doit pas être dans les items kebab"
+    # Chaque hx-post dans le kebab doit avoir hx-swap="none"
+    items = re.findall(r'<button[^>]*hx-post="[^"]+"[^>]*>', kebab_src)
+    for item in items:
+        assert 'hx-swap="none"' in item, f"Item sans hx-swap=none: {item[:100]}"
+    # Au moins 3 items (restart, rebuild, disable/remove)
+    assert len(items) >= 3, f"Au moins 3 items attendus, trouvé {len(items)}"
+
+
+def test_apps_has_htmx_afterrequest_for_menu_close(client):
+    """Un listener htmx:afterRequest doit fermer le menu après une action."""
+    with open("/home/kesurof/projets/KSF/ksf-web/app/templates/apps.html") as f:
+        src = f.read()
+    assert 'htmx:afterRequest' in src, "Listener htmx:afterRequest requis pour fermer le menu"
+    # Doit vérifier que la cible est un .kebab-item
+    assert "closest('.kebab-item')" in src or 'closest(".kebab-item")' in src, \
+        "Le listener doit cibler les .kebab-item"
+
+
+def test_apps_stop_button_uses_stop_endpoint(client):
+    """Le bouton Stop doit pointer vers /apps/{name}/stop, PAS /restart."""
+    import re
+    with open("/home/kesurof/projets/KSF/ksf-web/app/templates/apps.html") as f:
+        src = f.read()
+    # Trouver le bloc Stop (status == running)
+    stop_match = re.search(
+        r'app\.status == .running.*?/stop.*?</button>',
+        src, re.DOTALL
+    )
+    if stop_match:
+        assert 'hx-post="/apps/' in stop_match.group(0)
+        assert '/stop"' in stop_match.group(0), "Le bouton Stop doit utiliser /stop, pas /restart"
 
 
 def test_audit_export_json(client):

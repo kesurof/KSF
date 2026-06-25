@@ -78,16 +78,13 @@
             {% if app.disabled %}<div class="meta"><span class="meta-l">État</span><span class="badge b-orange">Désactivé</span></div>{% endif %}
         </div>
         <div class="acard-actions">
-            {# Action principale : Start/Stop (toggle), Update, kebab ⋯
-               Tous les hx-post ont hx-swap="none" : la réponse JSON est
-               consommée par le toast global (base.html) et le hx-on handler
-               éventuel. Sans ça, le JSON remplace le bouton dans le DOM. #}
+            {# Actions : pattern EXACT de /containers/{name}/restart qui marche.
+               hx-post + hx-swap="none" + data-confirm. Rien d'autre. #}
             {% if app.status == 'running' and not app.disabled %}
             <button class="btn btn-sm btn-warn"
                     hx-post="/apps/{{ app.name }}/stop"
                     hx-swap="none"
                     data-confirm="Arrêter {{ app.name }} ?"
-                    hx-disabled-elt="this"
                     {% if not actions_enabled %}disabled{% endif %}>
                 <span class="btn-icon" aria-hidden="true">■</span>Stop
             </button>
@@ -96,7 +93,6 @@
                     hx-post="/apps/{{ app.name }}/start"
                     hx-swap="none"
                     data-confirm="Démarrer {{ app.name }} ?"
-                    hx-disabled-elt="this"
                     {% if not actions_enabled %}disabled{% endif %}>
                 <span class="btn-icon" aria-hidden="true">▶</span>Start
             </button>
@@ -105,48 +101,52 @@
                     hx-post="/apps/{{ app.name }}/update"
                     hx-swap="none"
                     data-confirm="Mettre à jour {{ app.name }} ?"
-                    hx-disabled-elt="this"
                     {% if not actions_enabled %}disabled{% endif %}>
                 <span class="btn-icon" aria-hidden="true">↻</span>Update
             </button>
-            <div class="kebab" data-kebab>
+            <div class="kebab" data-dropdown>
                 <button type="button"
                         class="btn btn-sm kebab-trigger"
                         aria-label="Plus d'actions pour {{ app.name }}"
                         aria-haspopup="menu"
                         aria-expanded="false"
-                        data-kebab-trigger>⋯</button>
-                <div class="kebab-menu" role="menu" hidden>
-                    <button class="kebab-item"
+                        data-dropdown-trigger>⋯</button>
+                <div class="kebab-menu" role="menu">
+                    {# Items : pattern EXACT de /containers/{name}/restart qui marche.
+                       Pas de hx-trigger, hx-disabled-elt, tabindex. Juste hx-post
+                       + hx-swap="none" + data-confirm. Le swap=none évite que le
+                       JSON remplace l'item. Le menu se ferme via htmx:afterRequest
+                       (cf. script en bas). #}
+                    <button type="button"
+                            class="kebab-item"
                             hx-post="/apps/{{ app.name }}/restart"
                             hx-swap="none"
                             data-confirm="Redémarrer {{ app.name }} ?"
-                            hx-disabled-elt="this"
                             role="menuitem"
                             {% if not actions_enabled %}disabled{% endif %}>Redémarrer</button>
-                    <button class="kebab-item"
+                    <button type="button"
+                            class="kebab-item"
                             hx-post="/apps/{{ app.name }}/rebuild"
                             hx-swap="none"
                             hx-on::after-request="if(event.detail.xhr.status===200){var j=JSON.parse(event.detail.xhr.responseText);if(j.job_id)window.location='/jobs/'+j.job_id;}"
                             data-confirm2="Rebuild {{ app.name }} ? (re-pull image + relance)"
-                            hx-disabled-elt="this"
                             role="menuitem"
                             {% if not actions_enabled %}disabled{% endif %}>Reconstruire</button>
                     <div class="kebab-sep" role="separator"></div>
                     {% if app.disabled %}
-                    <button class="kebab-item danger"
+                    <button type="button"
+                            class="kebab-item danger"
                             hx-post="/apps/{{ app.name }}/remove"
                             hx-swap="none"
                             data-confirm2="Supprimer {{ app.name }} ?"
-                            hx-disabled-elt="this"
                             role="menuitem"
                             {% if not actions_enabled %}disabled{% endif %}>Supprimer</button>
                     {% else %}
-                    <button class="kebab-item warn"
+                    <button type="button"
+                            class="kebab-item warn"
                             hx-post="/apps/{{ app.name }}/disable"
                             hx-swap="none"
                             data-confirm2="Désactiver {{ app.name }} ?"
-                            hx-disabled-elt="this"
                             role="menuitem"
                             {% if not actions_enabled %}disabled{% endif %}>Désactiver</button>
                     {% endif %}
@@ -285,44 +285,69 @@
         if (e.key === 'Escape') {
             var m = document.getElementById('modal');
             if (m && m.classList.contains('on')) closeModal();
-            closeAllKebabs();
+            closeAllDropdowns();
         }
     });
-    // Kebab dropdown : ouverture/fermeture via le trigger, fermeture
-    // sur clic externe ou après activation d'un item.
-    function closeAllKebabs() {
-        document.querySelectorAll('[data-kebab]').forEach(function (k) {
-            var menu = k.querySelector('.kebab-menu');
-            var trig = k.querySelector('[data-kebab-trigger]');
-            if (menu && !menu.hidden) menu.hidden = true;
+
+    // ── Dropdown pattern (Bootstrap-style) ────────────────────────
+    // Structure : <div data-dropdown> <button data-dropdown-trigger>⋯</button>
+    //                                  <div class="kebab-menu">items</div> </div>
+    // Toggle : click sur trigger → ajoute .is-open.
+    // Ferme sur : click externe, Escape, click sur un item.
+
+    function closeAllDropdowns() {
+        document.querySelectorAll('.kebab.is-open').forEach(function (k) {
+            k.classList.remove('is-open');
+            var trig = k.querySelector('[data-dropdown-trigger]');
             if (trig) trig.setAttribute('aria-expanded', 'false');
         });
     }
+    function openDropdown(k) {
+        closeAllDropdowns();
+        k.classList.add('is-open');
+        var trig = k.querySelector('[data-dropdown-trigger]');
+        if (trig) trig.setAttribute('aria-expanded', 'true');
+    }
+    function toggleDropdown(k) {
+        if (k.classList.contains('is-open')) closeAllDropdowns();
+        else openDropdown(k);
+    }
+
+    // Délégation : un seul listener sur document pour tous les dropdowns
     document.addEventListener('click', function (e) {
-        var inside = e.target.closest('[data-kebab]');
-        if (!inside) { closeAllKebabs(); return; }
-        var trig = e.target.closest('[data-kebab-trigger]');
+        // 1. Clic sur un trigger : toggle
+        var trig = e.target.closest('[data-dropdown-trigger]');
         if (trig) {
+            e.preventDefault();
             e.stopPropagation();
-            var k = trig.closest('[data-kebab]');
-            var menu = k.querySelector('.kebab-menu');
-            var willOpen = menu.hidden;
-            closeAllKebabs();
-            if (willOpen) {
-                menu.hidden = false;
-                trig.setAttribute('aria-expanded', 'true');
-                // Focus le premier item après l'ouverture
-                setTimeout(function () {
-                    var first = menu.querySelector('.kebab-item:not([disabled])');
-                    if (first) first.focus();
-                }, 50);
-            }
+            var k = trig.closest('[data-dropdown]');
+            if (k) toggleDropdown(k);
             return;
         }
-        // Clic sur un item : ferme le menu après que l'action se déclenche
+        // 2. Clic dans le menu (mais pas sur un item) : ne rien faire
+        if (e.target.closest('.kebab-menu')) {
+            // Laisse l'item gérer, mais bloque la fermeture
+            return;
+        }
+        // 3. Clic sur un item (sans data-confirm) : ferme immédiatement.
+        // Pour les items avec data-confirm, on ferme via htmx:afterRequest
+        // (cf. listener ci-dessous) car data-confirm intercepte le clic.
         var item = e.target.closest('.kebab-item');
-        if (item) {
-            setTimeout(closeAllKebabs, 100);
+        if (item && !item.hasAttribute('data-confirm') && !item.hasAttribute('data-confirm2')) {
+            setTimeout(closeAllDropdowns, 50);
+            return;
+        }
+        // 4. Click ailleurs : ferme tout
+        closeAllDropdowns();
+    });
+
+    // Ferme le menu après qu'une action htmx initiée depuis un kebab-item
+    // se termine (succès OU erreur). Couvre le cas data-confirm où le clic
+    // est intercepté en capture avant d'atteindre ce handler.
+    document.body.addEventListener('htmx:afterRequest', function (e) {
+        var t = e.target;
+        if (t && t.closest && t.closest('.kebab-item')) {
+            setTimeout(closeAllDropdowns, 100);
         }
     });
 </script>

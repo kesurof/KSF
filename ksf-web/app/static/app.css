@@ -1012,20 +1012,22 @@ a.card:hover,
 }
 
 /* Kebab menu (⋯) : dropdown d'actions rares / destructives.
-   Structure : <div class="kebab" data-kebab>
-                 <button class="kebab-trigger" data-kebab-trigger>⋯</button>
-                 <div class="kebab-menu" role="menu" hidden>...</div>
+   Structure : <div class="kebab" data-dropdown>
+                 <button class="kebab-trigger" data-dropdown-trigger>⋯</button>
+                 <div class="kebab-menu" role="menu">items</div>
                </div>
+   Toggle : JS ajoute .is-open sur le wrapper. CSS affiche le menu.
    Pas de <details> : le user agent stylesheet interfère avec le
    positionnement absolu en flex parent. */
 .kebab { position: relative; display: inline-flex; flex-shrink: 0; }
 .kebab-trigger {
-    display: inline-flex;
+    display: inline-flex !important;
     align-items: center;
     justify-content: center;
     min-width: 1.75rem;
+    width: 1.75rem;
     height: 1.75rem;
-    padding: 0 var(--s-1);
+    padding: 0 !important;
     font-size: 1rem;
     line-height: 1;
     color: var(--text-2);
@@ -1034,41 +1036,61 @@ a.card:hover,
     border-radius: var(--r);
     cursor: pointer;
     user-select: none;
-    transition: background 0.12s, border-color 0.12s;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
-.kebab-trigger:hover { background: var(--hover); border-color: var(--border-3); }
-.kebab-trigger[aria-expanded="true"] { background: var(--surface-3); border-color: var(--border-3); }
+.kebab-trigger:hover { background: var(--hover); border-color: var(--border-3); color: var(--text); }
+.kebab-trigger[aria-expanded="true"] { background: var(--surface-3); border-color: var(--border-3); color: var(--text); }
 .kebab-menu {
     position: absolute;
-    top: calc(100% + var(--s-1));
+    top: calc(100% + 4px);
     right: 0;
-    z-index: 200;
-    min-width: 10rem;
-    display: flex;
+    z-index: 1000;
+    min-width: 11rem;
+    display: none;
     flex-direction: column;
     background: var(--surface);
     border: 1px solid var(--border-2);
     border-radius: var(--r);
     box-shadow: var(--shadow-lg);
-    padding: var(--s-1);
+    padding: 4px;
     gap: 2px;
+    /* Important : empêche le clic dans le menu de remonter au document */
+    pointer-events: auto;
+    /* Fix Safari : transforme en stacking context pour rester au-dessus */
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
 }
-.kebab-menu[hidden] { display: none; }
+/* Le menu est visible uniquement quand le wrapper parent a .is-open */
+.kebab.is-open .kebab-menu { display: flex; }
+.kebab.is-open .kebab-trigger {
+    background: var(--surface-3);
+    border-color: var(--border-3);
+    color: var(--text);
+}
 .kebab-item {
     text-align: left;
     background: transparent;
     border: 0;
     color: var(--text);
-    padding: var(--s-1) var(--s-2);
+    padding: var(--s-2) var(--s-3);
     font-size: var(--t-sm);
     border-radius: var(--r-xs);
     cursor: pointer;
-    transition: background 0.1s;
+    transition: background 0.1s, color 0.1s;
     white-space: nowrap;
+    font-family: inherit;
+    width: 100%;
+    display: block;
 }
-.kebab-item:hover { background: var(--hover); }
+.kebab-item:hover,
+.kebab-item:focus {
+    background: var(--hover);
+    outline: none;
+}
 .kebab-item.warn { color: var(--orange); }
+.kebab-item.warn:hover { background: var(--orange-soft); }
 .kebab-item.danger { color: var(--red); }
+.kebab-item.danger:hover { background: var(--red-soft); }
 .kebab-item:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .acard-containers {

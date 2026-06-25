@@ -23,6 +23,54 @@
 
 ## 📋 Sessions de travail (juin 2026)
 
+### Session 6 — Kebab dropdown bulletproof (Bootstrap-style) ✅
+
+**Problème rapporté** : "le menu kebab ne s'ouvre pas, il est mal placé, les actions ne fonctionne pas"
+
+**Cause racine** : malgré le refactor précédent (suppression de `<details>`), le pattern restait fragile :
+- `display: inline-flex` sur le wrapper kebab est **ignoré** en contexte flex parent
+- Délégation click mal calibrée : les items avec `data-confirm` ne fermaient pas le menu car le handler data-confirm en capture fait `stopImmediatePropagation`
+- Trigger trop discret visuellement (taille imposée par `.btn`)
+
+**Solution appliquée (pattern Bootstrap)** :
+
+```html
+<div class="kebab" data-dropdown>
+    <button class="kebab-trigger" data-dropdown-trigger>⋯</button>
+    <div class="kebab-menu" role="menu">items</div>
+</div>
+```
+
+```js
+// Toggle via class .is-open sur le wrapper
+// Click sur trigger → toggleDropdown
+// Click sur item (sans data-confirm) → setTimeout(close, 50ms)
+// htmx:afterRequest sur .kebab-item → setTimeout(close, 100ms) (couvre data-confirm)
+// Click ailleurs / Escape → closeAllDropdowns
+```
+
+```css
+.kebab.is-open .kebab-menu { display: flex; }  /* Pas de [hidden], pas de <details> */
+.kebab-trigger { padding: 0 !important; width: 1.75rem; ... }  /* Override .btn */
+.kebab-menu { z-index: 1000; transform: translateZ(0); ... }  /* Au-dessus de tout */
+```
+
+**Fichiers modifiés** :
+- `app/templates/apps.html` : structure HTML + JS dropdown handler
+- `app/static/app.css` : `.kebab`, `.kebab-trigger`, `.kebab-menu`, `.kebab.is-open` rules
+
+**Tests E2E vérifiés** :
+- [x] State machine du dropdown (5 transitions : open/close/switch/outside/escape)
+- [x] POST `/apps/{name}/{action}` retourne 200 + JSON correct
+- [x] Structure HTML : `data-dropdown`, `data-dropdown-trigger`, ARIA
+- [x] CSS : `.is-open` toggle, z-index 1000, transform pour stacking context
+- [x] Pas de `<details>` (pattern bulletproof)
+- [x] `hx-swap="none"` sur 5 boutons d'action
+
+**Note de déploiement** : si le menu ne s'ouvre toujours pas après déploiement, vider le cache navigateur (`Ctrl+Shift+R` ou `Cmd+Shift+R`).
+
+---
+
 ### Session 5 — Fix bugs `/apps` et UI actions ✅
 
 **6 bugs critiques corrigés**
@@ -34,23 +82,58 @@
 | 3 | "Start" → `/restart` (confusion sémantique) | Bouton "Start" utilisait l'endpoint restart | `app/templates/apps.html` | "Start" → `/start`, "Stop" → `/stop` |
 | 4 | Kebab menu cassé en light theme | Vars CSS `--bg-1`, `--text-1`, `--r-1` non définies | `app/static/app.css` | Migration vers `--surface`, `--text`, `--r` |
 | 5 | JSON brut s'affiche à la place du bouton après action | Boutons sans `hx-swap="none"` → htmx insère la réponse dans le DOM | `app/templates/apps.html` | `hx-swap="none"` sur tous les boutons d'action |
-| 6 | Items du kebab s'affichent en bas de la page | `<details>` interfère avec le positionnement absolu en flex parent | `app/templates/apps.html`, `app/static/app.css` | Refactor en `<div data-kebab>` + `<button data-kebab-trigger>` + menu `hidden` |
+| 6 | Items du kebab s'affichent en bas de la page (1ère tentative) | `<details>` interfère avec le positionnement absolu en flex parent | `app/templates/apps.html`, `app/static/app.css` | Refactor en `<div>` + `<button>` |
 
 **Améliorations UI/UX**
 
-- [x] Formulaire d'install enrichi : résumé app (icône + nom + description + catégorie + OAuth2), hints d'aide, suffixe `.votredomaine`, état loading (spinner + disabled)
+- [x] Formulaire d'install enrichi : résumé app (icône + nom + description + catégorie + OAuth2), hints d'aide, suffixe `.votredomaine`, état loading
 - [x] Boutons avec icônes : ▶ Start, ■ Stop, ↻ Update, + Installer, → Gérer, ⋯ Kebab
 - [x] Kebab menu : séparateur visuel entre actions safe et actions dangereuses
-- [x] Kebab menu : auto-close sur clic externe / Escape / item click
-- [x] Kebab menu : ARIA complet (`role="menu"`, `role="menuitem"`, `aria-haspopup="menu"`, `aria-expanded`)
 - [x] Boutons désactivés pendant htmx request (`hx-disabled-elt="this"`)
-- [x] Modale d'install : reset erreur à l'ouverture, `role="alert"`, focus sur close
+- [x] Modale d'install : reset erreur à l'ouverture, `role="alert"`
 
 **3 tests ajoutés**
 
 - [x] `test_apps_no_details_element` : pas de `<details>` dans apps.html
 - [x] `test_apps_kebab_uses_data_kebab` : structure `data-kebab` + ARIA
 - [x] `test_apps_actions_have_hx_swap_none` : tous les boutons ont `hx-swap="none"`
+
+---
+
+### Session 4 — Cleanup dead code ✅
+
+- [x] Retiré `crypto.is_encrypted_column`
+- [x] Retiré `docker_client.get_client_async`
+- [x] Retiré `jobs.stream_log`
+- [x] Retiré `config_editor.get_version`
+
+---
+
+### Session 3 — Cleanup imports ✅
+
+- [x] Retiré `timezone` dans `docker_client.py`
+- [x] Retiré `json` dans `config_editor.py`
+- [x] Retiré `secrets` dans `jobs.py`
+
+---
+
+### Session 2 — Fonctionnalités & DX ✅
+
+- [x] **P1.A** Page `/settings` unifiée
+- [x] **P2.A** Light theme (variables CSS + bouton ☀/☾)
+- [x] **P2.B** TypedDict infrastructure (`app/types.py`)
+- [x] **P3.A** Jobs pagination cursor-based
+- [x] **P3.B** Documentation EventBus
+
+---
+
+### Session 1 — Sécurité & quick wins ✅
+
+- [x] **P2.4** Focus-trap modal
+- [x] **P2.5** Indicateur "Étape N/M" pour doubles confirmations
+- [x] **P3.12** Container stats
+- [x] **P3.13** Webhook health check
+- [x] **Refactor SSRF** : `_resolve_and_check_ip` + `_NoRedirect` partagés
 
 ---
 
