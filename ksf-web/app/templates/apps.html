@@ -78,44 +78,62 @@
             {% if app.disabled %}<div class="meta"><span class="meta-l">État</span><span class="badge b-orange">Désactivé</span></div>{% endif %}
         </div>
         <div class="acard-actions">
-            {# 3 boutons max visibles : Start/Stop (toggle), Update, kebab ⋯ #}
+            {# Action principale : Start/Stop (toggle), Update, kebab ⋯ #}
             {% if app.status == 'running' and not app.disabled %}
             <button class="btn btn-sm btn-warn"
                     hx-post="/apps/{{ app.name }}/stop"
                     data-confirm="Arrêter {{ app.name }} ?"
-                    {% if not actions_enabled %}disabled{% endif %}>Stop</button>
+                    hx-disabled-elt="this"
+                    {% if not actions_enabled %}disabled{% endif %}>
+                <span class="btn-icon" aria-hidden="true">■</span>Stop
+            </button>
             {% else %}
             <button class="btn btn-sm btn-primary"
-                    hx-post="/apps/{{ app.name }}/restart"
+                    hx-post="/apps/{{ app.name }}/start"
                     data-confirm="Démarrer {{ app.name }} ?"
-                    {% if not actions_enabled %}disabled{% endif %}>Start</button>
+                    hx-disabled-elt="this"
+                    {% if not actions_enabled %}disabled{% endif %}>
+                <span class="btn-icon" aria-hidden="true">▶</span>Start
+            </button>
             {% endif %}
             <button class="btn btn-sm"
                     hx-post="/apps/{{ app.name }}/update"
                     data-confirm="Mettre à jour {{ app.name }} ?"
-                    {% if not actions_enabled %}disabled{% endif %}>Update</button>
-            <details class="kebab">
-                <summary class="btn btn-sm" aria-label="Plus d'actions">⋯</summary>
-                <div class="kebab-menu">
+                    hx-disabled-elt="this"
+                    {% if not actions_enabled %}disabled{% endif %}>
+                <span class="btn-icon" aria-hidden="true">↻</span>Update
+            </button>
+            <details class="kebab" onclick="event.stopPropagation()">
+                <summary class="btn btn-sm" aria-label="Plus d'actions pour {{ app.name }}">⋯</summary>
+                <div class="kebab-menu" role="menu">
                     <button class="kebab-item"
                             hx-post="/apps/{{ app.name }}/restart"
                             data-confirm="Redémarrer {{ app.name }} ?"
-                            {% if not actions_enabled %}disabled{% endif %}>Restart</button>
+                            hx-disabled-elt="this"
+                            role="menuitem"
+                            {% if not actions_enabled %}disabled{% endif %}>Redémarrer</button>
                     <button class="kebab-item"
                             hx-post="/apps/{{ app.name }}/rebuild"
                             hx-swap="none"
                             hx-on::after-request="if(event.detail.xhr.status===200){var j=JSON.parse(event.detail.xhr.responseText);if(j.job_id)window.location='/jobs/'+j.job_id;}"
                             data-confirm2="Rebuild {{ app.name }} ? (re-pull image + relance)"
-                            {% if not actions_enabled %}disabled{% endif %}>Rebuild</button>
+                            hx-disabled-elt="this"
+                            role="menuitem"
+                            {% if not actions_enabled %}disabled{% endif %}>Reconstruire</button>
+                    <div class="kebab-sep" role="separator"></div>
                     {% if app.disabled %}
                     <button class="kebab-item danger"
                             hx-post="/apps/{{ app.name }}/remove"
                             data-confirm2="Supprimer {{ app.name }} ?"
-                            {% if not actions_enabled %}disabled{% endif %}>Remove</button>
+                            hx-disabled-elt="this"
+                            role="menuitem"
+                            {% if not actions_enabled %}disabled{% endif %}>Supprimer</button>
                     {% else %}
                     <button class="kebab-item warn"
                             hx-post="/apps/{{ app.name }}/disable"
                             data-confirm2="Désactiver {{ app.name }} ?"
+                            hx-disabled-elt="this"
+                            role="menuitem"
                             {% if not actions_enabled %}disabled{% endif %}>Désactiver</button>
                     {% endif %}
                 </div>
@@ -165,9 +183,13 @@
                     hx-get="/apps/install-form/{{ app.name }}"
                     hx-target="#modal-body"
                     hx-swap="innerHTML"
-                    onclick="openModal('Installer {{ app.name }}')">Installer</button>
+                    onclick="openModal('Installer {{ app.name }}')">
+                <span class="btn-icon" aria-hidden="true">+</span>Installer
+            </button>
             {% else %}
-            <button class="btn btn-sm" onclick="stab('installed', document.querySelector('[data-tab=installed]'))">Gérer</button>
+            <button class="btn btn-sm" onclick="stab('installed', document.querySelector('[data-tab=installed]'))">
+                <span class="btn-icon" aria-hidden="true">→</span>Gérer
+            </button>
             {% endif %}
         </div>
     </div>
@@ -232,6 +254,7 @@
         var m = document.getElementById('modal');
         if (title) document.getElementById('modal-title').textContent = title;
         m.classList.add('on');
+        m.removeAttribute('hidden');
         document.body.style.overflow = 'hidden';
         var btn = m.querySelector('.modal-x');
         if (btn) setTimeout(function () { btn.focus(); }, 50);
@@ -240,12 +263,28 @@
         var m = document.getElementById('modal');
         m.classList.remove('on');
         document.body.style.overflow = '';
+        // Reset l'erreur d'install au prochain open
+        var errEl = document.getElementById('install-error');
+        if (errEl) { errEl.hidden = true; errEl.textContent = ''; }
     }
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') {
             var m = document.getElementById('modal');
             if (m && m.classList.contains('on')) closeModal();
         }
+    });
+    // Ferme les kebabs quand on clique ailleurs ou après un choix
+    document.addEventListener('click', function (e) {
+        document.querySelectorAll('.kebab[open]').forEach(function (d) {
+            if (!d.contains(e.target)) d.removeAttribute('open');
+        });
+    });
+    // Ferme le kebab après l'activation d'un item (action déclenchée)
+    document.querySelectorAll('.kebab-item').forEach(function (item) {
+        item.addEventListener('click', function () {
+            var k = item.closest('.kebab');
+            if (k) k.removeAttribute('open');
+        });
     });
 </script>
 {% endblock %}

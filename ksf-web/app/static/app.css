@@ -1027,18 +1027,18 @@ a.card:hover,
     line-height: 1;
     color: var(--text-2);
     background: transparent;
-    border: 1px solid var(--border-1, var(--border));
-    border-radius: var(--r-1);
+    border: 1px solid var(--border-2);
+    border-radius: var(--r);
     transition: background 0.12s, border-color 0.12s;
 }
 .kebab > summary::-webkit-details-marker { display: none; }
 .kebab > summary:hover {
-    background: var(--bg-3, var(--bg-2));
-    border-color: var(--border-2, var(--border));
+    background: var(--surface-3);
+    border-color: var(--border-3);
 }
 .kebab[open] > summary {
-    background: var(--bg-3, var(--bg-2));
-    border-color: var(--border-2, var(--border));
+    background: var(--surface-3);
+    border-color: var(--border-3);
 }
 .kebab-menu {
     position: absolute;
@@ -1048,10 +1048,10 @@ a.card:hover,
     min-width: 9rem;
     display: flex;
     flex-direction: column;
-    background: var(--bg-1);
-    border: 1px solid var(--border-2, var(--border));
-    border-radius: var(--r-1);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    background: var(--surface);
+    border: 1px solid var(--border-2);
+    border-radius: var(--r);
+    box-shadow: var(--shadow-lg);
     padding: var(--s-1);
     gap: 2px;
 }
@@ -1059,14 +1059,14 @@ a.card:hover,
     text-align: left;
     background: transparent;
     border: 0;
-    color: var(--text-1);
+    color: var(--text);
     padding: var(--s-1) var(--s-2);
     font-size: var(--t-sm);
-    border-radius: var(--r-0, 4px);
+    border-radius: var(--r-xs);
     cursor: pointer;
     transition: background 0.1s;
 }
-.kebab-item:hover { background: var(--bg-2); }
+.kebab-item:hover { background: var(--hover); }
 .kebab-item.warn { color: var(--orange); }
 .kebab-item.danger { color: var(--red); }
 .kebab-item:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -1557,6 +1557,49 @@ tbody tr:hover td { background: var(--hover); color: var(--text); }
 }
 .form-checkbox input { width: 16px; height: 16px; accent-color: var(--amber); cursor: pointer; }
 .form-help { font-size: var(--t-xs); color: var(--text-3); margin-top: 2px; }
+.form-hint { font-size: var(--t-xs); color: var(--text-3); margin-top: 2px; }
+.form-checkbox-help { font-size: var(--t-xs); color: var(--text-3); margin-left: var(--s-2); }
+.form-input-wrap { position: relative; display: flex; align-items: center; }
+.form-input-wrap .form-input { padding-right: 140px; }
+.form-input-suffix {
+    position: absolute; right: var(--s-3); color: var(--text-3);
+    font-family: var(--mono); font-size: var(--t-xs); pointer-events: none;
+}
+.form-actions { display: flex; gap: var(--s-2); justify-content: flex-end; margin-top: var(--s-2); }
+.form-error {
+    padding: var(--s-2) var(--s-3); background: var(--red-soft);
+    color: var(--red); border-radius: var(--r); font-size: var(--t-sm);
+    border: 1px solid rgba(212, 85, 99, 0.3);
+}
+
+/* Install form summary (app icon + meta dans la modale d'install) */
+.install-summary {
+    display: flex; gap: var(--s-3); align-items: flex-start;
+    padding: var(--s-3); background: var(--bg-elev);
+    border: 1px solid var(--border); border-radius: var(--r);
+}
+.install-summary-icon {
+    width: 48px; height: 48px; border-radius: var(--r);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: var(--heading); font-weight: 600; font-size: var(--t-md);
+    color: var(--text); flex-shrink: 0;
+}
+.install-summary-text { flex: 1; min-width: 0; }
+.install-summary-name {
+    font-family: var(--heading); font-size: var(--t-base); font-weight: 600;
+    color: var(--text);
+}
+.install-summary-desc {
+    font-size: var(--t-sm); color: var(--text-2);
+    margin-top: 2px;
+}
+.install-summary-meta {
+    display: flex; gap: var(--s-2); margin-top: var(--s-2); flex-wrap: wrap;
+}
+
+.btn-icon { display: inline-block; margin-right: 4px; opacity: 0.85; }
+
+.kebab-sep { height: 1px; background: var(--border); margin: var(--s-1) 0; }
 
 /* ═════════════════════════════════════════════════════════════════
    Empty state

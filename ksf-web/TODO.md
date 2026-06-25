@@ -1,12 +1,13 @@
 # ksf-web — État du projet
 
-> Le projet est stabilisé. Cette session a supprimé le code mort résiduel.
+> Le projet est stabilisé. Cette session a corrigé plusieurs bugs critiques
+> sur la page `/apps` (install form cassé, action UI non optimisée).
 > Voir `CHANGELOG.md` pour l'historique détaillé des versions et
 > `README.md` pour la vision d'ensemble de l'architecture.
 
 ## Statut
 
-**Production-ready.** 65/65 tests passent, AST Python OK sur 18 fichiers,
+**Production-ready.** 71/71 tests passent, AST Python OK sur 18 fichiers,
 11 scripts shell valident, 7 migrations SQL s'appliquent, le compose
 template se rend correctement.
 
@@ -15,14 +16,51 @@ template se rend correctement.
 ✓ AST    — 18 fichiers Python
 ✓ SQL    — 7 migrations (001 → 007)
 ✓ COMPOSE — templates/apps/ksf-web/compose.yml
-✓ PYTEST — 65 tests (smoke api + smoke imports + smoke pages)
-✓ E2E    — 13 pages HTML + 5 endpoints JSON
+✓ PYTEST — 71 tests (smoke api + smoke imports + smoke pages)
+✓ E2E    — page /apps complète (catalogue, install form, kebab, actions)
 ✓ DEAD CODE — 0 fonction définie et jamais appelée
+✓ CSS VARS — toutes les variables utilisées sont définies dans :root
 ```
 
 ---
 
 ## Livré dans cette session (juin 2026)
+
+### Bugs critiques corrigés sur `/apps`
+
+| Bug | Cause | Impact | Fichiers |
+|---|---|---|---|
+| **`/apps/install-form/{name}` 500** | Route utilisait `Request` (la classe) au lieu de `request` (l'instance) dans `_T(Request).TemplateResponse(...)` et `"request": Request` | Le formulaire d'install était **complètement cassé** : impossible d'installer une app depuis l'UI | `app/routes/api.py` |
+| **`closeInstallModal` undefined** | `install_form.html` appelait `closeInstallModal()` mais la fonction n'existait pas (le modal apps.html utilise `closeModal()`) | **JS error** après install → la modale ne se fermait pas | `app/templates/partials/install_form.html` |
+| **Start utilisait `/restart`** | Quand `app.status != 'running'`, le bouton "Start" appelait `/restart` (confusant : "Redémarrer" n'est pas "Démarrer") | UX confuse : le user voyait "Démarrer X ?" puis "Redémarrage lancé" | `app/templates/apps.html` |
+| **CSS vars `var(--bg-1)`, `var(--text-1)`, `var(--r-1)`** | Anciennes références non migrées (fallback via `var(--bg-3, var(--bg-2))` cassé) | Kebab menu visuellement cassé en light theme (bg transparent) | `app/static/app.css` |
+
+### Améliorations UI/UX
+
+| Amélioration | Description |
+|---|---|
+| **Formulaire d'install enrichi** | Résumé de l'app en haut (icône + nom + description + catégorie + accessibilité OAuth2), hints d'aide sous chaque champ, suffixe `.votredomaine` sur le champ subdomain, état loading sur le bouton submit (spinner + disabled) |
+| **Boutons avec icônes** | ▶ Start, ■ Stop, ↻ Update, + Installer, → Gérer, ⋯ Kebab — meilleure lisibilité |
+| **Kebab menu** : séparateur visuel entre actions safe (Redémarrer/Reconstruire) et actions dangereuses (Désactiver/Supprimer) |
+| **Kebab menu** : auto-close sur clic externe ET sur activation d'un item |
+| **Kebab menu** : `role="menu"`, `role="menuitem"`, `role="separator"` pour l'accessibilité |
+| **Boutons désactivés pendant htmx request** : `hx-disabled-elt="this"` empêche les doubles-clics |
+| **Modale d'install** : reset de l'erreur à l'ouverture (pas d'erreur résiduelle d'un précédent essai échoué) |
+| **Erreur install** : `role="alert"` pour l'accessibilité (lecture par screen reader) |
+| **Modale d'install** : focus sur le bouton close à l'ouverture |
+
+### Tests ajoutés (6)
+
+- `test_apps_page_renders` : page /apps contient `openModal`/`closeModal`, n'utilise pas `closeInstallModal`
+- `test_install_form_returns_valid_html` : bug fix Request vs request
+- `test_install_form_unknown_app_rejected` : sécurité (path traversal)
+- `test_apps_action_endpoints_registered` : tous les endpoints présents
+- `test_apps_kebab_menu_has_separator_and_aria` : accessibilité du kebab
+- `test_apps_install_button_uses_plus_icon` : icône + sur le bouton install
+
+---
+
+## Sessions précédentes (juin 2026)
 
 | Item | Fichiers | Description |
 |---|---|---|
@@ -57,9 +95,16 @@ template se rend correctement.
 - `secrets` dans `jobs.py`
 - Vérification exhaustive : 0 import mort
 
-### Session 4 (actuelle) — Cleanup dead code
+### Session 4 — Cleanup dead code
 - 4 fonctions définies et jamais appelées retirées
 - Vérification exhaustive : 0 dead code (hors framework callbacks)
+
+### Session 5 (actuelle) — Fix bugs `/apps` et UI actions
+
+Voir section "Livré dans cette session" ci-dessus. 4 bugs critiques corrigés
+(route install cassée, JS undefined, Start vs Restart, CSS vars cassées),
+UI des actions optimisée (icônes, séparateurs, accessibilité ARIA, loading
+states), 6 tests ajoutés.
 
 ---
 

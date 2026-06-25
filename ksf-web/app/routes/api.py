@@ -65,7 +65,7 @@ async def action_log(log_name: str):
 # ── Apps install form (modal partial) ──────────────────────
 
 @router.get("/apps/install-form/{app_name}", response_class=HTMLResponse)
-async def app_install_form(app_name: str):
+async def app_install_form(request: Request, app_name: str):
     require_valid_app(app_name)
     from app import ksf_commands
     available = ksf_commands.list_available_apps()
@@ -73,9 +73,11 @@ async def app_install_form(app_name: str):
     if not template or template["installed"]:
         raise HTTPException(status_code=400, detail="Application non disponible")
 
-    return _T(Request).TemplateResponse("partials/install_form.html", {
-        "request": Request,
+    return _T(request).TemplateResponse("partials/install_form.html", {
+        "request": request,
         "app_name": template["name"],
+        "description": template.get("description", ""),
+        "category": template.get("category", "other"),
         "subdomain": template["name"],
         "port": str(template.get("port", "")),
         "protected": template.get("protected", True),
