@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Paramètres — KSF{% endblock %}
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Paramètres</h1>
+        <p class="page-sub">Configuration globale de l'interface ksf-web</p>
+    </div>
+</div>
+
+<div class="tabs" role="tablist" aria-label="Sections paramètres">
+    <a href="/settings?tab=general" class="tab {% if tab == 'general' %}on{% endif %}" role="tab" aria-selected="{{ 'true' if tab == 'general' else 'false' }}">Général</a>
+    <a href="/settings/webhooks" class="tab {% if '/webhooks' in request.url.path %}on{% endif %}" role="tab" aria-selected="{{ 'true' if '/webhooks' in request.url.path else 'false' }}">Webhooks</a>
+    <a href="/settings?tab=security" class="tab {% if tab == 'security' %}on{% endif %}" role="tab" aria-selected="{{ 'true' if tab == 'security' else 'false' }}">Sécurité</a>
+    <a href="/maintenance" class="tab" role="tab" aria-selected="false">Maintenance</a>
+</div>
+
+{# ── General ──────────────────────────────────────────────── #}
+{% if tab == 'general' %}
+<div class="grid g2 mt-3">
+    <div class="card">
+        <div class="card-title">Plateforme</div>
+        <div class="slist">
+            <div class="srow">
+                <span>Version ksf-web</span>
+                <span class="mono sm">{{ ksf_web_version }}</span>
+            </div>
+            <div class="srow">
+                <span>Base dir</span>
+                <span class="mono sm">{{ base_dir }}</span>
+            </div>
+            <div class="srow">
+                <span>Timezone</span>
+                <span class="mono sm">{{ tz_value }}</span>
+            </div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-title">Apparence</div>
+        <p class="muted sm mb-3">
+            Le thème est persisté dans <code>localStorage</code> du navigateur.
+            Utilisez le bouton ☀/☾ en haut à droite pour basculer à la volée.
+        </p>
+        <div class="slist">
+            <div class="srow">
+                <span>Thème actuel</span>
+                <span class="badge b-blue" id="current-theme-badge">—</span>
+            </div>
+        </div>
+        <p class="muted sm mt-3">
+            Sans préférence stockée, ksf-web suit la préférence système
+            (<code>prefers-color-scheme</code>) avec fallback sombre.
+        </p>
+    </div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var t = document.documentElement.getAttribute('data-theme') || 'dark';
+    var b = document.getElementById('current-theme-badge');
+    if (b) b.textContent = t === 'light' ? 'Clair' : 'Sombre';
+});
+</script>
+{% endif %}
+
+{# ── Security ─────────────────────────────────────────────── #}
+{% if tab == 'security' %}
+<div class="grid g2 mt-3">
+    <div class="card">
+        <div class="card-title">CSRF</div>
+        <div class="slist">
+            <div class="srow">
+                <span>Protection</span>
+                <span class="badge b-green">Activée (double-submit cookie)</span>
+            </div>
+            <div class="srow">
+                <span>Durée du cookie</span>
+                <span class="mono sm">{{ csrf_max_age_human }}</span>
+            </div>
+            <div class="srow">
+                <span>Header attendu</span>
+                <span class="mono sm">{{ csrf_header }}</span>
+            </div>
+        </div>
+        <p class="muted sm mt-3">
+            La rotation du secret CSRF invalide toutes les sessions actives :
+            tous les users doivent se reconnecter. À faire en cas de compromission suspectée.
+        </p>
+    </div>
+    <div class="card">
+        <div class="card-title">Session & authentification</div>
+        <div class="slist">
+            <div class="srow">
+                <span>Authentification</span>
+                <span class="badge b-blue">OAuth2 Proxy (X-Forwarded-User)</span>
+            </div>
+            <div class="srow">
+                <span>Mode actions</span>
+                <span class="badge {% if actions_enabled %}b-green{% else %}b-red{% endif %}">
+                    {{ 'activé' if actions_enabled else 'désactivé' }}
+                </span>
+            </div>
+        </div>
+        <p class="muted sm mt-3">
+            Le mode actions peut être désactivé via <code>KSF_WEB_ACTIONS_ENABLED=false</code>
+            pour transformer ksf-web en dashboard read-only pendant une maintenance.
+        </p>
+    </div>
+    <div class="card">
+        <div class="card-title">Chiffrement au repos</div>
+        <p class="muted sm">
+            Les secrets (webhook HMAC, payload audit) sont chiffrés avec Fernet.
+            La clé est dans <code>{{ fernet_key_path }}</code> (chmod 600) ou via
+            <code>KSF_WEB_SECRET_KEY</code> dans l'environnement.
+        </p>
+    </div>
+    <div class="card">
+        <div class="card-title">Politique d'audit</div>
+        <div class="slist">
+            <div class="srow">
+                <span>Taille max before/after</span>
+                <span class="mono sm">{{ audit_max_kb }} Ko</span>
+            </div>
+            <div class="srow">
+                <span>Rétention jobs</span>
+                <span class="mono sm">{{ job_retention_days }} jours</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

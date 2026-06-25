@@ -13,6 +13,7 @@ import uuid
 from urllib.parse import urlparse
 
 from app import db
+from app.types import NotificationPayload, WebhookEndpoint
 from app.utils import utcnow_str as _utcnow
 
 logger = logging.getLogger("ksf-web.webhooks")
@@ -58,14 +59,14 @@ def _is_safe_webhook_target(url: str, allow_private: bool = False) -> tuple[bool
     return True, ""
 
 
-async def list_all() -> list[dict]:
+async def list_all() -> list[WebhookEndpoint]:
     async for conn in db.get_conn():
         cur = await conn.execute("SELECT * FROM webhook_endpoints ORDER BY created_at DESC")
         rows = await cur.fetchall()
         await cur.close()
-        out = []
+        out: list[WebhookEndpoint] = []
         for r in rows:
-            d = dict(r)
+            d: WebhookEndpoint = dict(r)
             d["enabled"] = bool(d["enabled"])
             try:
                 d["events"] = json.loads(d["events"])
@@ -76,14 +77,14 @@ async def list_all() -> list[dict]:
         return out
 
 
-async def get(endpoint_id: str) -> dict | None:
+async def get(endpoint_id: str) -> WebhookEndpoint | None:
     async for conn in db.get_conn():
         cur = await conn.execute("SELECT * FROM webhook_endpoints WHERE id=?", (endpoint_id,))
         row = await cur.fetchone()
         await cur.close()
         if not row:
             return None
-        d = dict(row)
+        d: WebhookEndpoint = dict(row)
         d["enabled"] = bool(d["enabled"])
         try:
             d["events"] = json.loads(d["events"])
@@ -93,7 +94,7 @@ async def get(endpoint_id: str) -> dict | None:
         return d
 
 
-def _decrypt_secret_field(row: dict) -> str | None:
+def _decrypt_secret_field(row: WebhookEndpoint) -> str | None:
     """Déchiffre `secret_encrypted` s'il est présent, sinon fallback sur `secret` legacy."""
     from app import crypto
     if row.get("secret_encrypted") is not None:
@@ -187,7 +188,7 @@ async def backfill_legacy_secrets() -> int:
     return n
 
 
-async def dispatch(category: str, notif_payload: dict) -> int:
+async def dispatch(category: str, notif_payload: NotificationPayload) -> int:
     """Dispatch une notification aux webhooks qui matchent la catégorie.
 
     Renvoie le nombre de webhooks notifiés (succès ou échec).
@@ -208,7 +209,7 @@ async def dispatch(category: str, notif_payload: dict) -> int:
     return len(matching)
 
 
-async def _send_with_retry(ep: dict, payload: dict) -> None:
+async def _send_with_retry(ep: WebhookEndpoint, payload: NotificationPayload) -> None:
     body = json.dumps(payload, default=str, ensure_ascii=False).encode("utf-8")
     headers = {"Content-Type": "application/json", "User-Agent": "ksf-web/1.0"}
 
@@ -217,38 +218,15 @@ async def _send_with_retry(ep: dict, payload: dict) -> None:
         headers["X-KSF-Signature"] = f"sha256={sig}"
         headers["X-KSF-Timestamp"] = _utcnow()
 
-    # SSRF mitigation : ré-valide l'IP cible juste avant la connexion, et
-    # interdit les redirects HTTP (un attaquant pourrait 302 vers 127.0.0.1).
-    # urllib.request.urlopen suit les 30x par défaut — on le court-circuite
-    # via un opener custom qui lève HTTPError sur 30x.
-    class _NoRedirect(urllib.request.HTTPRedirectHandler):
-        def redirect_request(self, req, fp, code, msg, headers, newurl):
-            raise urllib.error.HTTPError(
-                req.full_url, code, "Redirects disabled for SSRF protection",
-                headers, fp,
-            )
+    # SSRF check partagé avec `ping()` — toute évolution du filtrage IP
+    # (ex: ajout d'IPv6 ULA) se fait à un seul endroit.
+    allowed, err = _resolve_and_check_ip(ep["url"])
+    if not allowed:
+        logger.error("Webhook %s refuse : %s", ep["name"], err)
+        return
 
+    opener = _build_safe_opener()
     safe_url = ep["url"]
-    try:
-        parsed = urlparse(safe_url)
-        if parsed.hostname:
-            # Re-résolution DNS et check IP privée (anti-rebinding + DNS-poisoning)
-            infos = socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
-            for info in infos:
-                ip_str = info[4][0]
-                try:
-                    ip = ipaddress.ip_address(ip_str)
-                except ValueError:
-                    continue
-                if (ip.is_private or ip.is_loopback or ip.is_link_local
-                        or ip.is_multicast or ip.is_reserved or ip.is_unspecified):
-                    logger.error("Webhook %s refuse : IP privée %s pour %s",
-                                 ep["name"], ip_str, parsed.hostname)
-                    return
-    except socket.gaierror:
-        logger.warning("Webhook %s : résolution DNS impossible pour %s", ep["name"], ep["url"])
-
-    opener = urllib.request.build_opener(_NoRedirect)
 
     attempts = 3
     for attempt in range(1, attempts + 1):
@@ -268,3 +246,95 @@ async def _send_with_retry(ep: dict, payload: dict) -> None:
         if attempt < attempts:
             await asyncio.sleep(2 ** attempt)
     logger.error("Webhook %s échoué après %d tentatives", ep["name"], attempts)
+
+
+async def ping(ep: WebhookEndpoint) -> dict:
+    """Ping un webhook (GET) pour vérifier qu'il est joignable (P3.13).
+
+    Renvoie {ok, status, latency_ms, error}. Pas de retry — un seul essai.
+    SSRF check canonique partagé avec `_send_with_retry`.
+    """
+    import time as _time
+    allowed, err = _resolve_and_check_ip(ep["url"])
+    if not allowed:
+        return {"ok": False, "status": None, "latency_ms": 0, "error": err}
+
+    opener = _build_safe_opener()
+    t0 = _time.monotonic()
+    try:
+        req = urllib.request.Request(ep["url"], method="GET",
+                                     headers={"User-Agent": "ksf-web/1.0 (healthcheck)"})
+        resp = await asyncio.to_thread(opener.open, req, timeout=10)
+        latency_ms = int((_time.monotonic() - t0) * 1000)
+        try:
+            return {
+                "ok": 200 <= resp.status < 400,
+                "status": resp.status,
+                "latency_ms": latency_ms,
+                "error": None if 200 <= resp.status < 400 else f"HTTP {resp.status}",
+            }
+        finally:
+            resp.close()
+    except urllib.error.HTTPError as e:
+        latency_ms = int((_time.monotonic() - t0) * 1000)
+        return {"ok": False, "status": e.code, "latency_ms": latency_ms, "error": str(e)[:200]}
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        latency_ms = int((_time.monotonic() - t0) * 1000)
+        return {"ok": False, "status": None, "latency_ms": latency_ms, "error": str(e)[:200]}
+
+
+# ── Helpers SSRF partagés (entre _send_with_retry et ping) ───────
+
+def _is_blocked_ip(ip: ipaddress._BaseAddress) -> bool:
+    """Renvoie True si l'IP doit être bloquée (privée/loopback/link-local/etc.)."""
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    )
+
+
+def _resolve_and_check_ip(url: str) -> tuple[bool, str]:
+    """Re-résout le hostname et check que les IPs cibles ne sont pas interdites.
+
+    Mitige DNS-rebinding et DNS-poisoning. Renvoie (True, "") si OK,
+    (False, "raison") sinon.
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError as e:
+        return False, f"URL invalide : {e}"
+    if not parsed.hostname:
+        return False, "Host manquant"
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        infos = socket.getaddrinfo(parsed.hostname, port)
+    except socket.gaierror:
+        return False, f"DNS resolution failed pour {parsed.hostname}"
+    for info in infos:
+        ip_str = info[4][0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            continue
+        if _is_blocked_ip(ip):
+            return False, f"IP privée/interdite : {ip_str} ({parsed.hostname})"
+    return True, ""
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Bloque les redirects HTTP pour mitiger les attaques SSRF via 30x."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D401
+        raise urllib.error.HTTPError(
+            req.full_url, code, "Redirects disabled for SSRF protection",
+            headers, fp,
+        )
+
+
+def _build_safe_opener() -> urllib.request.OpenerDirector:
+    """Construit un opener urllib qui refuse les redirects (anti-SSRF)."""
+    return urllib.request.build_opener(_NoRedirect)

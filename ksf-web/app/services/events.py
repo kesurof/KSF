@@ -29,6 +29,12 @@ class EventBus:
                 )
 
     async def subscribe(self, channel: str) -> AsyncIterator[dict]:
+        # Pas de risque de subscriber zombie : le `try/finally` garantit
+        # que la queue est retirée du set dès que la coroutine appelante
+        # se termine (normalement, exception, ou cancellation asynchrone).
+        # Le `discard()` est sûr même si la queue n'est plus dans le set.
+        # Le `pop(channel, None)` final évite de garder un set vide en
+        # mémoire si tous les subscribers d'un channel sont sortis.
         q: asyncio.Queue = asyncio.Queue(maxsize=200)
         async with self._lock:
             self._subscribers[channel].add(q)

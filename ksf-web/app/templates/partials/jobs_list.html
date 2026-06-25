@@ -47,4 +47,12 @@
             </tbody>
         </table>
     </div>
+    {% if next_before and jobs|length == 100 %}
+    <div class="card-foot">
+        <button class="btn"
+                hx-get="/api/jobs/list?before={{ next_before }}"
+                hx-target="#jobs-list"
+                hx-swap="outerHTML">Charger plus anciens</button>
+    </div>
+    {% endif %}
 </div>

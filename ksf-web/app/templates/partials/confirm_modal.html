@@ -50,11 +50,20 @@
                     modal.hidden = true;
                 }
                 document.body.style.overflow = '';
+                // Ré-active le main quand la modale est fermée (P2.4 inert/focus-trap).
+                _setMainInert(false);
                 return;
             }
             current = queue.shift();
             pendingAction = current.opts.action;
-            titleEl.textContent = current.opts.title || 'Confirmer';
+            // Indicateur "Étape N/M" si plusieurs confirmations en file (P2.5)
+            var stepInfo = '';
+            if (queue.length > 0) {
+                stepInfo = ' (Étape 1/' + (queue.length + 1) + ')';
+            } else if (current.opts.step) {
+                stepInfo = ' (Étape ' + current.opts.step + ')';
+            }
+            titleEl.textContent = (current.opts.title || 'Confirmer') + stepInfo;
             bodyEl.textContent = current.opts.body || 'Êtes-vous sûr ?';
             okBtn.textContent = current.opts.okLabel || 'Confirmer';
             okBtn.className = 'btn ' + (current.opts.dangerous ? 'btn-danger' : 'btn-primary');
@@ -70,7 +79,42 @@
             modal.hidden = false;
             requestAnimationFrame(function () { modal.classList.add('on'); });
             document.body.style.overflow = 'hidden';
+            // Désactive le main (P2.4 inert) pour bloquer Tab hors modale.
+            _setMainInert(true);
             setTimeout(function () { cancelBtn.focus(); }, 30);
+        }
+
+        // Focus trap + inert (P2.4) : bloque Tab hors de la modale et
+        // rend tout le chrome (sidebar, main, header) non-interactif
+        // quand la modale est ouverte. Sélecteurs couvrent la nav
+        // latérale, le contenu principal et tout overlay éventuel.
+        function _setMainInert(active) {
+            var sels = ['.main', '.sidebar', 'header', '.overlay'];
+            for (var i = 0; i < sels.length; i++) {
+                var els = document.querySelectorAll(sels[i]);
+                for (var j = 0; j < els.length; j++) {
+                    if (active) els[j].setAttribute('inert', '');
+                    else els[j].removeAttribute('inert');
+                }
+            }
+        }
+
+        // Intercepte Tab pour piéger le focus dans la modale (P2.4)
+        function _trapTab(e) {
+            if (e.key !== 'Tab' || !modal || modal.hidden) return;
+            var focusable = modal.querySelectorAll(
+                'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+            );
+            if (!focusable.length) return;
+            var first = focusable[0];
+            var last = focusable[focusable.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
         }
 
         function resolveCurrent(ok) {
@@ -111,6 +155,8 @@
         }
 
         if (getRefs()) {
+            // Focus-trap : Tab est piégé dans la modale (P2.4)
+            modal.addEventListener('keydown', _trapTab);
             // On attache les listeners une seule fois, sur le bouton "Confirmer"
             // et sur la frappe dans l'input "typed"
             okBtn.addEventListener('click', function () {

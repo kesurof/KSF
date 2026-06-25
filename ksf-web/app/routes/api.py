@@ -85,10 +85,11 @@ async def app_install_form(app_name: str):
 # ── Jobs list (partial) ────────────────────────────────────
 
 @router.get("/api/jobs/list", response_class=HTMLResponse)
-async def jobs_list_partial(request: Request):
-    items = await jobs.list_recent(limit=100)
+async def jobs_list_partial(request: Request, before: str | None = None):
+    items = await jobs.list_recent(limit=100, before=before)
     return _T(request).TemplateResponse("partials/jobs_list.html", {
         "request": request, "jobs": items, "now": now_str(),
+        "next_before": items[-1]["created_at"] if items else None,
     })
 
 
@@ -300,3 +301,31 @@ async def list_locks():
             {"lock_key": r["lock_key"], "job_id": r["id"], "kind": r["kind"], "since": r["started_at"]}
             for r in rows
         ]
+
+
+# ── Container stats (P3.12) ─────────────────────────────────
+
+@router.get("/api/containers/{container_id}/stats")
+async def container_stats(container_id: str):
+    """Stats one-shot (CPU%, mem, net) pour un container."""
+    from app import docker_client
+    require_valid_container(container_id)
+    stats = docker_client.get_container_stats(container_id)
+    if stats is None:
+        raise HTTPException(status_code=404, detail="Stats indisponibles")
+    return stats
+
+
+# ── Webhook health check (P3.13) ────────────────────────────
+
+@router.post("/api/webhooks/{endpoint_id}/health")
+async def webhook_health_check(endpoint_id: str, request: Request):
+    """Ping un webhook pour vérifier qu'il est joignable.
+    Renvoie {ok, status, latency_ms, error}."""
+    from app.services import webhooks as webhooks_svc
+    ep = await webhooks_svc.get(endpoint_id)
+    if not ep:
+        raise HTTPException(status_code=404, detail="Webhook introuvable")
+    result = await webhooks_svc.ping(ep)
+    await audit_log(request, "webhook.health", endpoint_id, after=result)
+    return result

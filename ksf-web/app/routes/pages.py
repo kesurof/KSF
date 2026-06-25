@@ -289,6 +289,41 @@ async def webhooks_page(request: Request):
     })
 
 
+@router.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request, tab: str = "general"):
+    """Page Paramètres avec onglets : general, security, webhooks (alias)."""
+    if tab not in ("general", "security"):
+        tab = "general"
+    ksf_env = ksf_commands.get_ksf_env()
+    return _T(request).TemplateResponse("settings.html", {
+        "request": request, "tab": tab, "now": now_str(),
+        "actions_enabled": config.ACTIONS_ENABLED,
+        "ksf_web_version": __import__("app").__version__,
+        "base_dir": config.BASE_DIR,
+        "tz_value": ksf_env.get("TZ_VALUE", "UTC"),
+        "csrf_max_age_human": _human_duration(config.CSRF_MAX_AGE),
+        "csrf_header": config.CSRF_HEADER,
+        "fernet_key_path": config.FERNET_KEY_PATH,
+        "audit_max_kb": 8,
+        "job_retention_days": 30,
+    })
+
+
+def _human_duration(seconds: int) -> str:
+    """Formate une durée en secondes en texte lisible."""
+    if seconds < 60:
+        return f"{seconds}s"
+    if seconds < 3600:
+        return f"{seconds // 60}min"
+    if seconds < 86400:
+        h = seconds // 3600
+        m = (seconds % 3600) // 60
+        return f"{h}h{m:02d}min" if m else f"{h}h"
+    d = seconds // 86400
+    h = (seconds % 86400) // 3600
+    return f"{d}j{h:02d}h" if h else f"{d}j"
+
+
 # ── Phase 3a : pages de gestion plateforme ──────────────────
 
 def _list_data_dir() -> list[dict]:

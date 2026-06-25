@@ -140,7 +140,3 @@ def maybe_decrypt(blob: bytes | None, column_name: str) -> str | None:
                 return None
         return str(blob)
     return decrypt(blob)
-
-
-def is_encrypted_column(column_name: str) -> bool:
-    return column_name.endswith("_encrypted")

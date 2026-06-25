@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from app import crypto, db
+from app.types import AuditEntry
 from app.utils import utcnow_str as _utcnow
 
 logger = logging.getLogger("ksf-web.audit")
@@ -64,7 +65,7 @@ async def list_entries(
     action: str | None = None,
     target: str | None = None,
     actor: str | None = None,
-) -> list[dict]:
+) -> list[AuditEntry]:
     query = "SELECT * FROM audit_log"
     params: list = []
     where = []
@@ -99,7 +100,7 @@ def _decrypt_field(row: dict, plain_column: str) -> str | None:
     return row.get(plain_column)
 
 
-async def get_entry(entry_id: int) -> dict | None:
+async def get_entry(entry_id: int) -> AuditEntry | None:
     """Charge une entrée unique avec before/after déchiffrés (utilisé pour lazy-load)."""
     async for conn in db.get_conn():
         cur = await conn.execute("SELECT * FROM audit_log WHERE id=?", (entry_id,))
@@ -107,7 +108,7 @@ async def get_entry(entry_id: int) -> dict | None:
         await cur.close()
         if not row:
             return None
-        d = dict(row)
+        d: AuditEntry = dict(row)
         d["before"] = _decrypt_field(d, "before")
         d["after"] = _decrypt_field(d, "after")
         return d

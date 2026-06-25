@@ -20,7 +20,6 @@ import hashlib
 import hmac
 import os
 import re
-import json
 import difflib
 import logging
 import secrets
@@ -270,18 +269,6 @@ async def list_versions(limit: int = 20) -> list[dict]:
         rows = await cur.fetchall()
         await cur.close()
         return [dict(r) for r in rows]
-
-
-async def get_version(version_id: int) -> dict | None:
-    async for conn in db.get_conn():
-        cur = await conn.execute(
-            "SELECT id, content, actor, reason, created_at, length(content) as size "
-            "FROM config_versions WHERE id=?",
-            (version_id,),
-        )
-        row = await cur.fetchone()
-        await cur.close()
-        return dict(row) if row else None
 
 
 def _run_render(args: list[str], timeout: int) -> tuple[bool, str]:

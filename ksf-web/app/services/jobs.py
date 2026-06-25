@@ -12,7 +12,6 @@ import asyncio
 import json
 import logging
 import os
-import secrets
 import signal
 import subprocess
 import time
@@ -23,6 +22,7 @@ import aiosqlite
 
 from app import config, db
 from app.services import events
+from app.types import JobRecord
 from app.utils import utcnow_str as _utcnow
 
 logger = logging.getLogger("ksf-web.jobs")
@@ -75,8 +75,8 @@ def _pid_alive(pid: int) -> bool:
 
 # ── DB access helpers ───────────────────────────────────────────
 
-async def _row_to_job(row: aiosqlite.Row) -> dict[str, Any]:
-    d = dict(row)
+async def _row_to_job(row: aiosqlite.Row) -> JobRecord:
+    d: JobRecord = dict(row)
     if d.get("args"):
         try:
             d["args"] = json.loads(d["args"])
@@ -85,7 +85,7 @@ async def _row_to_job(row: aiosqlite.Row) -> dict[str, Any]:
     return d
 
 
-async def get(job_id: str) -> dict | None:
+async def get(job_id: str) -> JobRecord | None:
     async for conn in db.get_conn():
         cur = await conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,))
         row = await cur.fetchone()
@@ -95,20 +95,40 @@ async def get(job_id: str) -> dict | None:
         return await _row_to_job(row)
 
 
-async def list_recent(limit: int = 50, status: str | None = None) -> list[dict]:
+async def list_recent(
+    limit: int = 50,
+    status: str | None = None,
+    before: str | None = None,
+) -> list[JobRecord]:
+    """Liste les jobs récents, ordre DESC par created_at puis id.
+
+    `before` (string ISO 8601) permet la pagination cursor-based : on
+    ne récupère que les jobs strictement plus anciens. `before` est le
+    `created_at` du dernier job de la page précédente.
+
+    Note : `id` est un UUID TEXT donc inutilisable pour un cursor
+    ordonné. `created_at` (ISO 8601 string) compare correctement avec
+    `<` en DESC pour des timestamps au même format.
+    """
+    where = []
+    params: list = []
+    if status:
+        where.append("status = ?")
+        params.append(status)
+    if before is not None:
+        where.append("created_at < ?")
+        params.append(before)
+    query = "SELECT * FROM jobs"
+    if where:
+        query += " WHERE " + " AND ".join(where)
+    query += " ORDER BY created_at DESC, id DESC LIMIT ?"
+    params.append(limit)
     async for conn in db.get_conn():
-        if status:
-            cur = await conn.execute(
-                "SELECT * FROM jobs WHERE status=? ORDER BY created_at DESC LIMIT ?",
-                (status, limit),
-            )
-        else:
-            cur = await conn.execute(
-                "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,)
-            )
+        cur = await conn.execute(query, params)
         rows = await cur.fetchall()
         await cur.close()
         return [await _row_to_job(r) for r in rows]
+    return []
 
 
 async def _update(job_id: str, **fields: Any) -> None:
@@ -129,7 +149,7 @@ async def enqueue(
     args: list[str] | None = None,
     lock_key: str | None = None,
     triggered_by: str = "admin",
-) -> dict:
+) -> JobRecord:
     if kind not in JOB_KINDS:
         raise ValueError(f"Job kind inconnu : {kind}")
     if not command:
@@ -379,18 +399,3 @@ async def _run_job(job: dict) -> None:
             )
         except Exception:
             pass
-
-
-# ── Log streaming helpers ───────────────────────────────────────
-
-async def stream_log(job_id: str, since_event_id: int = 0) -> tuple[str, int, int]:
-    """Renvoie (log_path, current_size, last_event_id). Lit depuis le fichier."""
-    job = await get(job_id)
-    if not job or not job.get("output_path"):
-        return "", 0, since_event_id
-    path = job["output_path"]
-    try:
-        size = os.path.getsize(path)
-    except OSError:
-        return path, 0, since_event_id
-    return path, size, since_event_id

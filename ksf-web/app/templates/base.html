@@ -15,9 +15,35 @@
     <script src="/static/vendor/htmx.min.js" defer></script>
     <script src="/static/vendor/highlight.min.js" defer></script>
     <script>
+    // Application du thème (dark/light) AVANT le 1er paint pour éviter le flash.
+    // Priorité : localStorage > préférence système > défaut dark.
+    (function () {
+        var stored = null;
+        try { stored = localStorage.getItem('ksf-theme'); } catch (e) {}
+        var theme = stored;
+        if (!theme) {
+            theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches)
+                ? 'light' : 'dark';
+        }
+        document.documentElement.setAttribute('data-theme', theme);
+    })();
+    // Toggle exposé globalement pour le bouton dans le header.
+    window.toggleTheme = function () {
+        var cur = document.documentElement.getAttribute('data-theme') || 'dark';
+        var next = cur === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('ksf-theme', next); } catch (e) {}
+        var btn = document.getElementById('theme-toggle');
+        if (btn) btn.setAttribute('aria-pressed', next === 'light' ? 'true' : 'false');
+    };
     // Colorisation syntaxique des <pre class="logs"> après chargement et après swaps htmx.
     document.addEventListener('DOMContentLoaded', function () {
         if (window.hljs) hljs.highlightAll();
+        var btn = document.getElementById('theme-toggle');
+        if (btn) {
+            var t = document.documentElement.getAttribute('data-theme') || 'dark';
+            btn.setAttribute('aria-pressed', t === 'light' ? 'true' : 'false');
+        }
     });
     document.body.addEventListener('htmx:afterSwap', function () {
         if (window.hljs) {
@@ -35,6 +61,14 @@
             aria-expanded="false"
             aria-controls="sidebar"
             onclick="toggleSidebar()">☰</button>
+
+    <button id="theme-toggle"
+            class="theme-toggle"
+            type="button"
+            aria-label="Basculer thème clair/sombre"
+            aria-pressed="false"
+            title="Basculer thème clair/sombre"
+            onclick="toggleTheme()">☀</button>
 
     <div class="overlay" id="overlay" onclick="closeSidebar()" aria-hidden="true"></div>
 
@@ -82,6 +116,10 @@
             <a href="/settings/webhooks" class="sidebar-link {% if '/webhooks' in request.url.path %}active{% endif %}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
                 Webhooks
+            </a>
+            <a href="/settings" class="sidebar-link {% if request.url.path == '/settings' or (request.url.path == '/settings' and 'tab' in request.url.query) %}active{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+                Paramètres
             </a>
             <a href="/security" class="sidebar-link {% if '/security' in request.url.path and 'tab' not in request.url.query %}active{% endif %}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>

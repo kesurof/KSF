@@ -104,6 +104,43 @@
 }
 
 /* ═════════════════════════════════════════════════════════════════
+   Light theme override
+   Active si `<html data-theme="light">` (toggle dans /settings).
+   Réutilise les mêmes noms de tokens : la swap est transparente.
+   ═════════════════════════════════════════════════════════════════ */
+:root[data-theme="light"] {
+    --bg: #f6f5f0;
+    --bg-elev: #efece4;
+    --surface: #ffffff;
+    --surface-2: #f6f5f0;
+    --surface-3: #ede9de;
+    --hover: #ece8db;
+    --active: #e1dcc9;
+    --border: rgba(0, 0, 0, 0.08);
+    --border-2: rgba(0, 0, 0, 0.14);
+    --border-3: rgba(0, 0, 0, 0.22);
+
+    --text: #1a1d22;
+    --text-2: #4d5663;
+    --text-3: #717c89;
+    --text-4: #a3acb8;
+
+    --amber: #b07d2a;
+    --amber-2: #8a5e15;
+    --amber-soft: rgba(176, 125, 42, 0.14);
+    --green: #1f8a64;
+    --green-soft: rgba(31, 138, 100, 0.12);
+    --red: #b9384a;
+    --red-soft: rgba(185, 56, 74, 0.10);
+    --orange: #a06115;
+    --orange-soft: rgba(160, 97, 21, 0.12);
+    --blue: #3672a8;
+    --blue-soft: rgba(54, 114, 168, 0.12);
+    --purple: #6b4ec9;
+    --purple-soft: rgba(107, 78, 201, 0.12);
+}
+
+/* ═════════════════════════════════════════════════════════════════
    Reset & base
    ═════════════════════════════════════════════════════════════════ */
 
@@ -345,6 +382,27 @@ button { background: none; border: none; cursor: pointer; }
     transition: background var(--t-fast);
 }
 .menu-btn:hover { background: var(--hover); }
+
+.theme-toggle {
+    position: fixed;
+    top: var(--s-3);
+    right: var(--s-3);
+    z-index: var(--z-menu-btn);
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--border-2);
+    border-radius: var(--r);
+    background: var(--surface);
+    color: var(--text-2);
+    font-size: 1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow);
+    transition: background var(--t-fast), color var(--t-fast);
+}
+.theme-toggle:hover { background: var(--hover); color: var(--amber); }
+.theme-toggle[aria-pressed="true"] { color: var(--amber); }
 
 .overlay {
     display: none;
@@ -1665,6 +1723,7 @@ tbody tr:hover td { background: var(--hover); color: var(--text); }
     }
     .sidebar.open { transform: translateX(0); }
     .menu-btn { display: inline-flex; }
+    .theme-toggle { top: var(--s-3); right: calc(var(--s-3) + 48px); }
 
     .main {
         margin-left: 0;
