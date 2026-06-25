@@ -324,6 +324,45 @@ Pour désactiver CrowdSec, passez `WITH_CROWDSEC=false` dans `~/serverbox/config
 
 Chaque app fournie par KSF a un template minimal `templates/apps/<app>/app.env` et `compose.yml`. La route Traefik `route-<app>.yml` est générée automatiquement dans `~/serverbox/proxy/traefik/dynamic/` depuis `app.env`; par défaut une app exposée est protégée avec OAuth2 Proxy.
 
+### Hooks pre/post install
+
+Une app peut fournir deux scripts shell optionnels qui sont sourcés (et non exécutés) par `app.sh` aux moments clés du cycle de vie :
+
+| Fichier | Moment d'exécution | Usage typique |
+|---|---|---|
+| `templates/apps/<app>/pre_install.sh` | Après le rendu du compose, avant `docker compose up` (et idem sur `update` / `rebuild`) | Génération de secrets, création de fichiers de config, génération de `${app_dir}/.env` pour docker compose |
+| `templates/apps/<app>/post_install.sh` | Après un `docker compose up` réussi (et idem sur `update` / `rebuild`) | Activation de plugins, configuration post-démarrage via `wp-cli` ou `docker exec` |
+
+Les hooks sont sourcés dans un sous-shell, ce qui leur donne accès à toutes les variables KSF (BASE_DIR, APP_DIR, APP_DATA, APP_PUID, APP_PGID, APP_HOST, APP_PORT, DRY_RUN, ...).
+
+En dry-run, les hooks ne sont **pas exécutés** : ils sont uniquement loggués avec `[DRY-RUN] source <path>`. Le pre-install qui écrit un `.env` ne tourne donc pas en dry-run, ce qui signifie qu'un dry-run complet de bout en bout n'est pas possible pour les apps qui dépendent de secrets générés au pre-install. C'est cohérent avec la règle "le dry-run ne doit créer aucun fichier dans `${BASE_DIR}`".
+
+### Multi-instance : installer plusieurs fois le même template
+
+Pour des apps comme WordPress, Nextcloud, Gitea, Vaultwarden, etc., il est courant de vouloir plusieurs instances indépendantes sur la même plateforme. KSF supporte ce cas via le flag `--instance` :
+
+```bash
+./app.sh install wordpress --subdomain blog --instance blog
+./app.sh install wordpress --subdomain shop --instance shop
+./app.sh install wordpress --subdomain docs --instance docs
+./app.sh list
+#   blog    (template : wordpress)
+#   docs    (template : wordpress)
+#   shop    (template : wordpress)
+./app.sh status blog
+./app.sh update shop
+./app.sh remove docs
+```
+
+Concepts :
+
+- **Template** (`wordpress`) : le type d'app, défini par `templates/apps/<template>/`. Immuable, partagé entre toutes les instances.
+- **Instance** (`blog`, `shop`, `docs`) : un déploiement concret. Chaque instance a ses propres chemins (`apps/<instance>/`, `data/<instance>/`), son propre fichier `installed-apps/<instance>.env`, ses propres containers Docker, et sa propre route Traefik (via le `--subdomain`).
+
+Le template doit référencer `${APP_INSTANCE}` dans son `compose.yml` (container_name, volumes) pour que les instances ne collisionnent pas. C'est le template qui s'adapte : KSF n'a pas besoin de connaître la structure interne de chaque app.
+
+Si `--instance` n'est pas fourni, l'instance prend le nom du template (mode mono-instance historique, rétrocompatible).
+
 Exemples :
 
 ```bash

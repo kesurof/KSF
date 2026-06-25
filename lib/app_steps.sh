@@ -146,9 +146,14 @@ app_list_installed() {
   for f in "${INSTALLED_DIR}"/*.env; do
     [ -f "$f" ] || continue
     found=true
-    local name
-    name=$(basename "$f" .env)
-    info "  ${name}"
+    local instance template_name
+    instance=$(basename "$f" .env)
+    template_name=$(APP_INSTANCE="${instance}" source "$f" >/dev/null 2>&1 && printf '%s' "${APP_NAME:-${instance}}")
+    if [ "${template_name}" != "${instance}" ]; then
+      info "  ${instance}  (template : ${template_name})"
+    else
+      info "  ${instance}"
+    fi
   done
   if [ "$found" = false ]; then
     warn "Aucune app installée."
@@ -184,29 +189,35 @@ app_template_value() {
 app_normalize_loaded() {
   local app_name="$1"
 
-  render_normalize_app_vars "$app_name"
+  # app_name est l'instance (CLI arg) pour les commandes status/update/etc.
+  # Le nom de template est dans APP_NAME (chargé depuis l'env file).
+  local app_template_name="${APP_NAME:-${app_name}}"
+  local app_instance_name="${APP_INSTANCE:-${app_name}}"
+
+  render_normalize_app_vars "$app_template_name"
   if [ -z "${APP_PORT:-}" ]; then
-    APP_PORT="$(app_template_value "$app_name" APP_PORT)"
+    APP_PORT="$(app_template_value "$app_template_name" APP_PORT)"
   fi
   if [ -z "${APP_HOST:-}" ]; then
-    APP_HOST="$(app_template_value "$app_name" APP_HOST)"
+    APP_HOST="$(app_template_value "$app_template_name" APP_HOST)"
   fi
-  : "${APP_DIR:=${BASE_DIR}/apps/${app_name}}"
+  : "${APP_DIR:=${BASE_DIR}/apps/${app_instance_name}}"
   # Fallback : si APP_DIR pointe vers un chemin inexistant mais qu'un chemin
   # équivalent sous BASE_DIR existe (cas typique : APP_DIR est l'ancien chemin
   # de l'hôte et la plateforme tourne maintenant dans un conteneur avec un
   # bind mount), on bascule pour que docker compose trouve la stack.
-  if [ ! -d "${APP_DIR}" ] && [ -d "${BASE_DIR}/apps/${app_name}" ]; then
-    warn "APP_DIR ${APP_DIR} introuvable, bascule vers ${BASE_DIR}/apps/${app_name}"
-    APP_DIR="${BASE_DIR}/apps/${app_name}"
+  if [ ! -d "${APP_DIR}" ] && [ -d "${BASE_DIR}/apps/${app_instance_name}" ]; then
+    warn "APP_DIR ${APP_DIR} introuvable, bascule vers ${BASE_DIR}/apps/${app_instance_name}"
+    APP_DIR="${BASE_DIR}/apps/${app_instance_name}"
   fi
-  : "${APP_DATA:=${BASE_DIR}/data/${app_name}}"
+  : "${APP_DATA:=${BASE_DIR}/data/${app_instance_name}}"
   : "${APP_PUID:=$(id -u)}"
   : "${APP_PGID:=$(id -g)}"
   : "${APP_INSTALLED_AT:=}"
   : "${APP_DISABLED:=false}"
+  : "${APP_INSTANCE:=${app_instance_name}}"
 
-  APP_MANAGED_NAME="${APP_NAME:-${app_name}}"
+  APP_MANAGED_NAME="${app_instance_name}"
   APP_MANAGED_DIR="${APP_DIR}"
   APP_MANAGED_DATA="${APP_DATA}"
 }
@@ -225,6 +236,7 @@ app_write_env_file() {
 
   : > "$destination"
   ksf_env_write_var "$destination" APP_NAME "$app_name"
+  ksf_env_write_var "$destination" APP_INSTANCE "${APP_INSTANCE:-${app_name}}"
   ksf_env_write_var "$destination" APP_HOST "${APP_HOST:-}"
   ksf_env_write_var "$destination" APP_DOMAIN "${APP_DOMAIN:-}"
   ksf_env_write_var "$destination" APP_SUBDOMAIN "${APP_SUBDOMAIN:-}"
@@ -427,8 +439,12 @@ app_update() {
   local app_template_dir="${APP_TEMPLATE_DIR}/${app_name}"
 
   app_require_installed "$app_name"
+  # app_require_installed charge l'env file et fait app_normalize_loaded.
+  # APP_NAME est maintenant le nom de template (pas l'instance). On résout
+  # le bon template_dir pour le multi-instance.
+  app_template_dir="${APP_TEMPLATE_DIR}/${APP_NAME:-${app_name}}"
   if [ ! -f "${app_template_dir}/compose.yml" ]; then
-    err "Template Compose absent pour ${app_name} : ${app_template_dir}/compose.yml"
+    err "Template Compose absent pour ${APP_NAME:-${app_name}} : ${app_template_dir}/compose.yml"
     exit 1
   fi
 
@@ -439,7 +455,7 @@ app_update() {
   : "${APP_PUID:=$(id -u)}"
   : "${APP_PGID:=$(id -g)}"
   # Cas spécifique ksf-web : régénérer le .env pour docker compose
-  if [ "$app_name" = "ksf-web" ]; then
+  if [ "${APP_NAME}" = "ksf-web" ]; then
     KSF_WEB_DATA_HOST_DIR="${BASE_DIR}/.ksf-web-data"
     if [ -d "${KSF_WEB_DATA_HOST_DIR}" ]; then
       chown "${APP_PUID}:${APP_PGID}" "${KSF_WEB_DATA_HOST_DIR}" 2>/dev/null || true
@@ -457,8 +473,11 @@ EOF
     chmod 600 "${APP_MANAGED_DIR}/.env"
   fi
   render_template "${app_template_dir}/compose.yml" "${APP_MANAGED_DIR}/docker-compose.yml"
-  app_write_env_file "${APP_MANAGED_DIR}/app.env" "$app_name" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
-  app_write_env_file "${INSTALLED_DIR}/${app_name}.env" "$app_name" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
+  app_write_env_file "${APP_MANAGED_DIR}/app.env" "${APP_NAME}" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
+  app_write_env_file "${INSTALLED_DIR}/${app_name}.env" "${APP_NAME}" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
+
+  # Hook pre_install : régénère secrets, configs, .env (idempotent).
+  app_run_hook "pre_install" "${app_template_dir}/pre_install.sh" "$app_name"
 
   if [ "${APP_LOCAL_ONLY:-false}" != true ] && [ "${APP_DISABLED:-false}" != true ] && [ "${APP_PUBLIC:-true}" = true ] && [ -n "${APP_HOST:-}" ]; then
     render_app_route_from_env "${BASE_DIR}/proxy/traefik/dynamic/route-${app_name}.yml"
@@ -472,6 +491,7 @@ EOF
       warn "[DRY-RUN] cd ${APP_MANAGED_DIR} && docker compose pull"
       warn "[DRY-RUN] cd ${APP_MANAGED_DIR} && docker compose up -d --force-recreate"
     fi
+    app_run_hook "post_install" "${app_template_dir}/post_install.sh" "$app_name"
     ok "Simulation de mise a jour de ${APP_MANAGED_NAME} terminee."
     return 0
   fi
@@ -490,7 +510,10 @@ EOF
 
   ok "App ${APP_MANAGED_NAME} mise a jour."
 
-  if [ "${app_name}" = "ksf-web" ] && declare -F cf_purge_cache >/dev/null 2>&1; then
+  # Hook post_install : reconfiguration post-update.
+  app_run_hook "post_install" "${app_template_dir}/post_install.sh" "$app_name"
+
+  if [ "${APP_NAME}" = "ksf-web" ] && declare -F cf_purge_cache >/dev/null 2>&1; then
     cf_purge_cache
   fi
 }
@@ -500,8 +523,10 @@ app_rebuild() {
   local app_template_dir="${APP_TEMPLATE_DIR}/${app_name}"
 
   app_require_installed "$app_name"
+  # app_require_installed charge l'env file : APP_NAME = template.
+  app_template_dir="${APP_TEMPLATE_DIR}/${APP_NAME:-${app_name}}"
   if [ ! -f "${app_template_dir}/compose.yml" ]; then
-    err "Template Compose absent pour ${app_name} : ${app_template_dir}/compose.yml"
+    err "Template Compose absent pour ${APP_NAME:-${app_name}} : ${app_template_dir}/compose.yml"
     exit 1
   fi
 
@@ -518,7 +543,7 @@ app_rebuild() {
   : "${APP_PUID:=$(id -u)}"
   : "${APP_PGID:=$(id -g)}"
   # Cas spécifique ksf-web : régénérer le .env pour docker compose
-  if [ "$app_name" = "ksf-web" ]; then
+  if [ "${APP_NAME}" = "ksf-web" ]; then
     KSF_WEB_DATA_HOST_DIR="${BASE_DIR}/.ksf-web-data"
     if [ -d "${KSF_WEB_DATA_HOST_DIR}" ]; then
       chown "${APP_PUID}:${APP_PGID}" "${KSF_WEB_DATA_HOST_DIR}" 2>/dev/null || true
@@ -536,8 +561,11 @@ EOF
     chmod 600 "${APP_MANAGED_DIR}/.env"
   fi
   render_template "${app_template_dir}/compose.yml" "${APP_MANAGED_DIR}/docker-compose.yml"
-  app_write_env_file "${APP_MANAGED_DIR}/app.env" "$app_name" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
-  app_write_env_file "${INSTALLED_DIR}/${app_name}.env" "$app_name" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
+  app_write_env_file "${APP_MANAGED_DIR}/app.env" "${APP_NAME}" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
+  app_write_env_file "${INSTALLED_DIR}/${app_name}.env" "${APP_NAME}" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
+
+  # Hook pre_install : régénère secrets, configs, .env (idempotent).
+  app_run_hook "pre_install" "${app_template_dir}/pre_install.sh" "$app_name"
 
   if [ "${APP_LOCAL_ONLY:-false}" != true ] && [ "${APP_DISABLED:-false}" != true ] && [ "${APP_PUBLIC:-true}" = true ] && [ -n "${APP_HOST:-}" ]; then
     render_app_route_from_env "${BASE_DIR}/proxy/traefik/dynamic/route-${app_name}.yml"
@@ -545,6 +573,7 @@ EOF
 
   if [ "${DRY_RUN:-false}" = true ]; then
     warn "[DRY-RUN] cd ${APP_MANAGED_DIR} && docker compose build --no-cache && docker compose up -d --force-recreate"
+    app_run_hook "post_install" "${app_template_dir}/post_install.sh" "$app_name"
     ok "Simulation de reconstruction de ${APP_MANAGED_NAME} terminee."
     return 0
   fi
@@ -558,7 +587,10 @@ EOF
 
   ok "App ${APP_MANAGED_NAME} reconstruite."
 
-  if [ "${app_name}" = "ksf-web" ] && declare -F cf_purge_cache >/dev/null 2>&1; then
+  # Hook post_install : reconfiguration post-rebuild.
+  app_run_hook "post_install" "${app_template_dir}/post_install.sh" "$app_name"
+
+  if [ "${APP_NAME}" = "ksf-web" ] && declare -F cf_purge_cache >/dev/null 2>&1; then
     cf_purge_cache
   fi
 }
@@ -690,8 +722,49 @@ app_resolve_docker_gid() {
   fi
 }
 
+# Exécute un hook (pre_install.sh / post_install.sh) d'une app si présent.
+#
+# Le hook est sourcé (et non exécuté) dans un sous-shell, ce qui permet :
+#   - d'accéder aux variables KSF déjà chargées (APP_DIR, APP_DATA, BASE_DIR, ...)
+#   - d'exporter de nouvelles variables / écrire des fichiers qui seront
+#     utilisés par la suite du flux (ex : ${app_dir}/.env pour docker compose)
+#
+# Variables exposées au hook :
+#   APP_NAME, APP_DIR, APP_DATA, APP_PUID, APP_PGID, APP_HOST, APP_PORT,
+#   APP_DOMAIN, APP_TEMPLATE_DIR, BASE_DIR, NETWORK_NAME, TZ_VALUE, DOCKER_GID,
+#   DRY_RUN, AUTO_YES
+#
+# Conventions :
+#   templates/apps/<app>/pre_install.sh   : optionnel, exécuté avant render+up
+#   templates/apps/<app>/post_install.sh  : optionnel, exécuté après up réussi
+app_run_hook() {
+  local hook_name="$1"
+  local hook_path="$2"
+  local app_name="$3"
+
+  if [ ! -f "$hook_path" ]; then
+    return 0
+  fi
+  if [ ! -r "$hook_path" ]; then
+    err "Hook ${hook_name} illisible : ${hook_path}"
+    exit 1
+  fi
+
+  info "Hook ${hook_name} de ${app_name}..."
+  if [ "${DRY_RUN:-false}" = true ]; then
+    warn "[DRY-RUN] source ${hook_path}"
+    return 0
+  fi
+
+  if ! ( source "$hook_path" ); then
+    err "Échec du hook ${hook_name} pour ${app_name} (voir logs ci-dessus)."
+    exit 1
+  fi
+}
+
 app_install() {
   local app_name="$1"
+  local app_instance="${APP_INSTANCE_OVERRIDE:-${app_name}}"
   local app_template_dir="${APP_TEMPLATE_DIR}/${app_name}"
 
   if [ ! -d "${app_template_dir}" ]; then
@@ -700,16 +773,18 @@ app_install() {
     exit 1
   fi
 
-  if [ -f "${INSTALLED_DIR}/${app_name}.env" ]; then
-    warn "L'app ${app_name} est déjà installée."
-    return 0
+  if [ -f "${INSTALLED_DIR}/${app_instance}.env" ]; then
+    err "L'instance '${app_instance}' est déjà installée (template : ${app_name})."
+    err "Pour une autre instance, utilise --instance <nom>."
+    exit 1
   fi
 
   source "${app_template_dir}/app.env"
-  APP_DEFAULT_HOST="${APP_DEFAULT_HOST:-${APP_HOST:-${APP_NAME:-${app_name}}}}"
+  APP_DEFAULT_HOST="${APP_DEFAULT_HOST:-${APP_HOST:-${APP_NAME:-${app_instance}}}}"
   APP_PORT="${APP_PORT_OVERRIDE:-${APP_PORT:-${APP_INTERNAL_PORT:-}}}"
   APP_PROTECTED="${APP_PROTECTED:-true}"
   APP_PUBLIC="${APP_PUBLIC:-true}"
+  APP_INSTANCE="${app_instance}"
 
   APP_HOST=""
   APP_DOMAIN=""
@@ -718,14 +793,14 @@ app_install() {
   APP_DISABLED=false
   APP_PUID="$(id -u)"
   APP_PGID="$(id -g)"
-  local app_dir="${BASE_DIR}/apps/${app_name}"
-  local app_data="${BASE_DIR}/data/${app_name}"
+  local app_dir="${BASE_DIR}/apps/${app_instance}"
+  local app_data="${BASE_DIR}/data/${app_instance}"
 
   if [ "${APP_LOCAL_ONLY}" = false ] && [ "${WITH_TRAEFIK:-false}" = true ]; then
-    resolve_app_host "${app_name}"
-    resolve_app_auth "${app_name}"
+    resolve_app_host "${app_instance}"
+    resolve_app_auth "${app_instance}"
   else
-    info "${app_name} sera accessible en local sur 127.0.0.1:${APP_PORT} si son compose expose ce port."
+    info "${app_instance} sera accessible en local sur 127.0.0.1:${APP_PORT} si son compose expose ce port."
   fi
 
   run mkdir -p "${INSTALLED_DIR}" "${app_dir}" "${app_data}"
@@ -768,18 +843,23 @@ EOF
 
   render_template "${app_template_dir}/compose.yml" "${app_dir}/docker-compose.yml"
   app_write_env_file "${app_dir}/app.env" "$app_name" "$app_dir" "$app_data"
-  ok "Stack ${app_name} générée dans ${app_dir}"
+  ok "Stack ${app_instance} générée dans ${app_dir}"
 
   if [ "${APP_LOCAL_ONLY}" = false ] && [ "${WITH_TRAEFIK:-false}" = true ] && [ -n "${APP_HOST}" ] && [ "${APP_PUBLIC}" = true ]; then
     local dynamic_dir="${BASE_DIR}/proxy/traefik/dynamic"
     run mkdir -p "${dynamic_dir}"
-    render_app_route_from_env "${dynamic_dir}/route-${app_name}.yml"
-    ok "Route Traefik générée pour ${app_name} (${APP_HOST})"
+    render_app_route_from_env "${dynamic_dir}/route-${app_instance}.yml"
+    ok "Route Traefik générée pour ${app_instance} (${APP_HOST})"
   fi
 
   app_dns_ensure_record
 
-  app_write_env_file "${INSTALLED_DIR}/${app_name}.env" "$app_name" "$app_dir" "$app_data"
+  app_write_env_file "${INSTALLED_DIR}/${app_instance}.env" "$app_name" "$app_dir" "$app_data"
+
+  # Hook pre_install : permet à l'app de générer des secrets, fichiers de
+  # config, .env, etc. AVANT le démarrage de la stack. Le hook est sourcé
+  # (donc peut set des variables / écrire des fichiers utilisés par la suite).
+  app_run_hook "pre_install" "${app_template_dir}/pre_install.sh" "$app_instance"
 
   if [ "${DRY_RUN:-false}" = true ]; then
     if _compose_has_build "${app_dir}/docker-compose.yml"; then
@@ -788,18 +868,23 @@ EOF
     else
       warn "[DRY-RUN] cd ${app_dir} && docker compose up -d --force-recreate"
     fi
-    ok "Simulation d'installation de ${app_name} terminee."
+    app_run_hook "post_install" "${app_template_dir}/post_install.sh" "$app_instance"
+    ok "Simulation d'installation de ${app_instance} terminee."
   else
-    info "Demarrage de ${app_name}..."
+    info "Demarrage de ${app_instance}..."
     local up_cmd="docker compose up -d --force-recreate"
     if _compose_has_build "${app_dir}/docker-compose.yml"; then
       up_cmd="docker compose up -d --build --force-recreate"
     fi
     if ! (cd "${app_dir}" && ${up_cmd}); then
-      err "Echec du demarrage de ${app_name}. Stack generee dans ${app_dir}."
+      err "Echec du demarrage de ${app_instance}. Stack generee dans ${app_dir}."
       exit 1
     fi
-    ok "App ${app_name} installée et demarree."
+    ok "App ${app_instance} installée et demarree."
+
+    # Hook post_install : configuration post-démarrage (ex : activation de
+    # plugins, configuration WP, etc.). Ne s'exécute que si le up a réussi.
+    app_run_hook "post_install" "${app_template_dir}/post_install.sh" "$app_instance"
   fi
 }
 

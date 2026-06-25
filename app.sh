@@ -32,6 +32,7 @@ APP_HOST_OVERRIDE=""
 APP_SUBDOMAIN_OVERRIDE=""
 APP_DOMAIN_OVERRIDE=""
 APP_PORT_OVERRIDE=""
+APP_INSTANCE_OVERRIDE=""
 APP_AUTH_CHOICE="ask"
 APP_LOCAL_ONLY=false
 
@@ -59,6 +60,7 @@ Options:
   --subdomain NAME      Sous-domaine de l'app (défaut: nom de l'app)
   --host HOST           Hostname complet de l'app
   --port PORT           Port de l'app (override le port du template)
+  --instance NAME       Nom d'instance (permet d'installer plusieurs fois le même template)
   --auth                Protège l'app avec OAuth2 Proxy (si OAuth2 Proxy est configuré)
   --no-auth             N'applique pas OAuth2 à cette app
   --local-only          Ne génère pas de route Traefik
@@ -71,6 +73,8 @@ Exemples:
   $0 install radarr
   $0 install radarr --subdomain films --auth
   $0 install radarr --host radarr.example.com --no-auth
+  $0 install wordpress --subdomain blog --instance blog
+  $0 install wordpress --subdomain shop --instance shop
   $0 status radarr
   $0 update radarr --dry-run
   $0 logs radarr
@@ -109,6 +113,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --port)
       APP_PORT_OVERRIDE="$2"
+      shift 2
+      ;;
+    --instance)
+      APP_INSTANCE_OVERRIDE="$2"
       shift 2
       ;;
     --auth)

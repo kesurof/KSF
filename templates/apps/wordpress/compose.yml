@@ -1,0 +1,147 @@
+# WordPress — Site optimise, non-WooCommerce
+#
+# Architecture (multi-instance) :
+#   - ${APP_INSTANCE}-wp  : PHP-FPM alpine (FastCGI sur :9000, pas d'HTTP)
+#   - ${APP_INSTANCE}-web : nginx alpine reverse-proxy FastCGI -> wp:9000
+#   - ${APP_INSTANCE}-db  : MariaDB 11 (persistance dans ${BASE_DIR}/data/${APP_INSTANCE}/db)
+#   - ${APP_INSTANCE}-cache : Redis 7 (object cache, 128MB max, LRU)
+#
+# Multi-instance : tous les noms (containers, volumes, hosts reseau) sont
+# suffixes par ${APP_INSTANCE} pour permettre plusieurs WP sur la meme
+# plateforme (ex : --instance blog, --instance shop).
+#
+# Persistance :
+#   - ${BASE_DIR}/data/${APP_INSTANCE}/html   : wp-content + uploads + themes/plugins
+#   - ${BASE_DIR}/data/${APP_INSTANCE}/db     : donnees MariaDB
+#   - ${BASE_DIR}/data/${APP_INSTANCE}/cache  : snapshot Redis
+#   - ${BASE_DIR}/data/${APP_INSTANCE}/config : php.ini + opcache.ini + nginx.conf
+#
+# Variables `${WP_*}` non definies dans RENDER_VARS : elles sont laissees telles
+# quelles par render_template puis resolues par Docker Compose depuis
+# ${APP_DIR}/.env (genere par pre_install.sh).
+#
+# Variables `__BASE_DIR__` / `__APP_INSTANCE__` sont substituees par render_template.
+services:
+  wp:
+    image: wordpress:6-fpm-alpine
+    container_name: ${APP_INSTANCE}-wp
+    restart: unless-stopped
+    networks:
+      - proxy
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_started
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME}
+      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+      WORDPRESS_TABLE_PREFIX: ${WORDPRESS_TABLE_PREFIX}
+      WORDPRESS_CONFIG_EXTRA: |
+        // Object cache Redis
+        define('WP_REDIS_HOST', 'cache');
+        define('WP_REDIS_PORT', 6379);
+        define('WP_CACHE_KEY_SALT', '${WORDPRESS_CACHE_KEY_SALT}');
+        define('WP_CACHE', true);
+        // Durcissement
+        define('DISALLOW_FILE_EDIT', true);
+        define('FORCE_SSL_ADMIN', true);
+        define('AUTOMATIC_UPDATER_DISABLED', false);
+        define('WP_AUTO_UPDATE_CORE', 'minor');
+        // Memoire
+        define('WP_MEMORY_LIMIT', '256M');
+        define('WP_MAX_MEMORY_LIMIT', '512M');
+        // Post-revisions limitees (perf DB)
+        define('WP_POST_REVISIONS', 10);
+        // Intervalle autosave
+        define('AUTOSAVE_INTERVAL', 120);
+        // Vide auto de la corbeille
+        define('EMPTY_TRASH_DAYS', 14);
+    volumes:
+      - ${BASE_DIR}/data/${APP_INSTANCE}/html:/var/www/html
+      - ${BASE_DIR}/data/${APP_INSTANCE}/config/php.ini:/usr/local/etc/php/conf.d/99-wordpress.ini:ro
+      - ${BASE_DIR}/data/${APP_INSTANCE}/config/opcache.ini:/usr/local/etc/php/conf.d/zz-opcache.ini:ro
+    healthcheck:
+      test: ["CMD-SHELL", "php -r 'exit(is_dir(\"/var/www/html/wp-admin\") ? 0 : 1);'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  web:
+    image: nginx:1.27-alpine
+    container_name: ${APP_INSTANCE}-web
+    restart: unless-stopped
+    networks:
+      - proxy
+    depends_on:
+      wp:
+        condition: service_started
+    volumes:
+      - ${BASE_DIR}/data/${APP_INSTANCE}/html:/var/www/html:ro
+      - ${BASE_DIR}/data/${APP_INSTANCE}/config/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  db:
+    image: mariadb:11
+    container_name: ${APP_INSTANCE}-db
+    restart: unless-stopped
+    networks:
+      - proxy
+    environment:
+      MARIADB_DATABASE: ${WORDPRESS_DB_NAME}
+      MARIADB_USER: ${WORDPRESS_DB_USER}
+      MARIADB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+      MARIADB_RANDOM_ROOT_PASSWORD: "true"
+    volumes:
+      - ${BASE_DIR}/data/${APP_INSTANCE}/db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=256M
+      - --innodb-log-file-size=64M
+      - --max-connections=200
+      - --query-cache-size=0
+      - --query-cache-type=0
+
+  cache:
+    image: redis:7-alpine
+    container_name: ${APP_INSTANCE}-cache
+    restart: unless-stopped
+    networks:
+      - proxy
+    volumes:
+      - ${BASE_DIR}/data/${APP_INSTANCE}/cache:/data
+    command:
+      - redis-server
+      - --maxmemory
+      - 128mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - "300 100"
+      - --appendonly
+      - "no"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  proxy:
+    name: ${NETWORK_NAME}
+    external: true
