@@ -1011,41 +1011,39 @@ a.card:hover,
     align-items: center;
 }
 
-/* Kebab menu (⋯) : dropdown d'actions rares / destructives */
-.kebab { position: relative; display: inline-block; }
-.kebab > summary {
-    list-style: none;
-    cursor: pointer;
-    user-select: none;
+/* Kebab menu (⋯) : dropdown d'actions rares / destructives.
+   Structure : <div class="kebab" data-kebab>
+                 <button class="kebab-trigger" data-kebab-trigger>⋯</button>
+                 <div class="kebab-menu" role="menu" hidden>...</div>
+               </div>
+   Pas de <details> : le user agent stylesheet interfère avec le
+   positionnement absolu en flex parent. */
+.kebab { position: relative; display: inline-flex; flex-shrink: 0; }
+.kebab-trigger {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     min-width: 1.75rem;
-    height: 1.5rem;
+    height: 1.75rem;
     padding: 0 var(--s-1);
     font-size: 1rem;
     line-height: 1;
     color: var(--text-2);
-    background: transparent;
+    background: var(--surface);
     border: 1px solid var(--border-2);
     border-radius: var(--r);
+    cursor: pointer;
+    user-select: none;
     transition: background 0.12s, border-color 0.12s;
 }
-.kebab > summary::-webkit-details-marker { display: none; }
-.kebab > summary:hover {
-    background: var(--surface-3);
-    border-color: var(--border-3);
-}
-.kebab[open] > summary {
-    background: var(--surface-3);
-    border-color: var(--border-3);
-}
+.kebab-trigger:hover { background: var(--hover); border-color: var(--border-3); }
+.kebab-trigger[aria-expanded="true"] { background: var(--surface-3); border-color: var(--border-3); }
 .kebab-menu {
     position: absolute;
     top: calc(100% + var(--s-1));
     right: 0;
-    z-index: 50;
-    min-width: 9rem;
+    z-index: 200;
+    min-width: 10rem;
     display: flex;
     flex-direction: column;
     background: var(--surface);
@@ -1055,6 +1053,7 @@ a.card:hover,
     padding: var(--s-1);
     gap: 2px;
 }
+.kebab-menu[hidden] { display: none; }
 .kebab-item {
     text-align: left;
     background: transparent;
@@ -1065,13 +1064,12 @@ a.card:hover,
     border-radius: var(--r-xs);
     cursor: pointer;
     transition: background 0.1s;
+    white-space: nowrap;
 }
 .kebab-item:hover { background: var(--hover); }
 .kebab-item.warn { color: var(--orange); }
 .kebab-item.danger { color: var(--red); }
 .kebab-item:disabled { opacity: 0.5; cursor: not-allowed; }
-/* Ferme le kebab après un clic externe */
-.kebab:not([open]) > .kebab-menu { display: none; }
 
 .acard-containers {
     display: flex;

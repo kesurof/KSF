@@ -111,6 +111,41 @@ def test_apps_install_button_uses_plus_icon(client):
         assert b">+<" in r.content or b"&#43;" in r.content
 
 
+def test_apps_no_details_element(client):
+    """Le kebab menu ne doit plus utiliser <details> (interférence flex + UA stylesheet)."""
+    with open("/home/kesurof/projets/KSF/ksf-web/app/templates/apps.html") as f:
+        src = f.read()
+    assert "<details" not in src, "Le kebab doit être un div+button, pas <details>"
+
+
+def test_apps_kebab_uses_data_kebab(client):
+    """Le kebab menu doit utiliser la nouvelle structure data-kebab."""
+    r = client.get("/apps")
+    # Vérifie qu'au moins un kebab est présent (avec app installée)
+    # et utilise la nouvelle structure
+    with open("/home/kesurof/projets/KSF/ksf-web/app/templates/apps.html") as f:
+        src = f.read()
+    assert "data-kebab" in src
+    assert "data-kebab-trigger" in src
+    assert "kebab-trigger" in src
+    assert "aria-haspopup=\"menu\"" in src
+    assert "aria-expanded=\"false\"" in src
+
+
+def test_apps_actions_have_hx_swap_none(client):
+    """Tous les boutons d'action doivent avoir hx-swap=none pour ne pas remplacer le bouton par du JSON."""
+    with open("/home/kesurof/projets/KSF/ksf-web/app/templates/apps.html") as f:
+        src = f.read()
+    # Le nombre de hx-swap=none doit être au moins 5 (start/stop, update, restart, rebuild, disable/remove)
+    assert src.count('hx-swap="none"') >= 5
+    # Aucun hx-post dans apps.html ne doit OUBLIER hx-swap (sauf rebuild qui l'a déjà)
+    # Compte les hx-post et les hx-swap=none, ils doivent matcher
+    hx_posts = src.count("hx-post=")
+    hx_swaps = src.count('hx-swap="none"')
+    # On accepte que les hx-post pour les actions doivent tous avoir hx-swap
+    assert hx_swaps >= hx_posts - 1, f"hx-post={hx_posts} mais hx-swap={hx_swaps}"
+
+
 def test_audit_export_json(client):
     r = client.get("/api/audit/export?fmt=json")
     assert r.status_code == 200

@@ -78,10 +78,14 @@
             {% if app.disabled %}<div class="meta"><span class="meta-l">État</span><span class="badge b-orange">Désactivé</span></div>{% endif %}
         </div>
         <div class="acard-actions">
-            {# Action principale : Start/Stop (toggle), Update, kebab ⋯ #}
+            {# Action principale : Start/Stop (toggle), Update, kebab ⋯
+               Tous les hx-post ont hx-swap="none" : la réponse JSON est
+               consommée par le toast global (base.html) et le hx-on handler
+               éventuel. Sans ça, le JSON remplace le bouton dans le DOM. #}
             {% if app.status == 'running' and not app.disabled %}
             <button class="btn btn-sm btn-warn"
                     hx-post="/apps/{{ app.name }}/stop"
+                    hx-swap="none"
                     data-confirm="Arrêter {{ app.name }} ?"
                     hx-disabled-elt="this"
                     {% if not actions_enabled %}disabled{% endif %}>
@@ -90,6 +94,7 @@
             {% else %}
             <button class="btn btn-sm btn-primary"
                     hx-post="/apps/{{ app.name }}/start"
+                    hx-swap="none"
                     data-confirm="Démarrer {{ app.name }} ?"
                     hx-disabled-elt="this"
                     {% if not actions_enabled %}disabled{% endif %}>
@@ -98,16 +103,23 @@
             {% endif %}
             <button class="btn btn-sm"
                     hx-post="/apps/{{ app.name }}/update"
+                    hx-swap="none"
                     data-confirm="Mettre à jour {{ app.name }} ?"
                     hx-disabled-elt="this"
                     {% if not actions_enabled %}disabled{% endif %}>
                 <span class="btn-icon" aria-hidden="true">↻</span>Update
             </button>
-            <details class="kebab" onclick="event.stopPropagation()">
-                <summary class="btn btn-sm" aria-label="Plus d'actions pour {{ app.name }}">⋯</summary>
-                <div class="kebab-menu" role="menu">
+            <div class="kebab" data-kebab>
+                <button type="button"
+                        class="btn btn-sm kebab-trigger"
+                        aria-label="Plus d'actions pour {{ app.name }}"
+                        aria-haspopup="menu"
+                        aria-expanded="false"
+                        data-kebab-trigger>⋯</button>
+                <div class="kebab-menu" role="menu" hidden>
                     <button class="kebab-item"
                             hx-post="/apps/{{ app.name }}/restart"
+                            hx-swap="none"
                             data-confirm="Redémarrer {{ app.name }} ?"
                             hx-disabled-elt="this"
                             role="menuitem"
@@ -124,6 +136,7 @@
                     {% if app.disabled %}
                     <button class="kebab-item danger"
                             hx-post="/apps/{{ app.name }}/remove"
+                            hx-swap="none"
                             data-confirm2="Supprimer {{ app.name }} ?"
                             hx-disabled-elt="this"
                             role="menuitem"
@@ -131,13 +144,14 @@
                     {% else %}
                     <button class="kebab-item warn"
                             hx-post="/apps/{{ app.name }}/disable"
+                            hx-swap="none"
                             data-confirm2="Désactiver {{ app.name }} ?"
                             hx-disabled-elt="this"
                             role="menuitem"
                             {% if not actions_enabled %}disabled{% endif %}>Désactiver</button>
                     {% endif %}
                 </div>
-            </details>
+            </div>
         </div>
 
         {% if app.containers %}
@@ -271,20 +285,45 @@
         if (e.key === 'Escape') {
             var m = document.getElementById('modal');
             if (m && m.classList.contains('on')) closeModal();
+            closeAllKebabs();
         }
     });
-    // Ferme les kebabs quand on clique ailleurs ou après un choix
+    // Kebab dropdown : ouverture/fermeture via le trigger, fermeture
+    // sur clic externe ou après activation d'un item.
+    function closeAllKebabs() {
+        document.querySelectorAll('[data-kebab]').forEach(function (k) {
+            var menu = k.querySelector('.kebab-menu');
+            var trig = k.querySelector('[data-kebab-trigger]');
+            if (menu && !menu.hidden) menu.hidden = true;
+            if (trig) trig.setAttribute('aria-expanded', 'false');
+        });
+    }
     document.addEventListener('click', function (e) {
-        document.querySelectorAll('.kebab[open]').forEach(function (d) {
-            if (!d.contains(e.target)) d.removeAttribute('open');
-        });
-    });
-    // Ferme le kebab après l'activation d'un item (action déclenchée)
-    document.querySelectorAll('.kebab-item').forEach(function (item) {
-        item.addEventListener('click', function () {
-            var k = item.closest('.kebab');
-            if (k) k.removeAttribute('open');
-        });
+        var inside = e.target.closest('[data-kebab]');
+        if (!inside) { closeAllKebabs(); return; }
+        var trig = e.target.closest('[data-kebab-trigger]');
+        if (trig) {
+            e.stopPropagation();
+            var k = trig.closest('[data-kebab]');
+            var menu = k.querySelector('.kebab-menu');
+            var willOpen = menu.hidden;
+            closeAllKebabs();
+            if (willOpen) {
+                menu.hidden = false;
+                trig.setAttribute('aria-expanded', 'true');
+                // Focus le premier item après l'ouverture
+                setTimeout(function () {
+                    var first = menu.querySelector('.kebab-item:not([disabled])');
+                    if (first) first.focus();
+                }, 50);
+            }
+            return;
+        }
+        // Clic sur un item : ferme le menu après que l'action se déclenche
+        var item = e.target.closest('.kebab-item');
+        if (item) {
+            setTimeout(closeAllKebabs, 100);
+        }
     });
 </script>
 {% endblock %}

@@ -34,6 +34,17 @@ template se rend correctement.
 | **`closeInstallModal` undefined** | `install_form.html` appelait `closeInstallModal()` mais la fonction n'existait pas (le modal apps.html utilise `closeModal()`) | **JS error** après install → la modale ne se fermait pas | `app/templates/partials/install_form.html` |
 | **Start utilisait `/restart`** | Quand `app.status != 'running'`, le bouton "Start" appelait `/restart` (confusant : "Redémarrer" n'est pas "Démarrer") | UX confuse : le user voyait "Démarrer X ?" puis "Redémarrage lancé" | `app/templates/apps.html` |
 | **CSS vars `var(--bg-1)`, `var(--text-1)`, `var(--r-1)`** | Anciennes références non migrées (fallback via `var(--bg-3, var(--bg-2))` cassé) | Kebab menu visuellement cassé en light theme (bg transparent) | `app/static/app.css` |
+| **Boutons d'action sans `hx-swap="none"`** | htmx remplace par défaut le bouton par la réponse JSON | Quand une action échouait, le **JSON brut `{"success":false,...}` s'affichait à la place du bouton** dans la card | `app/templates/apps.html` |
+| **Kebab menu basé sur `<details>`** | Le user agent stylesheet de `<details>` interfère avec le positionnement absolu en flex parent (`.acard-actions` est `display: flex`) | Les items du kebab s'affichaient **en bas de la page en flow layout** au lieu d'être un dropdown flottant | `app/templates/apps.html`, `app/static/app.css` |
+
+### Améliorations UI/UX (suite)
+
+| Amélioration | Description |
+|---|---|
+| **Kebab menu : refactor complet** | `<details>` remplacé par `<div data-kebab>` + `<button data-kebab-trigger>` + `<div class="kebab-menu" hidden>`. Toggle via `aria-expanded`, fermeture sur clic externe ou Escape, focus auto sur le premier item |
+| **Toutes les actions ont `hx-swap="none"`** | Le JSON de réponse n'est plus inséré dans le DOM. Il est consommé par le toast global (`base.html`) et les `hx-on::after-request` handlers |
+| **Modale d'install** : reset de l'erreur à l'ouverture, `role="alert"`, focus sur le bouton close à l'ouverture | Accessibilité |
+| **Kebab menu** : `role="menu"`, `role="menuitem"`, `role="separator"`, `aria-haspopup="menu"`, `aria-expanded` | ARIA complet pour les screen readers |
 
 ### Améliorations UI/UX
 
