@@ -38,6 +38,7 @@ dist/
 
 # Server data (never committed)
 config/
+!templates/apps/*/config/
 data/
 secrets/
 apps-local/
