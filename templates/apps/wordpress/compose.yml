@@ -1,34 +1,7 @@
-# WordPress — Site optimise, non-WooCommerce
-#
-# Architecture (multi-instance) :
-#   - ${APP_INSTANCE}-wp  : PHP-FPM alpine (FastCGI sur :9000, pas d'HTTP)
-#   - ${APP_INSTANCE}-web : nginx alpine reverse-proxy FastCGI -> wp:9000
-#   - ${APP_INSTANCE}-db  : MariaDB 11 (persistance dans ${BASE_DIR}/data/${APP_INSTANCE}/db)
-#   - ${APP_INSTANCE}-cache : Redis 7 (object cache, 128MB max, LRU)
-#
-# Multi-instance : tous les noms (containers, volumes, hosts reseau) sont
-# suffixes par ${APP_INSTANCE} pour permettre plusieurs WP sur la meme
-# plateforme (ex : --instance blog, --instance shop).
-#
-# Persistance :
-#   - ${BASE_DIR}/data/${APP_INSTANCE}/html   : wp-content + uploads + themes/plugins
-#   - ${BASE_DIR}/data/${APP_INSTANCE}/db     : donnees MariaDB
-#   - ${BASE_DIR}/data/${APP_INSTANCE}/cache  : snapshot Redis
-#   - ${BASE_DIR}/data/${APP_INSTANCE}/config : php.ini + opcache.ini + nginx.conf
-#
-# Variables `${WP_*}` non definies dans RENDER_VARS : elles sont laissees telles
-# quelles par render_template puis resolues par Docker Compose depuis
-# ${APP_DIR}/.env (genere par pre_install.sh).
-#
-# Variables `__BASE_DIR__` / `__APP_INSTANCE__` sont substituees par render_template.
 services:
   wp:
     image: wordpress:7-fpm-alpine
     container_name: ${APP_INSTANCE}-wp
-    # Le service tourne sous l'UID/GID de l'hote (kesurof par defaut) pour que
-    # le bind mount ${BASE_DIR}/data/${APP_INSTANCE}/html soit lisible/ecrivable
-    # depuis l'hote sans chown manuel apres chaque update. Voir pre_install.sh
-    # pour le chown initial de html/ (files WP installes par l'image en uid 82).
     user: "${APP_PUID}:${APP_PGID}"
     restart: unless-stopped
     networks:
