@@ -102,6 +102,7 @@ services:
       - --innodb-buffer-pool-size=256M
       - --innodb-log-file-size=64M
       - --max-connections=200
+      - --max-allowed-packet=128M
       - --query-cache-size=0
       - --query-cache-type=0
 
