@@ -25,6 +25,11 @@ services:
   wp:
     image: wordpress:7-fpm-alpine
     container_name: ${APP_INSTANCE}-wp
+    # Le service tourne sous l'UID/GID de l'hote (kesurof par defaut) pour que
+    # le bind mount ${BASE_DIR}/data/${APP_INSTANCE}/html soit lisible/ecrivable
+    # depuis l'hote sans chown manuel apres chaque update. Voir pre_install.sh
+    # pour le chown initial de html/ (files WP installes par l'image en uid 82).
+    user: "${APP_PUID}:${APP_PGID}"
     restart: unless-stopped
     networks:
       - proxy

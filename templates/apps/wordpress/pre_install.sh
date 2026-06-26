@@ -87,3 +87,17 @@ else
   chown -R "${APP_PUID}:${APP_PGID}" "${CONFIG_DIR}" 2>/dev/null || true
   ok "Configs (php + nginx) generees dans ${CONFIG_DIR}"
 fi
+
+# ---------- chown du bind mount html/ sur APP_PUID:APP_PGID ----------
+# L'image wordpress:7-fpm-alpine installe WP en uid 82 (www-data dans Alpine).
+# Le compose demarre le conteneur sous ${APP_PUID}:${APP_PGID} (cf. service wp),
+# donc il faut que ${APP_DATA}/html soit aussi owned par cet uid sinon le
+# service ne peut pas ecrire (uploads, plugins, themes, mises a jour WP).
+# Idempotent : si html/ est deja au bon uid (update), no-op.
+if [ "${DRY_RUN:-false}" = true ]; then
+  info "[DRY-RUN] chown -R ${APP_PUID}:${APP_PGID} ${APP_DATA}/html"
+else
+  mkdir -p "${APP_DATA}/html"
+  chown -R "${APP_PUID}:${APP_PGID}" "${APP_DATA}/html" 2>/dev/null || \
+    warn "chown ${APP_DATA}/html a echoue (root-only ?). Le conteneur wp ne pourra pas ecrire."
+fi
