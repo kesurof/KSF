@@ -31,43 +31,6 @@ bootstrap.sh
 deploy.sh
 app.sh
 ksf.sh
-ksf-web/
-  app/
-    main.py
-    config.py
-    db.py
-    utils.py
-    ksf_commands.py
-    docker_client.py
-    security.py
-    services/
-      __init__.py
-      events.py
-      jobs.py
-      backups.py
-      config_editor.py
-      audit.py
-      notifications.py
-      webhooks.py
-    templates/
-      base.html
-      dashboard.html
-      ...
-    static/
-      app.css
-      vendor/
-  migrations/
-    001_initial.sql
-    002_*.sql
-    003_*.sql
-  templates/apps/ksf-web/
-    app.env
-    compose.yml
-  entrypoint.sh
-  Dockerfile
-  requirements.txt
-  ROADMAP.md
-  TODO.md
 lib/
   common.sh
   steps.sh
@@ -88,7 +51,6 @@ Structure générée :
 ```text
 ~/serverbox/
   .env
-  .ksf-web-data/   # bind mount pour la DB SQLite de ksf-web
   config/
     ksf.env
     installed-apps/
@@ -96,10 +58,8 @@ Structure générée :
     traefik/
     oauth2-proxy/
   apps/
-    ksf-web/        # stack générée
   data/
   logs/
-    ksf-web/       # logs d'actions et de jobs
   backups/
 ```
 
@@ -247,43 +207,9 @@ Ou, pour couvrir les scripts et bibliothèques présents :
 bash -n ksf.sh lib/*.sh
 ```
 
-Après modification de ksf-web (Python) :
-
-```bash
-# Validation syntaxique de tous les fichiers Python
-cd ksf-web && python3 -c "
-import ast, os
-for root, _, files in os.walk('app'):
-    for f in files:
-        if f.endswith('.py'):
-            with open(os.path.join(root, f)) as fh: ast.parse(fh.read())
-print('AST OK')
-"
-# Note : les imports (Docker, FastAPI, aiosqlite, etc.) ne sont testables
-# qu'en image (pip install). Faire un ./app.sh rebuild ksf-web en CI/dev.
-
-# Validation des migrations SQL
-for f in ksf-web/migrations/*.sql; do
-  python3 -c "
-import sqlite3
-conn = sqlite3.connect(':memory:')
-# Charge d'abord 001 (contient les tables), puis la migration
-for prev in sorted([p for p in __import__('glob').glob('ksf-web/migrations/*.sql') if __import__('os').path.basename(p) <= __import__('os').path.basename('$f')]):
-    conn.executescript(open(prev).read())
-print('OK $f')
-"
-done
-```
-
 Après modification de templates Compose, valider avec des variables de test :
 
 ```bash
-BASE_DIR=/tmp/df-test NETWORK_NAME=proxy TZ_VALUE=Europe/Paris \
-APP_PUID=$(id -u) APP_PGID=$(id -g) DOCKER_GID=$(getent group docker | cut -d: -f3) \
-KSF_REPO_DIR=$(pwd) \
-KSF_WEB_DATA_HOST_DIR=/tmp/df-test/.ksf-web-data \
-docker compose -f templates/apps/ksf-web/compose.yml config >/dev/null
-
 BASE_DIR=/tmp/df-test NETWORK_NAME=proxy TZ_VALUE=Europe/Paris \
 APP_PUID=$(id -u) APP_PGID=$(id -g) \
 docker compose -f templates/apps/radarr/compose.yml config >/dev/null
@@ -314,26 +240,6 @@ Vérifier ensuite :
 docker compose -f /tmp/ksf-test/proxy/traefik/docker-compose.yml config >/dev/null
 docker compose -f /tmp/ksf-test/proxy/oauth2-proxy/docker-compose.yml config >/dev/null
 docker compose -f /tmp/ksf-test/apps/radarr/docker-compose.yml config >/dev/null
-```
-
-Pour ksf-web (cycle complet) :
-
-```bash
-# Rebuild + remove + install pour partir clean
-./app.sh rebuild ksf-web
-docker stop ksf-web; docker rm -f ksf-web
-docker volume rm ksf-web_ksf-web-data 2>/dev/null
-rm -rf /home/$(whoami)/serverbox/.ksf-web-data
-./app.sh install ksf-web
-
-# Vérifier que ça démarre
-sleep 5 && docker logs ksf-web | tail -10
-# Attendu : "ksf-web démarré (DB=..., jobs worker actif)"
-# PAS attendu : Traceback, FATAL, crash-loop
-
-# Vérifier les routes
-docker exec ksf-web sqlite3 /var/lib/ksf-web/state.db ".tables"
-# Attendu : jobs, notifications, audit_log, config_versions, webhook_endpoints
 ```
 
 ## Git et fichiers générés

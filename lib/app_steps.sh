@@ -457,24 +457,6 @@ app_update() {
   app_resolve_docker_gid
   : "${APP_PUID:=$(id -u)}"
   : "${APP_PGID:=$(id -g)}"
-  # Cas spécifique ksf-web : régénérer le .env pour docker compose
-  if [ "${APP_NAME}" = "ksf-web" ]; then
-    KSF_WEB_DATA_HOST_DIR="${BASE_DIR}/.ksf-web-data"
-    if [ -d "${KSF_WEB_DATA_HOST_DIR}" ]; then
-      chown "${APP_PUID}:${APP_PGID}" "${KSF_WEB_DATA_HOST_DIR}" 2>/dev/null || true
-      chmod 700 "${KSF_WEB_DATA_HOST_DIR}"
-    fi
-    # Si KSF_WEB_SECRET_KEY est set dans le shell, on la persiste ici aussi
-    # (sinon perte de clé de chiffrement au prochain up). Le user peut aussi
-    # l'éditer manuellement dans ${APP_MANAGED_DIR}/.env après install.
-    cat > "${APP_MANAGED_DIR}/.env" <<EOF
-KSF_WEB_DATA_HOST_DIR=${BASE_DIR}/.ksf-web-data
-APP_PUID=${APP_PUID}
-APP_PGID=${APP_PGID}
-KSF_WEB_SECRET_KEY=${KSF_WEB_SECRET_KEY:-}
-EOF
-    chmod 600 "${APP_MANAGED_DIR}/.env"
-  fi
   render_template "${app_template_dir}/compose.yml" "${APP_MANAGED_DIR}/docker-compose.yml"
   app_write_env_file "${APP_MANAGED_DIR}/app.env" "${APP_NAME}" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
   app_write_env_file "${INSTALLED_DIR}/${app_name}.env" "${APP_NAME}" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
@@ -516,9 +498,6 @@ EOF
   # Hook post_install : reconfiguration post-update.
   app_run_hook "post_install" "${app_template_dir}/post_install.sh" "$app_name"
 
-  if [ "${APP_NAME}" = "ksf-web" ] && declare -F cf_purge_cache >/dev/null 2>&1; then
-    cf_purge_cache
-  fi
 }
 
 app_rebuild() {
@@ -547,24 +526,6 @@ app_rebuild() {
   app_resolve_docker_gid
   : "${APP_PUID:=$(id -u)}"
   : "${APP_PGID:=$(id -g)}"
-  # Cas spécifique ksf-web : régénérer le .env pour docker compose
-  if [ "${APP_NAME}" = "ksf-web" ]; then
-    KSF_WEB_DATA_HOST_DIR="${BASE_DIR}/.ksf-web-data"
-    if [ -d "${KSF_WEB_DATA_HOST_DIR}" ]; then
-      chown "${APP_PUID}:${APP_PGID}" "${KSF_WEB_DATA_HOST_DIR}" 2>/dev/null || true
-      chmod 700 "${KSF_WEB_DATA_HOST_DIR}"
-    fi
-    # Si KSF_WEB_SECRET_KEY est set dans le shell, on la persiste ici aussi
-    # (sinon perte de clé de chiffrement au prochain up). Le user peut aussi
-    # l'éditer manuellement dans ${APP_MANAGED_DIR}/.env après install.
-    cat > "${APP_MANAGED_DIR}/.env" <<EOF
-KSF_WEB_DATA_HOST_DIR=${BASE_DIR}/.ksf-web-data
-APP_PUID=${APP_PUID}
-APP_PGID=${APP_PGID}
-KSF_WEB_SECRET_KEY=${KSF_WEB_SECRET_KEY:-}
-EOF
-    chmod 600 "${APP_MANAGED_DIR}/.env"
-  fi
   render_template "${app_template_dir}/compose.yml" "${APP_MANAGED_DIR}/docker-compose.yml"
   app_write_env_file "${APP_MANAGED_DIR}/app.env" "${APP_NAME}" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
   app_write_env_file "${INSTALLED_DIR}/${app_name}.env" "${APP_NAME}" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
@@ -595,9 +556,6 @@ EOF
   # Hook post_install : reconfiguration post-rebuild.
   app_run_hook "post_install" "${app_template_dir}/post_install.sh" "$app_name"
 
-  if [ "${APP_NAME}" = "ksf-web" ] && declare -F cf_purge_cache >/dev/null 2>&1; then
-    cf_purge_cache
-  fi
 }
 
 app_disable() {
@@ -861,39 +819,6 @@ app_install() {
   app_resolve_docker_gid
   : "${APP_PUID:=$(id -u)}"
   : "${APP_PGID:=$(id -g)}"
-
-  # Cas spécifique ksf-web : bind mount pour la persistance DB.
-  # On crée et chown le dossier hôte AVANT le `docker compose up` pour que
-  # le conteneur (qui démarre sous l'UID hôte) puisse écrire dedans.
-  #
-  # NB : KSF_WEB_DATA_HOST_DIR vient directement de ${BASE_DIR} ici, pas de
-  # l'app.env (qui contient un token KSF __BASE_DIR__ non encore rendu à ce stade).
-  if [ "$app_name" = "ksf-web" ]; then
-    KSF_WEB_DATA_HOST_DIR="${BASE_DIR}/.ksf-web-data"
-    if ! mkdir -p "${KSF_WEB_DATA_HOST_DIR}" 2>/dev/null; then
-      err "Impossible de créer ${KSF_WEB_DATA_HOST_DIR}. Vérifier les permissions de ${BASE_DIR}."
-      exit 1
-    fi
-    chown "${APP_PUID}:${APP_PGID}" "${KSF_WEB_DATA_HOST_DIR}" 2>/dev/null || {
-      warn "chown ${KSF_WEB_DATA_HOST_DIR} a échoué. Le conteneur risque de ne pas pouvoir écrire."
-    }
-    chmod 700 "${KSF_WEB_DATA_HOST_DIR}"
-    # Écrire un .env dans le dossier du compose pour que docker compose
-    # auto-charge les vars. On utilise ${BASE_DIR} directement (substitué par bash)
-    # et pas la variable shell (qui pourrait contenir un token KSF non rendu).
-    #
-    # Si KSF_WEB_SECRET_KEY est set dans le shell de l'user au moment de
-    # l'install, on la persiste dans le .env de l'app pour que les futurs
-    # `up` la passent au conteneur (sinon, perte de clé de chiffrement au
-    # prochain reboot/rebuild).
-    cat > "${app_dir}/.env" <<EOF
-KSF_WEB_DATA_HOST_DIR=${BASE_DIR}/.ksf-web-data
-APP_PUID=${APP_PUID}
-APP_PGID=${APP_PGID}
-KSF_WEB_SECRET_KEY=${KSF_WEB_SECRET_KEY:-}
-EOF
-    chmod 600 "${app_dir}/.env"
-  fi
 
   render_template "${app_template_dir}/compose.yml" "${app_dir}/docker-compose.yml"
   app_write_env_file "${app_dir}/app.env" "$app_name" "$app_dir" "$app_data"
