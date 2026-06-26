@@ -301,17 +301,6 @@ app_confirm_action() {
   fi
 }
 
-app_create_backup_before() {
-  local action="$1"
-
-  if ! declare -F backup_create >/dev/null 2>&1; then
-    err "Module backup indisponible : backup automatique impossible avant ${action}."
-    exit 1
-  fi
-  info "Backup automatique avant ${action}..."
-  backup_create
-}
-
 app_require_installed() {
   local app_name="$1"
 
@@ -452,7 +441,6 @@ app_update() {
   fi
 
   app_confirm_action "la mise à jour" "$app_name"
-  app_create_backup_before "update ${app_name}"
 
   app_resolve_docker_gid
   : "${APP_PUID:=$(id -u)}"
@@ -521,7 +509,6 @@ app_rebuild() {
   fi
 
   app_confirm_action "la reconstruction (sans cache)" "$app_name"
-  app_create_backup_before "rebuild ${app_name}"
 
   app_resolve_docker_gid
   : "${APP_PUID:=$(id -u)}"
@@ -884,7 +871,6 @@ app_remove() {
   local app_local_only="${APP_LOCAL_ONLY:-}"
 
   app_confirm_action "la suppression" "$app_name"
-  app_create_backup_before "remove ${app_name}"
 
   if [ -d "${app_dir}" ]; then
     if [ "${DRY_RUN:-false}" = true ]; then

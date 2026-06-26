@@ -174,7 +174,6 @@ if [ -f "$KSF_ENV" ]; then
 fi
 
 source "${SCRIPT_DIR}/lib/app_steps.sh"
-source "${SCRIPT_DIR}/lib/backup_steps.sh"
 
 case "${COMMAND}" in
   list)

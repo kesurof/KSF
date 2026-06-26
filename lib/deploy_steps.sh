@@ -41,8 +41,7 @@ step_dirs() {
     "${BASE_DIR}/stacks" \
     "${BASE_DIR}/logs" \
     "${BASE_DIR}/config" \
-    "${BASE_DIR}/config/installed-apps" \
-    "${BASE_DIR}/backups"
+    "${BASE_DIR}/config/installed-apps"
   run chown "${TARGET_USER:-$USER}:${TARGET_USER:-$USER}" "${BASE_DIR}" \
     "${BASE_DIR}/proxy" \
     "${BASE_DIR}/apps" \
@@ -50,8 +49,7 @@ step_dirs() {
     "${BASE_DIR}/stacks" \
     "${BASE_DIR}/logs" \
     "${BASE_DIR}/config" \
-    "${BASE_DIR}/config/installed-apps" \
-    "${BASE_DIR}/backups" 2>/dev/null || true
+    "${BASE_DIR}/config/installed-apps" 2>/dev/null || true
   run chmod 750 "${BASE_DIR}/logs"
   ok "Arborescence prête."
 }

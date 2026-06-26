@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ============================================================
 # KSF — Gestion de l'infrastructure existante
-# Menu interactif, status, config, routes, render, restart, protect, doctor, clean-data, backup, update, CrowdSec, trusted IPs
+# Menu interactif, status, config, routes, render, restart, protect, doctor, clean-data, update, CrowdSec, trusted IPs
 # ============================================================
 
 _ksf_resolve_script_dir() {
@@ -24,9 +24,6 @@ source "${SCRIPT_DIR}/lib/render.sh"
 BASE_DIR="${BASE_DIR:-${HOME}/serverbox}"
 COMMAND=""
 CLEAN_DATA_APP=""
-BACKUP_COMMAND=""
-BACKUP_ARG=""
-BACKUP_KEEP="5"
 UPDATE_SERVICE=""
 CROWDSEC_COMMAND=""
 CROWDSEC_ARG=""
@@ -56,9 +53,6 @@ Commandes :
   render                Régénérer les fichiers dynamiques Traefik
   restart               Relancer Traefik, OAuth2 Proxy et CrowdSec
 
-  Backup :
-  backup <commande>     Sauvegarder/restaurer KSF (create, list, status, verify, restore, prune)
-
   Update :
   update <service>      Mettre à jour une stack système (crowdsec, traefik, oauth2, all)
 
@@ -87,10 +81,6 @@ Exemples :
   $0 doctor
   $0 render --dry-run
   $0 restart
-  $0 backup create
-  $0 backup verify latest
-  $0 backup restore latest --dry-run
-  $0 backup prune --dry-run
   $0 update crowdsec
   $0 update traefik
   $0 update oauth2
@@ -171,36 +161,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         esac
         ;;
-      backup)
-        case "$1" in
-          --base-dir|--dry-run|-y|--yes|-h|--help) ;;
-          --keep)
-            if [ $# -lt 2 ]; then
-              err "Valeur manquante pour --keep"
-              exit 1
-            fi
-            BACKUP_KEEP="$2"
-            shift 2
-            continue
-            ;;
-          *)
-            if [ -z "$BACKUP_COMMAND" ]; then
-              BACKUP_COMMAND="$1"
-              shift
-              continue
-            fi
-            if [ -z "$BACKUP_ARG" ]; then
-              case "$BACKUP_COMMAND" in
-                verify|restore)
-                  BACKUP_ARG="$1"
-                  shift
-                  continue
-                  ;;
-              esac
-            fi
-            ;;
-        esac
-        ;;
       update)
         case "$1" in
           --base-dir|--dry-run|-y|--yes|-h|--help) ;;
@@ -217,7 +177,7 @@ while [[ $# -gt 0 ]]; do
   fi
 
   case "$1" in
-    menu|status|config|routes|protect|render|restart|doctor|clean-data|backup|update|crowdsec|trusted-ips|install-cli|uninstall-cli)
+    menu|status|config|routes|protect|render|restart|doctor|clean-data|update|crowdsec|trusted-ips|install-cli|uninstall-cli)
       if [ -n "$COMMAND" ]; then
         err "Commande déjà définie : ${COMMAND}"
         exit 1
@@ -261,27 +221,6 @@ while [[ $# -gt 0 ]]; do
       elif [ "$COMMAND" = "crowdsec" ] && [ -z "$CROWDSEC_DURATION" ] && [ "$CROWDSEC_COMMAND" = "ban" ]; then
         CROWDSEC_DURATION="$1"
         shift
-      elif [ "$COMMAND" = "backup" ] && [ -z "$BACKUP_COMMAND" ]; then
-        BACKUP_COMMAND="$1"
-        shift
-      elif [ "$COMMAND" = "backup" ] && [ "$1" = "--keep" ]; then
-        if [ $# -lt 2 ]; then
-          err "Valeur manquante pour --keep"
-          exit 1
-        fi
-        BACKUP_KEEP="$2"
-        shift 2
-      elif [ "$COMMAND" = "backup" ] && [ -z "$BACKUP_ARG" ]; then
-        case "$BACKUP_COMMAND" in
-          verify|restore)
-            BACKUP_ARG="$1"
-            shift
-            ;;
-          *)
-            err "Argument inconnu : $1"
-            usage
-            ;;
-        esac
       elif [ "$COMMAND" = "update" ] && [ -z "$UPDATE_SERVICE" ]; then
         UPDATE_SERVICE="$1"
         shift
@@ -300,7 +239,6 @@ if [ -z "$COMMAND" ]; then
 fi
 
 source "${SCRIPT_DIR}/lib/manage_steps.sh"
-source "${SCRIPT_DIR}/lib/backup_steps.sh"
 source "${SCRIPT_DIR}/lib/update_steps.sh"
 
 # ---------- Install / uninstall CLI ----------
@@ -310,8 +248,6 @@ manage_install_cli() {
   local target="${SCRIPT_DIR}/ksf.sh"
   local bin_dir
   bin_dir="$(dirname "$link_path")"
-  local ksf_block="# KSF CLI
-export PATH=\"\$HOME/.local/bin:\$PATH\""
 
   info "Installation de la commande globale ksf..."
   info "Cible : ${target}"
@@ -347,6 +283,16 @@ export PATH=\"\$HOME/.local/bin:\$PATH\""
         return 0
       fi
     fi
+  elif [ -e "$link_path" ]; then
+    warn "${link_path} existe mais n'est pas un lien symbolique."
+    if [ "${AUTO_YES:-false}" = true ] || _manage_cli_confirm "Remplacer ce fichier par un lien vers ksf.sh ?"; then
+      run rm -f "$link_path"
+      run ln -s "$target" "$link_path"
+      ok "Fichier remplacé par un lien."
+    else
+      info "Installation annulée."
+      return 0
+    fi
   else
     run ln -s "$target" "$link_path"
     ok "Lien créé."
@@ -355,7 +301,7 @@ export PATH=\"\$HOME/.local/bin:\$PATH\""
   echo ""
   ok "Commande ksf installée : ${link_path}"
 
-  _manage_cli_ensure_path_block "$ksf_block"
+  _manage_cli_ensure_path_block
 
   export PATH="${HOME}/.local/bin:${PATH}"
 
@@ -382,7 +328,12 @@ manage_uninstall_cli() {
     fi
   elif [ -e "$link_path" ]; then
     warn "${link_path} existe mais n'est pas un lien symbolique."
-    warn "Aucune suppression effectuée pour éviter tout dommage."
+    if [ "${AUTO_YES:-false}" = true ] || _manage_cli_confirm "Supprimer ce fichier ksf non lié ?"; then
+      run rm -f "$link_path"
+      ok "Fichier supprimé : ${link_path}"
+    else
+      warn "Aucune suppression effectuée pour éviter tout dommage."
+    fi
   else
     ok "Aucun lien ksf trouvé dans ~/.local/bin/."
   fi
@@ -480,9 +431,6 @@ case "$COMMAND" in
     ;;
   clean-data)
     manage_clean_data "${CLEAN_DATA_APP}"
-    ;;
-  backup)
-    manage_backup "${BACKUP_COMMAND}" "${BACKUP_ARG}"
     ;;
   update)
     manage_update "${UPDATE_SERVICE}"

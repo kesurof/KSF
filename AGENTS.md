@@ -36,7 +36,6 @@ lib/
   steps.sh
   deploy_steps.sh
   app_steps.sh
-  backup_steps.sh
   update_steps.sh
   render.sh
 templates/
@@ -60,7 +59,6 @@ Structure générée :
   apps/
   data/
   logs/
-  backups/
 ```
 
 ## Responsabilités des scripts
@@ -122,7 +120,7 @@ Autorisé :
 
 - Exploiter une installation existante : `doctor`, `render`, `restart`.
 - Gérer CrowdSec, AppSec / WAF et les trusted-ips.
-- Gérer les sauvegardes locales et les updates de stacks système.
+- Gérer les updates de stacks système.
 - Diagnostiquer l'état de Traefik, OAuth2 Proxy, CrowdSec et des apps installées.
 
 Interdit :
@@ -196,7 +194,6 @@ bash -n lib/steps.sh
 bash -n lib/deploy_steps.sh
 bash -n lib/app_steps.sh
 bash -n lib/manage_steps.sh
-bash -n lib/backup_steps.sh
 bash -n lib/update_steps.sh
 bash -n lib/render.sh
 ```

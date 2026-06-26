@@ -42,7 +42,6 @@ data/
 secrets/
 apps-local/
 apps-enabled/
-backups/
 logs/
 proxy/
 serverbox/

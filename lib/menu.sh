@@ -215,37 +215,6 @@ _menu_apps() {
   done
 }
 
-# ---------- Sauvegardes ----------
-
-_menu_backups() {
-  while true; do
-    _menu_header
-    echo "=== Sauvegardes ==="
-    echo ""
-    echo "  1) Créer une sauvegarde"
-    echo "  2) Lister les sauvegardes"
-    echo "  3) Vérifier latest"
-    echo "  4) Tester restore latest (dry-run)"
-    echo "  5) Retour"
-    echo ""
-    local choice
-    read -rp "Choix [1-5] : " choice
-    case "$choice" in
-      1) _menu_ksf backup create ;;
-      2) _menu_ksf backup list ;;
-      3) _menu_ksf backup verify latest ;;
-      4)
-        if _menu_confirm "Tester la restauration de latest (dry-run) ?"; then
-          _menu_ksf backup restore latest --dry-run
-        fi
-        ;;
-      5) return ;;
-      *) err "Choix invalide." ;;
-    esac
-    _menu_pause
-  done
-}
-
 # ---------- Sécurité ----------
 
 _menu_security() {
@@ -385,6 +354,12 @@ _menu_settings() {
         echo ""
         if command -v ksf >/dev/null 2>&1; then
           ok "command -v ksf → $(command -v ksf)"
+          if ksf --help >/dev/null 2>&1; then
+            ok "Exécution réelle de ksf       : OK"
+          else
+            warn "Exécution réelle de ksf       : échec"
+            echo "  Lance : ./ksf.sh install-cli"
+          fi
         else
           warn "command -v ksf → introuvable"
           echo "  Après installation, reconnecte-toi en SSH ou lance :"
@@ -406,23 +381,21 @@ menu_main() {
     echo "  1) État du serveur"
     echo "  2) Mettre à jour"
     echo "  3) Gérer les applications"
-    echo "  4) Sauvegardes"
-    echo "  5) Sécurité"
-    echo "  6) Logs"
-    echo "  7) Paramètres KSF"
-    echo "  8) Quitter"
+    echo "  4) Sécurité"
+    echo "  5) Logs"
+    echo "  6) Paramètres KSF"
+    echo "  7) Quitter"
     echo ""
     local choice
-    read -rp "Choix [1-8] : " choice
+    read -rp "Choix [1-7] : " choice
     case "$choice" in
       1) _menu_server_status ;;
       2) _menu_update ;;
       3) _menu_apps ;;
-      4) _menu_backups ;;
-      5) _menu_security ;;
-      6) _menu_logs ;;
-      7) _menu_settings ;;
-      8) echo "Au revoir !"; exit 0 ;;
+      4) _menu_security ;;
+      5) _menu_logs ;;
+      6) _menu_settings ;;
+      7) echo "Au revoir !"; exit 0 ;;
       *) err "Choix invalide." ;;
     esac
   done

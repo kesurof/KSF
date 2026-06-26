@@ -126,10 +126,8 @@ manage_update_print_summary() {
   echo "=== Résumé update système KSF ==="
   echo "Service concerné       : ${requested}"
   if [ "${DRY_RUN:-false}" = true ]; then
-    echo "Backup automatique     : prévu (dry-run)"
     echo "Doctor après update    : prévu (dry-run)"
   else
-    echo "Backup automatique     : prévu"
     echo "Doctor après update    : prévu"
   fi
   echo ""
@@ -155,24 +153,6 @@ manage_update_confirm() {
     err "Update annulé."
     exit 1
   fi
-}
-
-manage_update_create_backup() {
-  if [ "${DRY_RUN:-false}" = true ]; then
-    backup_create
-    UPDATE_BACKUP_CREATED="prévu (dry-run)"
-    return 0
-  fi
-
-  backup_create
-  local latest
-  latest=$(backup_latest_archive || true)
-  if [ -z "$latest" ]; then
-    err "Backup automatique introuvable après création."
-    exit 1
-  fi
-  backup_verify_archive latest
-  UPDATE_BACKUP_CREATED="$(basename "$latest")"
 }
 
 manage_update_compose_pull() {
@@ -282,7 +262,6 @@ manage_update_print_final_summary() {
 
   echo ""
   echo "=== Résumé final update KSF ==="
-  echo "Backup créé          : ${UPDATE_BACKUP_CREATED:-non}"
   if [ "${DRY_RUN:-false}" = true ]; then
     echo "Pull                 : prévu (dry-run)"
     echo "Recréation          : prévu (dry-run)"
@@ -335,14 +314,12 @@ manage_update() {
     manage_update_require_service "$requested"
   fi
 
-  UPDATE_BACKUP_CREATED=""
   UPDATE_PULL_DONE=false
   UPDATE_RECREATED_SERVICES=()
   UPDATE_DOCTOR_STATUS=""
 
   manage_update_print_summary "$requested" "${services[@]}"
   manage_update_confirm
-  manage_update_create_backup
 
   for service in "${services[@]}"; do
     manage_update_one_service "$service"

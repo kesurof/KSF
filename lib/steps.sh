@@ -132,15 +132,13 @@ step_dirs() {
     "${BASE_DIR}/apps" \
     "${BASE_DIR}/data" \
     "${BASE_DIR}/logs" \
-    "${BASE_DIR}/config" \
-    "${BASE_DIR}/backups"
+    "${BASE_DIR}/config"
   run sudo chown "${TARGET_USER}:${TARGET_USER}" "${BASE_DIR}" \
     "${BASE_DIR}/proxy" \
     "${BASE_DIR}/apps" \
     "${BASE_DIR}/data" \
     "${BASE_DIR}/logs" \
-    "${BASE_DIR}/config" \
-    "${BASE_DIR}/backups"
+    "${BASE_DIR}/config"
   run sudo chmod 750 "${BASE_DIR}/logs"
   ok "Arborescence prête."
 }

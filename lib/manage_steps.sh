@@ -352,11 +352,13 @@ manage_protect() {
   local count=0
   for f in "${INSTALLED_DIR}"/*.env; do
     [ -f "$f" ] || continue
+    local installed_key
+    installed_key=$(basename "$f" .env)
     source "$f"
-    render_normalize_app_vars "${APP_NAME}"
+    render_normalize_app_vars "$installed_key"
     if [ "${APP_PROTECTED:-${APP_AUTH:-true}}" = true ] && [ "${APP_LOCAL_ONLY:-false}" != true ] && [ "${APP_DISABLED:-false}" != true ]; then
-      echo "${dry_run_prefix}Protection de la route ${APP_NAME}..."
-      render_app_route_from_env "${TRAEFIK_DYNAMIC_DIR}/route-${APP_NAME}.yml"
+      echo "${dry_run_prefix}Protection de la route ${APP_INSTANCE:-$installed_key}..."
+      render_app_route_from_env "${TRAEFIK_DYNAMIC_DIR}/route-${APP_INSTANCE:-$installed_key}.yml"
       ((count++)) || true
     fi
   done
@@ -438,9 +440,12 @@ manage_render() {
   local count=0
   for f in "${INSTALLED_DIR}"/*.env; do
     [ -f "$f" ] || continue
+    local installed_key
+    installed_key=$(basename "$f" .env)
     source "$f"
-    render_normalize_app_vars "${APP_NAME}"
-    local route_dest="${TRAEFIK_DYNAMIC_DIR}/route-${APP_NAME}.yml"
+    render_normalize_app_vars "$installed_key"
+    local route_id="${APP_INSTANCE:-$installed_key}"
+    local route_dest="${TRAEFIK_DYNAMIC_DIR}/route-${route_id}.yml"
     if [ "${APP_LOCAL_ONLY:-false}" = true ] || [ "${APP_DISABLED:-false}" = true ] || [ "${APP_PUBLIC:-true}" != true ]; then
       if [ -f "$route_dest" ]; then
         if [ "${DRY_RUN:-false}" = true ]; then
@@ -452,12 +457,32 @@ manage_render() {
       continue
     fi
     if [ "${APP_PROTECTED:-${APP_AUTH:-true}}" = true ]; then
-      echo "${dry_run_prefix}Rendu de route-${APP_NAME}.yml (protégée)..."
+      echo "${dry_run_prefix}Rendu de route-${route_id}.yml (protégée)..."
     else
-      echo "${dry_run_prefix}Rendu de route-${APP_NAME}.yml (publique)..."
+      echo "${dry_run_prefix}Rendu de route-${route_id}.yml (publique)..."
     fi
     render_app_route_from_env "$route_dest"
     ((count++)) || true
+  done
+
+  for file in "${TRAEFIK_DYNAMIC_DIR}"/route-*.yml; do
+    [ -f "$file" ] || continue
+    local filename app_name
+    filename=$(basename "$file")
+    case "$filename" in
+      route-traefik.yml|route-oauth2-proxy.yml)
+        continue
+        ;;
+    esac
+    app_name="${filename#route-}"
+    app_name="${app_name%.yml}"
+    if [ ! -f "${INSTALLED_DIR}/${app_name}.env" ]; then
+      if [ "${DRY_RUN:-false}" = true ]; then
+        warn "[DRY-RUN] Suppression de ${file}"
+      else
+        rm -f "$file"
+      fi
+    fi
   done
 
   ok "${count} route(s) d'application régénérée(s)."
@@ -1609,7 +1634,8 @@ manage_doctor() {
     render_normalize_app_vars "$installed_key"
     local app_dir="${APP_DIR:-${BASE_DIR}/apps/${APP_NAME}}"
     local compose_file="${app_dir}/docker-compose.yml"
-    local route_file="${TRAEFIK_DYNAMIC_DIR}/route-${APP_NAME}.yml"
+    local route_id="${APP_INSTANCE:-$installed_key}"
+    local route_file="${TRAEFIK_DYNAMIC_DIR}/route-${route_id}.yml"
     local route_expected=false
 
     if [ ! -d "$app_dir" ]; then
@@ -1625,26 +1651,26 @@ manage_doctor() {
     fi
     if [ "$route_expected" = true ]; then
       if [ ! -f "$route_file" ]; then
-        _manage_check err "Route app ${APP_NAME}" "route manquante : ${route_file#${BASE_DIR}/}"
+        _manage_check err "Route app ${route_id}" "route manquante : ${route_file#${BASE_DIR}/}"
         ((errors++)) || true
       else
         local route_classification
         route_classification="$(_manage_route_classify "$route_file")"
         if [ "${APP_PROTECTED:-${APP_AUTH:-true}}" = true ] && [ "$route_classification" != "protegee" ]; then
-          _manage_check err "Route app ${APP_NAME}" "APP_PROTECTED=true mais route non protégée"
+          _manage_check err "Route app ${route_id}" "APP_PROTECTED=true mais route non protégée"
           ((errors++)) || true
         fi
         if [ "${APP_PROTECTED:-${APP_AUTH:-true}}" = false ] && [ "$route_classification" = "protegee" ]; then
-          _manage_check warn "Route app ${APP_NAME}" "APP_PROTECTED=false mais route protégée"
+          _manage_check warn "Route app ${route_id}" "APP_PROTECTED=false mais route protégée"
           ((warnings++)) || true
         fi
         if [ "$route_classification" = "publique" ] && ! grep -Eq '^(APP_PROTECTED|APP_AUTH)=false$' "$f" 2>/dev/null; then
-          _manage_check err "Route app ${APP_NAME}" "exposition publique sans APP_PROTECTED=false explicite"
+          _manage_check err "Route app ${route_id}" "exposition publique sans APP_PROTECTED=false explicite"
           ((errors++)) || true
         fi
       fi
     elif [ -f "$route_file" ] && { [ "${APP_LOCAL_ONLY:-false}" = true ] || [ "${APP_DISABLED:-false}" = true ] || [ "${APP_PUBLIC:-true}" != true ]; }; then
-      _manage_check warn "Route app ${APP_NAME}" "route présente malgré app non exposée"
+      _manage_check warn "Route app ${route_id}" "route présente malgré app non exposée"
       ((warnings++)) || true
     fi
   done
@@ -1692,16 +1718,6 @@ manage_doctor() {
       fi
     done
     [ "$orphan_count" -eq 0 ] && _manage_check ok "Fichiers" "Aucune route orpheline"
-  fi
-
-  # 11. Backups locaux
-  if declare -F backup_doctor_checks >/dev/null 2>&1; then
-    local backup_warnings=0
-    backup_doctor_checks || backup_warnings=$?
-    warnings=$((warnings + backup_warnings))
-  else
-    _manage_check warn "Backups" "module backup indisponible"
-    ((warnings++)) || true
   fi
 
   echo ""

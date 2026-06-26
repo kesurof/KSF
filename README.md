@@ -25,8 +25,7 @@ KSF permet de gérer Traefik, OAuth2 Proxy, CrowdSec, DNS Cloudflare et des appl
 ├── proxy/
 ├── stacks/
 ├── logs/
-├── config/
-└── backups/
+└── config/
 ```
 
 - `apps/` : stacks Docker Compose générées pour les applications.
@@ -35,7 +34,6 @@ KSF permet de gérer Traefik, OAuth2 Proxy, CrowdSec, DNS Cloudflare et des appl
 - `stacks/` : espace réservé aux stacks gérées localement.
 - `logs/` : journaux d'installation et de gestion.
 - `config/` : configuration KSF, dont `ksf.env`, et registre des apps installées.
-- `backups/` : sauvegardes locales.
 
 ## Installation rapide
 
@@ -83,15 +81,6 @@ Rendu et redémarrage :
 ```bash
 ./ksf.sh render
 ./ksf.sh restart
-```
-
-Backup :
-
-```bash
-./ksf.sh backup create
-./ksf.sh backup list
-./ksf.sh backup verify latest
-./ksf.sh backup restore latest --dry-run
 ```
 
 Update :
@@ -142,50 +131,9 @@ https://oauth2.<domaine>/oauth2/callback
 
 Ne mettez jamais les secrets GitHub dans le dépôt.
 
-## Sauvegarde et restauration
-
-Les sauvegardes KSF servent à restaurer la configuration critique d'une plateforme déjà installée : configuration KSF, métadonnées des apps, stacks applicatives, routes Traefik, OAuth2 Proxy, CrowdSec et ACME Traefik si présents.
-
-Elles n'incluent pas les logs volumineux, les caches, les volumes Docker complets ni les données applicatives lourdes de `~/serverbox/data` par défaut.
-
-Créer une sauvegarde :
-
-```bash
-./ksf.sh backup create
-```
-
-Lister les sauvegardes :
-
-```bash
-./ksf.sh backup list
-```
-
-Vérifier une sauvegarde :
-
-```bash
-./ksf.sh backup verify ksf-backup-YYYYMMDD-HHMMSS.tar.gz
-./ksf.sh backup verify latest
-```
-
-Restaurer une sauvegarde :
-
-```bash
-./ksf.sh backup restore ksf-backup-YYYYMMDD-HHMMSS.tar.gz
-./ksf.sh backup restore latest --yes
-```
-
-Simuler une restauration sans modifier le serveur :
-
-```bash
-./ksf.sh backup restore ksf-backup-YYYYMMDD-HHMMSS.tar.gz --dry-run
-./ksf.sh backup restore latest --dry-run
-```
-
-`latest` désigne la dernière archive KSF selon le timestamp du nom de fichier dans `~/serverbox/backups`.
-
 ## Mise à jour système
 
-Les stacks système KSF se mettent à jour via `ksf.sh update`. Chaque update crée un backup automatique, vérifie le backup, exécute `docker compose pull`, redémarre la stack puis lance `doctor`.
+Les stacks système KSF se mettent à jour via `ksf.sh update`. Chaque update exécute `docker compose pull`, redémarre la stack puis lance `doctor`.
 
 ```bash
 ./ksf.sh update crowdsec
@@ -195,14 +143,6 @@ Les stacks système KSF se mettent à jour via `ksf.sh update`. Chaque update cr
 ```
 
 `./ksf.sh update all` applique l'ordre sûr : CrowdSec, Traefik, puis OAuth2 Proxy. Utilisez `--dry-run` pour afficher les actions sans modifier le runtime, et `-y` ou `--yes` pour exécuter sans confirmation interactive.
-
-Nettoyer les anciennes sauvegardes locales :
-
-```bash
-./ksf.sh backup prune
-```
-
-Les archives sont stockées dans `~/serverbox/backups` avec un fichier `.sha256` associé. Elles peuvent contenir des secrets nécessaires à la restauration ; gardez-les privées et ne les commitez jamais.
 
 ## CrowdSec
 
