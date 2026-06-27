@@ -210,6 +210,7 @@ render_normalize_app_vars() {
   local template_env=""
 
   : "${APP_NAME:=${fallback_name}}"
+  : "${APP_INSTANCE:=${fallback_name:-${APP_NAME}}}"
   : "${APP_PUBLIC:=true}"
   : "${APP_DISABLED:=false}"
 

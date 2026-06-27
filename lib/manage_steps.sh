@@ -32,6 +32,30 @@ _manage_setup_paths() {
   CROWDSEC_DIR="${BASE_DIR}/proxy/crowdsec"
 }
 
+manage_reset_app_env() {
+  unset APP_NAME
+  unset APP_INSTANCE
+  unset APP_HOST
+  unset APP_DOMAIN
+  unset APP_SUBDOMAIN
+  unset APP_PORT
+  unset APP_INTERNAL_PORT
+  unset APP_DOCKER_SERVICE
+  unset APP_PROTECTED
+  unset APP_AUTH
+  unset APP_PUBLIC
+  unset APP_LOCAL_ONLY
+  unset APP_DISABLED
+  unset APP_DIR
+  unset APP_DATA
+  unset APP_PUID
+  unset APP_PGID
+  unset APP_INSTALLED_AT
+  unset APP_MANAGED_NAME
+  unset APP_MANAGED_DIR
+  unset APP_MANAGED_DATA
+}
+
 # ---------- Vérification installation ----------
 
 manage_require_installation() {
@@ -126,6 +150,7 @@ manage_status() {
   for f in "${INSTALLED_DIR}"/*.env; do
     [ -f "$f" ] || continue
     found=true
+    manage_reset_app_env
     source "$f"
     local auth_label="public"
     [ "${APP_AUTH:-false}" = true ] && auth_label="protégé"
@@ -150,6 +175,7 @@ manage_status() {
     [ "${WITH_CROWDSEC}" = true ] && names="$names crowdsec"
     for f in "${INSTALLED_DIR}"/*.env; do
       [ -f "$f" ] || continue
+      manage_reset_app_env
       source "$f"
       names="$names ${APP_NAME}"
     done
@@ -270,6 +296,7 @@ manage_routes() {
     case "$classification" in
       protegee)
         if [ -f "$app_env" ]; then
+          manage_reset_app_env
           source "$app_env"
           render_normalize_app_vars "$app_name"
           if [ "${APP_PROTECTED:-${APP_AUTH:-true}}" != true ]; then
@@ -286,6 +313,7 @@ manage_routes() {
         ;;
       publique)
         if [ -f "$app_env" ]; then
+          manage_reset_app_env
           source "$app_env"
           render_normalize_app_vars "$app_name"
           if [ "${APP_PROTECTED:-${APP_AUTH:-true}}" = true ]; then
@@ -354,6 +382,7 @@ manage_protect() {
     [ -f "$f" ] || continue
     local installed_key
     installed_key=$(basename "$f" .env)
+    manage_reset_app_env
     source "$f"
     render_normalize_app_vars "$installed_key"
     if [ "${APP_PROTECTED:-${APP_AUTH:-true}}" = true ] && [ "${APP_LOCAL_ONLY:-false}" != true ] && [ "${APP_DISABLED:-false}" != true ]; then
@@ -442,6 +471,7 @@ manage_render() {
     [ -f "$f" ] || continue
     local installed_key
     installed_key=$(basename "$f" .env)
+    manage_reset_app_env
     source "$f"
     render_normalize_app_vars "$installed_key"
     local route_id="${APP_INSTANCE:-$installed_key}"
@@ -1630,6 +1660,7 @@ manage_doctor() {
     ((app_count++)) || true
     local installed_key
     installed_key=$(basename "$f" .env)
+    manage_reset_app_env
     source "$f"
     render_normalize_app_vars "$installed_key"
     local app_dir="${APP_DIR:-${BASE_DIR}/apps/${APP_NAME}}"
