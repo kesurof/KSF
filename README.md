@@ -280,6 +280,26 @@ Pour désactiver CrowdSec, passez `WITH_CROWDSEC=false` dans `~/serverbox/config
 
 Chaque app installable fournie par KSF part d'un template minimal `templates/apps/<template>/app.env` et `compose.yml`. Une fois installée, l'app devient une instance gérée sous `~/serverbox/apps/<instance>/`. La route Traefik `route-<instance>.yml` est générée automatiquement dans `~/serverbox/proxy/traefik/dynamic/` depuis `app.env`; par défaut une app exposée est protégée avec OAuth2 Proxy.
 
+### Ports
+
+KSF adopte le modèle suivant pour les apps :
+
+- `APP_PORT` : port interne Docker de l'app. Il sert au routage Traefik et aux communications entre apps sur le réseau Docker.
+- `APP_HOST_PORT` : port publié sur l'hôte en `127.0.0.1`. Il est optionnel et ne sert qu'à l'accès local depuis l'hôte.
+
+Exemple :
+
+- `radarr` peut écouter en interne sur `7878`
+- `radarr2` peut aussi écouter en interne sur `7878`
+- mais publier respectivement `127.0.0.1:7878` et `127.0.0.1:17878` si un accès local hôte est souhaité
+
+Ainsi :
+
+- Traefik et les autres apps Docker parlent toujours au port interne `APP_PORT`
+- le port hôte local devient un choix explicite et ne crée plus de conflit multi-instance par défaut
+
+Il n'y a pas de rétrocompatibilité avec l'ancien modèle où `APP_PORT` servait aussi de port publié hôte.
+
 ### Installation : domaine et sous-domaine
 
 Pour une app exposée derrière Traefik, KSF doit connaître :
@@ -295,6 +315,53 @@ En interactif, si tu n'as pas fourni `--host`, KSF pose les questions au moment 
 2. si tu choisis `Sous-domaine`, KSF utilise directement le domaine par défaut et ne redemande que le sous-domaine
 3. si tu choisis explicitement un autre domaine, KSF demande alors le domaine puis le sous-domaine
 4. protection OAuth2 si applicable
+5. si tu choisis `local-only`, KSF demande un port hôte local à publier
+6. si tu choisis une exposition via Traefik, KSF peut proposer en option un accès local direct via `APP_HOST_PORT`
+
+### Flags ports
+
+Les flags disponibles sont :
+
+- `--port` : port interne Docker de l'instance
+- `--host-port` : port publié sur `127.0.0.1` pour l'accès local hôte
+- `--no-host-port` : supprime la publication locale hôte lors d'une reconfiguration
+
+Le cas standard reste simple :
+
+- app exposée via Traefik : pas de port hôte publié par défaut
+- app `local-only` : proposition d'un port hôte local, avec valeur par défaut issue du template
+- app exposée via Traefik avec besoin avancé : proposition optionnelle d'un port hôte local supplémentaire
+
+Questions interactives :
+
+```text
+Mode d'acces :
+  1) Sous-domaine sur <domaine-par-defaut>
+  2) Sous-domaine sur un autre domaine
+  3) Host complet
+  4) Local-only
+```
+
+Si `local-only` :
+
+```text
+Port local hote [<valeur-par-defaut>] :
+```
+
+Si exposition via Traefik :
+
+```text
+Acces local direct sur l'hote :
+  1) Non
+  2) Oui, publier un port local
+Choix [1] :
+```
+
+Puis si `2` :
+
+```text
+Port local hote [<valeur-par-defaut>] :
+```
 
 Exemples :
 

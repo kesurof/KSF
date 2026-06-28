@@ -470,6 +470,7 @@ _menu_install_summary() {
   local access_label="$4"
   local oauth_label="$5"
   local dns_label="$6"
+  local host_port_label="$7"
 
   echo ""
   echo "Resume :"
@@ -477,6 +478,7 @@ _menu_install_summary() {
   printf '  Template    : %s\n' "$template_name"
   printf '  Instance    : %s\n' "$instance_name"
   printf '  Acces       : %s\n' "$access_label"
+  printf '  Port local  : %s\n' "$host_port_label"
   printf '  OAuth2      : %s\n' "$oauth_label"
   printf '  DNS         : %s\n' "$dns_label"
 }
@@ -491,6 +493,7 @@ _menu_load_app_record() {
   MENU_APP_HOST=""
   MENU_APP_SUBDOMAIN=""
   MENU_APP_PORT=""
+  MENU_APP_HOST_PORT=""
   MENU_APP_DOCKER_SERVICE=""
   MENU_APP_PROTECTED="true"
   MENU_APP_LOCAL_ONLY="false"
@@ -506,6 +509,7 @@ _menu_load_app_record() {
     APP_HOST=""
     APP_SUBDOMAIN=""
     APP_PORT=""
+    APP_HOST_PORT=""
     APP_PROTECTED=""
     APP_AUTH=""
     APP_LOCAL_ONLY=""
@@ -513,12 +517,13 @@ _menu_load_app_record() {
     APP_DIR=""
     APP_DATA=""
     source "$env_file" >/dev/null 2>&1
-    printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
+    printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
       "${APP_NAME:-${app_name}}" \
       "${APP_INSTANCE:-${app_name}}" \
       "${APP_HOST:-}" \
       "${APP_SUBDOMAIN:-}" \
       "${APP_PORT:-}" \
+      "${APP_HOST_PORT:-}" \
       "${APP_DOCKER_SERVICE:-}" \
       "${APP_PROTECTED:-${APP_AUTH:-true}}" \
       "${APP_LOCAL_ONLY:-false}" \
@@ -527,7 +532,7 @@ _menu_load_app_record() {
       "${APP_DATA:-${BASE_DIR}/data/${app_name}}"
   )
 
-  IFS='|' read -r MENU_APP_TEMPLATE MENU_APP_INSTANCE MENU_APP_HOST MENU_APP_SUBDOMAIN MENU_APP_PORT MENU_APP_DOCKER_SERVICE MENU_APP_PROTECTED MENU_APP_LOCAL_ONLY MENU_APP_DISABLED MENU_APP_DIR MENU_APP_DATA <<< "$line"
+  IFS='|' read -r MENU_APP_TEMPLATE MENU_APP_INSTANCE MENU_APP_HOST MENU_APP_SUBDOMAIN MENU_APP_PORT MENU_APP_HOST_PORT MENU_APP_DOCKER_SERVICE MENU_APP_PROTECTED MENU_APP_LOCAL_ONLY MENU_APP_DISABLED MENU_APP_DIR MENU_APP_DATA <<< "$line"
 
   if [ -z "$MENU_APP_DOCKER_SERVICE" ] && [ -f "${MENU_APP_TEMPLATE_DIR}/${MENU_APP_TEMPLATE}/app.env" ]; then
     MENU_APP_DOCKER_SERVICE="$({ APP_DOCKER_SERVICE=""; source "${MENU_APP_TEMPLATE_DIR}/${MENU_APP_TEMPLATE}/app.env" >/dev/null 2>&1; printf '%s' "${APP_DOCKER_SERVICE:-}"; })"
@@ -536,11 +541,19 @@ _menu_load_app_record() {
 
 _menu_app_access_label() {
   if [ "$MENU_APP_LOCAL_ONLY" = true ]; then
-    printf '%s' "local-only"
+    if [ -n "$MENU_APP_HOST_PORT" ]; then
+      printf '%s' "127.0.0.1:${MENU_APP_HOST_PORT}"
+    else
+      printf '%s' "local-only"
+    fi
   elif [ "$MENU_APP_DISABLED" = true ]; then
     printf '%s' "disabled"
   elif [ -n "$MENU_APP_HOST" ]; then
-    printf '%s' "$MENU_APP_HOST"
+    if [ -n "$MENU_APP_HOST_PORT" ]; then
+      printf '%s' "${MENU_APP_HOST} +127.0.0.1:${MENU_APP_HOST_PORT}"
+    else
+      printf '%s' "$MENU_APP_HOST"
+    fi
   else
     printf '%s' "not-exposed"
   fi
@@ -745,11 +758,15 @@ _menu_install_app_assistant() {
   local auth_choice
   local action_label
   local access_label
+  local host_port_label="non"
   local oauth_label
   local dns_label
   local existing_template
   local template_default_protected
   local template_public
+  local internal_port
+  local host_port
+  local host_port_choice
   local force_reinstall=false
   local -a args
 
@@ -763,6 +780,7 @@ _menu_install_app_assistant() {
   template_name="$MENU_SELECTED_TEMPLATE"
   app_instance="$template_name"
   default_subdomain="$(_menu_template_value "$template_name" APP_DEFAULT_HOST)"
+  internal_port="$(_menu_template_value "$template_name" APP_PORT)"
   template_default_protected="$(_menu_template_value "$template_name" APP_PROTECTED)"
   template_public="$(_menu_template_value "$template_name" APP_PUBLIC)"
   args=()
@@ -920,6 +938,45 @@ _menu_install_app_assistant() {
     oauth_label="n/a (local-only)"
   fi
 
+  if [ "$access_label" = "local-only" ]; then
+    echo ""
+    read -rp "Port local hote [${internal_port}] : " host_port
+    host_port="${host_port:-${internal_port}}"
+    if ! ksf_port_is_valid "$host_port"; then
+      err "Port local hote invalide : ${host_port}"
+      return 1
+    fi
+    args+=("--host-port" "$host_port")
+    host_port_label="127.0.0.1:${host_port}"
+  else
+    echo ""
+    echo "Acces local direct sur l'hote :"
+    echo "  1) Non"
+    echo "  2) Oui, publier un port local"
+    echo ""
+    read -rp "Choix [1-2, defaut 1] : " host_port_choice
+    case "${host_port_choice:-1}" in
+      1)
+        args+=("--no-host-port")
+        host_port_label="non"
+        ;;
+      2)
+        read -rp "Port local hote [${internal_port}] : " host_port
+        host_port="${host_port:-${internal_port}}"
+        if ! ksf_port_is_valid "$host_port"; then
+          err "Port local hote invalide : ${host_port}"
+          return 1
+        fi
+        args+=("--host-port" "$host_port")
+        host_port_label="127.0.0.1:${host_port}"
+        ;;
+      *)
+        err "Choix invalide."
+        return 1
+        ;;
+    esac
+  fi
+
   if [ "$access_label" != "local-only" ]; then
     if [ "${DNS_AUTO_CREATE:-false}" = true ]; then
       dns_label="mise a jour automatique"
@@ -930,7 +987,7 @@ _menu_install_app_assistant() {
     dns_label="n/a (local-only)"
   fi
 
-  _menu_install_summary "$action_label" "$template_name" "$app_instance" "$access_label" "$oauth_label" "$dns_label"
+  _menu_install_summary "$action_label" "$template_name" "$app_instance" "$access_label" "$oauth_label" "$dns_label" "$host_port_label"
 
   args+=("--yes")
 

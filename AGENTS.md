@@ -177,7 +177,10 @@ Règles :
 - La stack générée va dans `${BASE_DIR}/apps/<instance>`.
 - L'enregistrement d'installation va dans `${BASE_DIR}/config/installed-apps/<instance>.env`.
 - Les routes générées vont dans `${BASE_DIR}/proxy/traefik/dynamic/route-<instance>.yml`.
-- Les ports directs doivent être limités à `127.0.0.1` si nécessaires.
+- `APP_PORT` est le port interne Docker de l'app. Il sert au routage Traefik et aux communications entre apps sur le réseau Docker.
+- `APP_HOST_PORT` est le port publié sur l'hôte en `127.0.0.1`. Il est optionnel et ne doit pas être confondu avec `APP_PORT`.
+- Les ports directs publiés sur l'hôte doivent être limités à `127.0.0.1`.
+- Une app exposée via Traefik ne doit pas publier automatiquement de port hôte ; la publication locale doit être un choix explicite via `APP_HOST_PORT`.
 - Ne pas exposer une app publiquement hors Traefik.
 - En mode multi-instance, le template doit utiliser `${APP_INSTANCE}` pour éviter les collisions de noms, volumes ou containers, y compris dans `container_name`, les volumes nommés et les chemins dérivés.
 - Les templates fournis par défaut doivent eux aussi rester multi-instance safe ; ne pas laisser d'exception implicite pour `radarr`, `dockge`, `wordpress` ou une autre app du dépôt.
@@ -185,7 +188,8 @@ Règles :
 - Pour les apps multi-services dans un seul `compose.yml`, utiliser `APP_DOCKER_SERVICE` pour declarer le service upstream principal ; les autres services doivent etre diagnostiquables via `docker compose ps -a`.
 - Le diagnostic doit pouvoir afficher un resume simple par service, par exemple `web: healthy`, `db: healthy`, `cache: healthy`.
 - Quand une app est exposee, le parcours d'installation doit poser les questions de domaine et sous-domaine si `--host`, `--domain` et `--subdomain` n'ont pas deja ete fournis.
-- La reconfiguration d'une app doit permettre de modifier seulement le sous-domaine et/ou le domaine sans reinstallation complete.
+- La reconfiguration d'une app doit permettre de modifier seulement le sous-domaine, le domaine et/ou le port hôte local sans reinstallation complete.
+- Ne pas conserver de rétrocompatibilité implicite avec l'ancien modèle où `APP_PORT` servait aussi de port publié hôte.
 
 ## Templates et rendu
 
@@ -229,9 +233,16 @@ bash -n bootstrap.sh deploy.sh app.sh ksf.sh lib/*.sh
 Après modification d'un template Compose, valider au minimum avec des variables de test :
 
 ```bash
+tmpdir=$(mktemp -d /tmp/ksf-compose-test.XXXXXX)
+source ./lib/common.sh
+source ./lib/render.sh
+
+APP_NAME=radarr APP_INSTANCE=radarr APP_PORT=7878 APP_HOST_PORT=17878 \
 BASE_DIR=/tmp/ksf-compose-test NETWORK_NAME=proxy TZ_VALUE=Europe/Paris \
-APP_PUID=$(id -u) APP_PGID=$(id -g) APP_INSTANCE=radarr \
-docker compose -f templates/apps/radarr/compose.yml config >/dev/null
+APP_PUID=$(id -u) APP_PGID=$(id -g) \
+render_template templates/apps/radarr/compose.yml "$tmpdir/docker-compose.yml"
+
+docker compose -f "$tmpdir/docker-compose.yml" config >/dev/null
 ```
 
 Pour les changements touchant la génération ou le rendu, tester dans un répertoire temporaire neutre :

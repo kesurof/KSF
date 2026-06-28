@@ -392,3 +392,10 @@ ksf_confirmation_is_deletion() {
   confirmation="${confirmation,,}"
   [ "$confirmation" = "suppression" ]
 }
+
+ksf_port_is_valid() {
+  local port="${1:-}"
+
+  [[ "$port" =~ ^[0-9]+$ ]] || return 1
+  [ "$port" -ge 1 ] && [ "$port" -le 65535 ]
+}

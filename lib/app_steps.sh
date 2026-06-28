@@ -198,6 +198,7 @@ app_template_value() {
     APP_HOST=""
     APP_DOMAIN=""
     APP_PORT=""
+    APP_HOST_PORT=""
     APP_INTERNAL_PORT=""
     APP_PROTECTED=""
     APP_PUBLIC=""
@@ -225,6 +226,7 @@ app_normalize_loaded() {
   if [ -z "${APP_PORT:-}" ]; then
     APP_PORT="$(app_template_value "$app_template_name" APP_PORT)"
   fi
+  : "${APP_HOST_PORT:=$(app_template_value "$app_template_name" APP_HOST_PORT)}"
   if [ -z "${APP_HOST:-}" ]; then
     APP_HOST="$(app_template_value "$app_template_name" APP_HOST)"
   fi
@@ -271,6 +273,7 @@ app_write_env_file() {
   ksf_env_write_var "$destination" APP_DOMAIN "${APP_DOMAIN:-}"
   ksf_env_write_var "$destination" APP_SUBDOMAIN "${APP_SUBDOMAIN:-}"
   ksf_env_write_var "$destination" APP_PORT "${APP_PORT:-}"
+  ksf_env_write_var "$destination" APP_HOST_PORT "${APP_HOST_PORT:-}"
   ksf_env_write_var "$destination" APP_DOCKER_SERVICE "${APP_DOCKER_SERVICE:-}"
   ksf_env_write_var "$destination" APP_PROTECTED "${APP_PROTECTED:-true}"
   ksf_env_write_var "$destination" APP_AUTH "${APP_PROTECTED:-true}"
@@ -329,6 +332,92 @@ app_confirm_action() {
     err "Action annulée."
     exit 1
   fi
+}
+
+app_validate_port_value() {
+  local value="$1"
+  local label="$2"
+
+  if ! ksf_port_is_valid "$value"; then
+    err "${label} invalide : ${value}"
+    exit 1
+  fi
+}
+
+resolve_app_host_port() {
+  local app_name="$1"
+  local default_port="${APP_HOST_PORT_OVERRIDE:-${APP_HOST_PORT:-${APP_PORT:-}}}"
+  local choice
+  local port_input
+
+  if [ "${APP_NO_HOST_PORT_OVERRIDE:-false}" = true ]; then
+    APP_HOST_PORT=""
+    return 0
+  fi
+
+  if [ -n "${APP_PORT:-}" ]; then
+    app_validate_port_value "$APP_PORT" "Port interne Docker"
+  fi
+
+  if [ "${APP_LOCAL_ONLY:-false}" = true ]; then
+    if [ -n "${APP_HOST_PORT_OVERRIDE:-}" ]; then
+      APP_HOST_PORT="${APP_HOST_PORT_OVERRIDE}"
+    elif [ "${AUTO_YES:-false}" = true ]; then
+      APP_HOST_PORT="${default_port:-${APP_PORT}}"
+    else
+      echo -n "Port local hote pour ${app_name} [${default_port:-${APP_PORT}}] : "
+      read -r port_input
+      APP_HOST_PORT="${port_input:-${default_port:-${APP_PORT}}}"
+    fi
+
+    if [ -z "${APP_HOST_PORT:-}" ]; then
+      err "Un port hote local est requis pour une app en mode local-only."
+      exit 1
+    fi
+    app_validate_port_value "$APP_HOST_PORT" "Port hote local"
+    return 0
+  fi
+
+  if [ -n "${APP_HOST_PORT_OVERRIDE:-}" ]; then
+    APP_HOST_PORT="${APP_HOST_PORT_OVERRIDE}"
+    app_validate_port_value "$APP_HOST_PORT" "Port hote local"
+    return 0
+  fi
+
+  if [ "${AUTO_YES:-false}" = true ]; then
+    APP_HOST_PORT="${APP_HOST_PORT:-}"
+    if [ -n "${APP_HOST_PORT}" ]; then
+      app_validate_port_value "$APP_HOST_PORT" "Port hote local"
+    fi
+    return 0
+  fi
+
+  echo ""
+  echo "Acces local direct sur l'hote :"
+  echo "  1) Non"
+  echo "  2) Oui, publier un port local"
+  if [ -n "${APP_HOST_PORT:-}" ]; then
+    echo -n "Choix [2] : "
+  else
+    echo -n "Choix [1] : "
+  fi
+  read -r choice
+
+  case "${choice:-${APP_HOST_PORT:+2}${APP_HOST_PORT:-1}}" in
+    1)
+      APP_HOST_PORT=""
+      ;;
+    2)
+      echo -n "Port local hote [${default_port:-${APP_PORT}}] : "
+      read -r port_input
+      APP_HOST_PORT="${port_input:-${default_port:-${APP_PORT}}}"
+      app_validate_port_value "$APP_HOST_PORT" "Port hote local"
+      ;;
+    *)
+      err "Choix invalide."
+      exit 1
+      ;;
+  esac
 }
 
 app_require_installed() {
@@ -411,6 +500,9 @@ app_status() {
     echo "Accès      : https://${APP_HOST}"
   else
     echo "Accès      : non exposé"
+  fi
+  if [ -n "${APP_HOST_PORT:-}" ]; then
+    echo "Port local : 127.0.0.1:${APP_HOST_PORT} -> ${APP_PORT}"
   fi
   echo "OAuth2 Proxy: ${APP_PROTECTED:-${APP_AUTH:-true}}"
   echo "Etat stack : $(ksf_stack_state_label "$stack_state") (${running_count}/${total_count} service(s) running)"
@@ -689,31 +781,38 @@ app_configure() {
   old_local_only="${APP_LOCAL_ONLY:-false}"
   old_domain="${APP_DOMAIN:-}"
   old_subdomain="${APP_SUBDOMAIN:-${APP_INSTANCE:-${app_name}}}"
+  local old_host_port="${APP_HOST_PORT:-}"
   route_file="${BASE_DIR}/proxy/traefik/dynamic/route-${app_name}.yml"
 
-  if [ "${APP_LOCAL_ONLY:-false}" = true ] && [ -z "${APP_HOST_OVERRIDE:-}" ] && [ -z "${APP_DOMAIN_OVERRIDE:-}" ] && [ -z "${APP_SUBDOMAIN_OVERRIDE:-}" ] && [ "${AUTO_YES:-false}" = true ]; then
-    err "Precise --host, --domain et/ou --subdomain pour configurer une app en mode automatique."
+  if [ "${APP_LOCAL_ONLY:-false}" = true ] && [ -z "${APP_HOST_OVERRIDE:-}" ] && [ -z "${APP_DOMAIN_OVERRIDE:-}" ] && [ -z "${APP_SUBDOMAIN_OVERRIDE:-}" ] && [ -z "${APP_HOST_PORT_OVERRIDE:-}" ] && [ "${APP_NO_HOST_PORT_OVERRIDE:-false}" != true ] && [ "${AUTO_YES:-false}" = true ]; then
+    err "Precise --host, --domain, --subdomain, --host-port et/ou --no-host-port pour configurer une app en mode automatique."
     exit 1
   fi
 
-  if [ -z "${APP_HOST_OVERRIDE:-}" ] && [ -z "${APP_DOMAIN_OVERRIDE:-}" ] && [ -z "${APP_SUBDOMAIN_OVERRIDE:-}" ] && [ "${AUTO_YES:-false}" = false ]; then
+  if [ -z "${APP_HOST_OVERRIDE:-}" ] && [ -z "${APP_DOMAIN_OVERRIDE:-}" ] && [ -z "${APP_SUBDOMAIN_OVERRIDE:-}" ] && [ -z "${APP_HOST_PORT_OVERRIDE:-}" ] && [ "${APP_NO_HOST_PORT_OVERRIDE:-false}" != true ] && [ "${AUTO_YES:-false}" = false ]; then
     echo "Configuration actuelle :"
     echo "  Instance    : ${APP_INSTANCE:-${app_name}}"
     echo "  Template    : ${APP_NAME:-${app_name}}"
     echo "  Domaine     : ${old_domain:-non configure}"
     echo "  Sous-domaine: ${old_subdomain:-non configure}"
     echo "  Host        : ${old_host:-non configure}"
+    echo "  Port local  : ${old_host_port:+127.0.0.1:${old_host_port}}${old_host_port:-non configure}"
     echo ""
   fi
 
   APP_DEFAULT_HOST="${old_subdomain:-${APP_INSTANCE:-${app_name}}}"
   APP_DOMAIN="${old_domain:-${DEFAULT_DOMAIN:-${DOMAIN:-}}}"
   APP_SUBDOMAIN="${old_subdomain:-${APP_INSTANCE:-${app_name}}}"
-  APP_LOCAL_ONLY=false
+  APP_LOCAL_ONLY="${old_local_only}"
+  APP_HOST_PORT="${old_host_port:-}"
 
-  resolve_app_host "${APP_INSTANCE:-${app_name}}"
+  if [ -n "${APP_HOST_OVERRIDE:-}" ] || [ -n "${APP_DOMAIN_OVERRIDE:-}" ] || [ -n "${APP_SUBDOMAIN_OVERRIDE:-}" ] || [ "${old_local_only}" != true ]; then
+    APP_LOCAL_ONLY=false
+    resolve_app_host "${APP_INSTANCE:-${app_name}}"
+  fi
+  resolve_app_host_port "${APP_INSTANCE:-${app_name}}"
 
-  if [ "${APP_DOMAIN}" != "$old_domain" ] || [ "${APP_SUBDOMAIN}" != "$old_subdomain" ] || [ "${APP_HOST}" != "$old_host" ] || [ "$old_local_only" = true ]; then
+  if [ "${APP_DOMAIN}" != "$old_domain" ] || [ "${APP_SUBDOMAIN}" != "$old_subdomain" ] || [ "${APP_HOST}" != "$old_host" ] || [ "$old_local_only" = true ] || [ "${APP_HOST_PORT:-}" != "$old_host_port" ]; then
     changed=true
   fi
 
@@ -742,7 +841,7 @@ app_configure() {
     app_dns_ensure_record
   fi
 
-  ok "Accès de ${APP_INSTANCE:-${app_name}} mis à jour : ${APP_HOST}"
+  ok "Accès de ${APP_INSTANCE:-${app_name}} mis à jour : ${APP_HOST:-local-only}${APP_HOST_PORT:+ (127.0.0.1:${APP_HOST_PORT})}"
 }
 
 resolve_app_auth() {
@@ -858,6 +957,7 @@ app_export_hook_env() {
   export APP_PGID="${APP_PGID:-}"
   export APP_HOST="${APP_HOST:-}"
   export APP_PORT="${APP_PORT:-}"
+  export APP_HOST_PORT="${APP_HOST_PORT:-}"
   export APP_DOMAIN="${APP_DOMAIN:-}"
   export APP_SUBDOMAIN="${APP_SUBDOMAIN:-}"
   export APP_TEMPLATE_DIR="${APP_TEMPLATE_DIR:-${SCRIPT_DIR}/templates/apps/${APP_NAME}}"
@@ -1009,6 +1109,7 @@ app_install() {
   source "${app_template_dir}/app.env"
   APP_DEFAULT_HOST="${APP_DEFAULT_HOST:-${APP_HOST:-${APP_NAME:-${app_instance}}}}"
   APP_PORT="${APP_PORT_OVERRIDE:-${APP_PORT:-${APP_INTERNAL_PORT:-}}}"
+  APP_HOST_PORT=""
   APP_PROTECTED="${APP_PROTECTED:-true}"
   APP_PUBLIC="${APP_PUBLIC:-true}"
   APP_INSTANCE="${app_instance}"
@@ -1027,7 +1128,14 @@ app_install() {
     resolve_app_host "${app_instance}"
     resolve_app_auth "${app_instance}"
   else
-    info "${app_instance} sera accessible en local sur 127.0.0.1:${APP_PORT} si son compose expose ce port."
+    APP_LOCAL_ONLY=true
+  fi
+  resolve_app_host_port "${app_instance}"
+
+  if [ "${APP_LOCAL_ONLY}" = true ]; then
+    info "${app_instance} sera accessible en local sur 127.0.0.1:${APP_HOST_PORT}."
+  elif [ -n "${APP_HOST_PORT:-}" ]; then
+    info "${app_instance} sera aussi accessible en local sur 127.0.0.1:${APP_HOST_PORT}."
   fi
 
   run mkdir -p "${INSTALLED_DIR}" "${app_dir}" "${app_data}"

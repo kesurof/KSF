@@ -58,6 +58,7 @@ services:
     restart: unless-stopped
     networks:
       - proxy
+    ${APP_PORTS_BLOCK}
     depends_on:
       wp:
         condition: service_started

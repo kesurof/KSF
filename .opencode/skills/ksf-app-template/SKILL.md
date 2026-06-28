@@ -34,7 +34,10 @@ templates/apps/<app>/
 - Put persistent data under `${BASE_DIR}/data/<instance>`.
 - Generated stacks live under `${BASE_DIR}/apps/<instance>`.
 - Generated installed-app metadata lives under `${BASE_DIR}/config/installed-apps/<instance>.env`.
+- `APP_PORT` is the internal Docker port used by Traefik and by app-to-app communication.
+- `APP_HOST_PORT` is the optional host-published local port bound on `127.0.0.1`.
 - Any direct host port should stay bound to `127.0.0.1` unless there is a strong reason otherwise.
+- Exposed apps should not publish a host port by default; a local host bind must be an explicit choice.
 
 ## Multi-instance rule
 
@@ -53,6 +56,7 @@ Templates must be safe for `--instance` installs. Use `${APP_INSTANCE}` in names
 - Assume KSF diagnostics will inspect the full stack with `docker compose ps -a`, not a single hardcoded container name.
 - Keep service names readable in diagnostics so KSF can render concise summaries like `web: healthy` or `db: healthy`.
 - Keep app host/domain behavior compatible with KSF's access flow: exposed apps should work whether the user provides `--host`, `--domain` + `--subdomain`, or answers the interactive questions during install/configure.
+- Do not preserve the old pattern where `APP_PORT` also implied a host-published port; templates must use the `APP_PORT` / `APP_HOST_PORT` split.
 
 ## Hooks
 
@@ -62,12 +66,19 @@ Templates must be safe for `--instance` installs. Use `${APP_INSTANCE}` in names
 
 ## Validation
 
-After changing a Compose template, validate with `docker compose config` using test variables.
+After changing a Compose template, render it with test variables first, then validate the rendered file with `docker compose config`.
 
 Example:
 
 ```bash
+tmpdir=$(mktemp -d /tmp/ksf-compose-test.XXXXXX)
+source ./lib/common.sh
+source ./lib/render.sh
+
+APP_NAME=radarr APP_INSTANCE=radarr APP_PORT=7878 APP_HOST_PORT=17878 \
 BASE_DIR=/tmp/ksf-compose-test NETWORK_NAME=proxy TZ_VALUE=Europe/Paris \
-APP_PUID=$(id -u) APP_PGID=$(id -g) APP_INSTANCE=radarr \
-docker compose -f templates/apps/radarr/compose.yml config >/dev/null
+APP_PUID=$(id -u) APP_PGID=$(id -g) \
+render_template templates/apps/radarr/compose.yml "$tmpdir/docker-compose.yml"
+
+docker compose -f "$tmpdir/docker-compose.yml" config >/dev/null
 ```

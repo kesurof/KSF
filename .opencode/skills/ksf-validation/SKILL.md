@@ -15,7 +15,7 @@ Use this skill near the end of a change to select the smallest correct validatio
 bash -n bootstrap.sh deploy.sh app.sh ksf.sh lib/*.sh
 ```
 
-2. If an app Compose template changed, run `docker compose config` on that template with test variables.
+2. If an app Compose template changed, render it with test variables, then run `docker compose config` on the rendered file.
 
 3. If platform rendering changed, render into `/tmp/ksf-test` and validate the generated Compose files.
 

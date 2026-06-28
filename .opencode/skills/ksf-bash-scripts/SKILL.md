@@ -33,6 +33,8 @@ Do not move behavior from one script family to another unless the user explicitl
 - For multi-service apps, prefer a short per-service summary such as `web: healthy` while keeping the full stack state visible.
 - For exposed apps, preserve the user flow around `--host`, `--domain`, and `--subdomain`: if these are not provided, the install flow should ask for the domain and subdomain at the right time.
 - When changing app access after installation, prefer a focused reconfiguration flow that updates only host/domain/subdomain, route generation, and app DNS state without forcing a full reinstall.
+- Treat the internal app port and the host-published local port as different concerns: `APP_PORT` for Docker/Traefik, `APP_HOST_PORT` for optional `127.0.0.1` publication.
+- Do not keep backward-compatibility branches for the old single-port model when implementing this refactor unless the user explicitly asks for it.
 
 ## Checks before finishing
 

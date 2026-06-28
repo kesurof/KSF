@@ -32,6 +32,8 @@ APP_HOST_OVERRIDE=""
 APP_SUBDOMAIN_OVERRIDE=""
 APP_DOMAIN_OVERRIDE=""
 APP_PORT_OVERRIDE=""
+APP_HOST_PORT_OVERRIDE=""
+APP_NO_HOST_PORT_OVERRIDE=false
 APP_INSTANCE_OVERRIDE=""
 APP_AUTH_CHOICE="ask"
 APP_LOCAL_ONLY=false
@@ -46,7 +48,7 @@ Commands:
   install <template>    Installe une app depuis un template
   status <instance>     Affiche l'état Docker d'une app installée
   update <instance>     Met à jour une app installée (build incrémental)
-  configure <instance>  Modifie l'accès d'une app installée (host, domaine, sous-domaine)
+  configure <instance>  Modifie l'accès d'une app installée (host, domaine, sous-domaine, port hôte local)
   rebuild <instance>    Reconstruit l'image d'une app installée sans cache puis recrée le container
   start <instance>      Démarre une app installée
   stop <instance>       Arrête une app installée sans suppression
@@ -60,7 +62,9 @@ Options:
   --domain DOMAIN       Domaine principal pour cette instance
   --subdomain NAME      Sous-domaine de l'instance (défaut: nom de l'instance)
   --host HOST           Hostname complet de l'instance
-  --port PORT           Port de l'instance (override le port du template)
+  --port PORT           Port interne Docker de l'instance (override le port du template)
+  --host-port PORT      Port publié sur 127.0.0.1 pour l'accès local hôte
+  --no-host-port        Supprime la publication locale sur l'hôte
   --instance NAME       Nom d'instance (permet d'installer plusieurs fois le même template)
   --auth                Protège cette instance avec OAuth2 Proxy (si OAuth2 Proxy est configuré)
   --no-auth             N'applique pas OAuth2 à cette instance
@@ -73,6 +77,7 @@ Exemples:
   $0 list
   $0 install radarr
   $0 install radarr --subdomain films --auth
+  $0 install radarr --subdomain films --host-port 17878 --auth
   $0 install radarr --host radarr.example.com --no-auth
   $0 install wordpress --subdomain blog --instance blog
   $0 install wordpress --subdomain shop --instance shop
@@ -118,6 +123,16 @@ while [[ $# -gt 0 ]]; do
     --port)
       APP_PORT_OVERRIDE="$2"
       shift 2
+      ;;
+    --host-port)
+      APP_HOST_PORT_OVERRIDE="$2"
+      APP_NO_HOST_PORT_OVERRIDE=false
+      shift 2
+      ;;
+    --no-host-port)
+      APP_HOST_PORT_OVERRIDE=""
+      APP_NO_HOST_PORT_OVERRIDE=true
+      shift
       ;;
     --instance)
       APP_INSTANCE_OVERRIDE="$2"

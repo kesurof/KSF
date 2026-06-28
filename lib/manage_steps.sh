@@ -39,6 +39,7 @@ manage_reset_app_env() {
   unset APP_DOMAIN
   unset APP_SUBDOMAIN
   unset APP_PORT
+  unset APP_HOST_PORT
   unset APP_INTERNAL_PORT
   unset APP_DOCKER_SERVICE
   unset APP_PROTECTED
@@ -164,9 +165,9 @@ manage_status() {
     IFS='|' read -r stack_state running_count total_count primary_service primary_name primary_state primary_health <<< "$state_info"
     app_label="${APP_INSTANCE:-$installed_key}"
     if [ "${APP_LOCAL_ONLY:-false}" = true ]; then
-      info "  ${app_label}  (local, ${auth_label}, état: $(ksf_stack_state_label "$stack_state"))"
+      info "  ${app_label}  (local${APP_HOST_PORT:+, 127.0.0.1:${APP_HOST_PORT}}, ${auth_label}, état: $(ksf_stack_state_label "$stack_state"))"
     elif [ -n "${APP_HOST:-}" ]; then
-      info "  ${app_label}  (${APP_HOST}, ${auth_label}, état: $(ksf_stack_state_label "$stack_state"))"
+      info "  ${app_label}  (${APP_HOST}${APP_HOST_PORT:+, 127.0.0.1:${APP_HOST_PORT}}, ${auth_label}, état: $(ksf_stack_state_label "$stack_state"))"
     else
       info "  ${app_label}  (${auth_label}, état: $(ksf_stack_state_label "$stack_state"))"
     fi

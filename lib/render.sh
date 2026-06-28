@@ -47,6 +47,8 @@ RENDER_VARS=(
   APP_INSTANCE
   APP_HOST
   APP_PORT
+  APP_HOST_PORT
+  APP_PORTS_BLOCK
   APP_PROTECTED
   APP_PUBLIC
   APP_PUID
@@ -73,6 +75,8 @@ RENDER_OPTIONAL_VARS=(
   CROWDSEC_APPSEC_VOLUME_BLOCK
   CROWDSEC_APPSEC_PLUGIN_BLOCK
   DOCKER_GID
+  APP_HOST_PORT
+  APP_PORTS_BLOCK
 )
 
 render_unique_words() {
@@ -158,6 +162,7 @@ render_template() {
   local content var token value shell_token quote_env_values=false
 
   prepare_render_context
+  render_normalize_app_vars "${APP_NAME:-}"
 
   if [ ! -f "$template" ]; then
     err "Template introuvable : ${template}"
@@ -223,6 +228,13 @@ render_normalize_app_vars() {
   fi
   if [ -z "${APP_PORT:-}" ] && [ -f "$template_env" ]; then
     APP_PORT="$( ( APP_PORT=""; APP_INTERNAL_PORT=""; source "$template_env"; printf '%s' "${APP_PORT:-${APP_INTERNAL_PORT:-}}" ) 2>/dev/null )"
+  fi
+  : "${APP_HOST_PORT:=}"
+  if [ -n "${APP_HOST_PORT}" ]; then
+    APP_PORTS_BLOCK="ports:
+      - \"127.0.0.1:${APP_HOST_PORT}:${APP_PORT}\""
+  else
+    APP_PORTS_BLOCK=""
   fi
   if [ -z "${APP_PROTECTED:-}" ]; then
     APP_PROTECTED="${APP_AUTH:-true}"

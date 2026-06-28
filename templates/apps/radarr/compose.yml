@@ -5,8 +5,7 @@ services:
     restart: unless-stopped
     networks:
       - proxy
-    ports:
-      - "127.0.0.1:${APP_PORT}:${APP_PORT}"
+    ${APP_PORTS_BLOCK}
     environment:
       - PUID=${APP_PUID}
       - PGID=${APP_PGID}
