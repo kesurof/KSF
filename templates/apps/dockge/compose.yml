@@ -1,7 +1,7 @@
 services:
   dockge:
     image: louislam/dockge:latest
-    container_name: dockge
+    container_name: ${APP_INSTANCE}
     restart: unless-stopped
     networks:
       - proxy
@@ -15,7 +15,7 @@ services:
       - TZ=${TZ_VALUE}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ${BASE_DIR}/data/dockge:/app/data
+      - ${BASE_DIR}/data/${APP_INSTANCE}:/app/data
       - ${BASE_DIR}/apps:${BASE_DIR}/apps
 
 networks:

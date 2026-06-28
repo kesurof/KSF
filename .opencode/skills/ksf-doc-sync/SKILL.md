@@ -1,6 +1,6 @@
 ---
 name: ksf-doc-sync
-description: Use when changing user-facing commands, flags, architecture rules, README.md, or AGENTS.md. Covers keeping help text, README, and agent instructions aligned with the real project behavior.
+description: Use when changing user-facing commands, flags, install/configure workflows, app access behavior, architecture rules, `README.md`, or `AGENTS.md`. Covers keeping CLI help, docs, and agent instructions aligned with real KSF behavior.
 ---
 
 # KSF Doc Sync
@@ -19,6 +19,7 @@ Use this skill when a change affects project documentation or agent guidance.
 - If architecture or responsibility boundaries change, update `AGENTS.md`.
 - If a template becomes part of the default documented offering, document it in the README.
 - Avoid duplicating large volumes of behavior text when a shorter rule plus examples is enough.
+- If the app access workflow changes, keep installation prompts, `configure`-style reconfiguration flows, and domain/subdomain examples aligned across help text, README, and `AGENTS.md`.
 
 ## Review checklist
 

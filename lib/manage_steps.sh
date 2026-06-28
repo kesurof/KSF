@@ -147,7 +147,7 @@ manage_status() {
 
   echo "Apps installées :"
   local found=false
-  local state_info stack_state running_count total_count primary_service primary_name primary_state primary_health
+  local state_info stack_state running_count total_count primary_service primary_name primary_state primary_health service_lines service_line service_name container_name service_state service_health
   for f in "${INSTALLED_DIR}"/*.env; do
     [ -f "$f" ] || continue
     found=true
@@ -169,6 +169,18 @@ manage_status() {
       info "  ${app_label}  (${APP_HOST}, ${auth_label}, état: $(ksf_stack_state_label "$stack_state"))"
     else
       info "  ${app_label}  (${auth_label}, état: $(ksf_stack_state_label "$stack_state"))"
+    fi
+    service_lines="$(ksf_stack_service_lines "${APP_DIR:-${BASE_DIR}/apps/${APP_NAME}}")"
+    if [ -n "$service_lines" ]; then
+      while IFS= read -r service_line || [ -n "$service_line" ]; do
+        [ -n "$service_line" ] || continue
+        IFS='|' read -r service_name container_name service_state service_health <<< "$service_line"
+        if [ -n "$service_health" ]; then
+          info "    ${service_name}: ${service_state} (${service_health})"
+        else
+          info "    ${service_name}: ${service_state}"
+        fi
+      done <<< "$service_lines"
     fi
   done
   if [ "$found" = false ]; then
@@ -211,6 +223,18 @@ manage_status() {
         info "  ${app_label} : $(ksf_stack_state_label "$stack_state") (${running_count}/${total_count}, ${primary_name}${primary_health:+, ${primary_health}})"
       else
         info "  ${app_label} : $(ksf_stack_state_label "$stack_state") (${running_count}/${total_count})"
+      fi
+      service_lines="$(ksf_stack_service_lines "${APP_DIR:-${BASE_DIR}/apps/${APP_NAME}}")"
+      if [ -n "$service_lines" ]; then
+        while IFS= read -r service_line || [ -n "$service_line" ]; do
+          [ -n "$service_line" ] || continue
+          IFS='|' read -r service_name container_name service_state service_health <<< "$service_line"
+          if [ -n "$service_health" ]; then
+            info "    ${service_name}: ${service_state} (${service_health})"
+          else
+            info "    ${service_name}: ${service_state}"
+          fi
+        done <<< "$service_lines"
       fi
     done
     if [ "$found" = false ]; then
@@ -1722,12 +1746,13 @@ manage_doctor() {
     local route_file="${TRAEFIK_DYNAMIC_DIR}/route-${route_id}.yml"
     local route_expected=false
 
+    local app_label="${APP_INSTANCE:-$installed_key}"
     if [ ! -d "$app_dir" ]; then
-      _manage_check warn "App ${APP_NAME}" "Dossier stack absent"
+      _manage_check warn "App ${app_label}" "Dossier stack absent"
       ((warnings++)) || true
     fi
     if [ ! -f "$compose_file" ]; then
-      _manage_check err "App ${APP_NAME}" "compose.yml absent"
+      _manage_check err "App ${app_label}" "compose.yml absent"
       ((errors++)) || true
     fi
     if [ "${WITH_TRAEFIK:-false}" = true ] && [ "${APP_LOCAL_ONLY:-false}" != true ] && [ "${APP_DISABLED:-false}" != true ] && [ "${APP_PUBLIC:-true}" = true ]; then

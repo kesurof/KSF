@@ -1,6 +1,6 @@
 ---
 name: ksf-app-template
-description: Use when adding or editing templates/apps/<app>/, app.env, compose.yml, pre_install.sh, or post_install.sh. Covers KSF app template rules, multi-instance safety, and route generation constraints.
+description: Use when adding or editing `templates/apps/<app>/`, `app.env`, `compose.yml`, `pre_install.sh`, or `post_install.sh`, especially for multi-instance apps, multi-service Compose templates, `APP_DOCKER_SERVICE`, or app access/domain behavior. Covers KSF app template rules, route generation constraints, and instance safety.
 ---
 
 # KSF App Template
@@ -38,11 +38,20 @@ templates/apps/<app>/
 
 ## Multi-instance rule
 
-Templates must be safe for `--instance` installs. Use `${APP_INSTANCE}` in names that would otherwise collide, especially:
+Templates must be safe for `--instance` installs. Use `${APP_INSTANCE}` in names and paths that would otherwise collide, especially:
 
 - `container_name`
 - named volumes
 - derived host paths when relevant
+- bind-mounted data paths under `${BASE_DIR}/data/${APP_INSTANCE}` when the app stores instance-local state
+
+## Instance-first model
+
+- `APP_INSTANCE` is the runtime identity shown to users and used by KSF for stacks, routes, and installed-app records.
+- `APP_NAME` remains the template name only.
+- For apps with several services in one `compose.yml`, declare `APP_DOCKER_SERVICE` in `app.env` when one service is the main upstream exposed by Traefik.
+- Assume KSF diagnostics will inspect the full stack with `docker compose ps -a`, not a single hardcoded container name.
+- Keep app host/domain behavior compatible with KSF's access flow: exposed apps should work whether the user provides `--host`, `--domain` + `--subdomain`, or answers the interactive questions during install/configure.
 
 ## Hooks
 

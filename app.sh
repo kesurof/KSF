@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ============================================================
 # KSF — Gestion des applications
-# Install / update / restart / disable / remove / status / logs / list
+# Install / update / restart / disable / remove / status / logs / list / configure
 # ============================================================
 
 _app_resolve_script_dir() {
@@ -46,6 +46,7 @@ Commands:
   install <app>         Installe une app
   status <app>          Affiche l'état Docker d'une app installée
   update <app>          Met à jour une app (build incrémental)
+  configure <app>       Modifie l'accès d'une app (host, domaine, sous-domaine)
   rebuild <app>         Reconstruit l'image sans cache puis recrée le container
   start <app>           Démarre une app installée
   stop <app>            Arrête une app installée sans suppression
@@ -77,6 +78,9 @@ Exemples:
   $0 install wordpress --subdomain shop --instance shop
   $0 status radarr
   $0 update radarr --dry-run
+  $0 configure blog --subdomain articles
+  $0 configure blog --domain example.net
+  $0 configure blog --host blog.example.net
   $0 logs radarr
   $0 restart radarr
   $0 disable radarr --dry-run
@@ -87,7 +91,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    list|installed|install|status|update|rebuild|start|stop|restart|disable|logs|remove)
+    list|installed|install|status|update|configure|rebuild|start|stop|restart|disable|logs|remove)
       if [ -n "$COMMAND" ]; then
         err "Commande déjà définie : ${COMMAND}"
         exit 1
@@ -143,7 +147,7 @@ while [[ $# -gt 0 ]]; do
       usage
       ;;
     *)
-      if { [ "$COMMAND" = "install" ] || [ "$COMMAND" = "status" ] || [ "$COMMAND" = "update" ] || [ "$COMMAND" = "rebuild" ] || [ "$COMMAND" = "start" ] || [ "$COMMAND" = "stop" ] || [ "$COMMAND" = "restart" ] || [ "$COMMAND" = "disable" ] || [ "$COMMAND" = "logs" ] || [ "$COMMAND" = "remove" ]; } && [ -z "$APP_NAME" ]; then
+      if { [ "$COMMAND" = "install" ] || [ "$COMMAND" = "status" ] || [ "$COMMAND" = "update" ] || [ "$COMMAND" = "configure" ] || [ "$COMMAND" = "rebuild" ] || [ "$COMMAND" = "start" ] || [ "$COMMAND" = "stop" ] || [ "$COMMAND" = "restart" ] || [ "$COMMAND" = "disable" ] || [ "$COMMAND" = "logs" ] || [ "$COMMAND" = "remove" ]; } && [ -z "$APP_NAME" ]; then
         APP_NAME="$1"
         shift
       else
@@ -202,6 +206,13 @@ case "${COMMAND}" in
       exit 1
     fi
     app_update "$APP_NAME"
+    ;;
+  configure)
+    if [ -z "$APP_NAME" ]; then
+      err "Nom d'application requis."
+      exit 1
+    fi
+    app_configure "$APP_NAME"
     ;;
   rebuild)
     if [ -z "$APP_NAME" ]; then

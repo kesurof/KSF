@@ -510,6 +510,7 @@ _menu_install_app_assistant() {
   local template_name
   local instance_name
   local access_mode
+  local domain
   local subdomain
   local host
   local auth_choice
@@ -542,7 +543,9 @@ _menu_install_app_assistant() {
 
   case "$access_mode" in
     1)
+      read -rp "Domaine (optionnel, vide = config KSF) : " domain
       read -rp "Sous-domaine (vide = ${template_name}) : " subdomain
+      [ -n "$domain" ] && args+=("--domain" "$domain")
       [ -n "$subdomain" ] && args+=("--subdomain" "$subdomain")
       ;;
     2)
@@ -741,8 +744,8 @@ _menu_app_details() {
     fi
 
     echo "=== App ${app_name} ==="
-    printf 'Template    : %s\n' "$MENU_APP_TEMPLATE"
     printf 'Instance    : %s\n' "$MENU_APP_INSTANCE"
+    printf 'Template    : %s\n' "$MENU_APP_TEMPLATE"
     printf 'Acces       : %s\n' "$(_menu_app_access_label)"
     printf 'OAuth2      : %s\n' "$MENU_APP_PROTECTED"
     printf 'Etat        : %s (%s/%s service(s) running)\n' "$(ksf_stack_state_label "$stack_state")" "$running_count" "$total_count"
@@ -757,14 +760,15 @@ _menu_app_details() {
     echo "  3) Redemarrer"
     echo "  4) Logs"
     echo "  5) Mettre a jour"
-    echo "  6) Rebuild"
-    echo "  7) Desactiver"
-    echo "  8) Supprimer"
-    echo "  9) Retour"
+    echo "  6) Modifier domaine / sous-domaine"
+    echo "  7) Rebuild"
+    echo "  8) Desactiver"
+    echo "  9) Supprimer"
+    echo " 10) Retour"
     echo ""
 
     local choice
-    read -rp "Choix [1-9] : " choice
+    read -rp "Choix [1-10] : " choice
     case "$choice" in
       1)
         _menu_app status "$app_name"
@@ -794,22 +798,25 @@ _menu_app_details() {
         fi
         ;;
       6)
+        _menu_app configure "$app_name"
+        ;;
+      7)
         if _menu_confirm "Reconstruire ${app_name} sans cache ?"; then
           _menu_app rebuild "$app_name"
         fi
         ;;
-      7)
+      8)
         if _menu_confirm "Desactiver ${app_name} ?"; then
           _menu_app disable "$app_name"
         fi
         ;;
-      8)
+      9)
         if _menu_confirm "Supprimer ${app_name} ? Les donnees seront conservees."; then
           _menu_app remove "$app_name"
           return 0
         fi
         ;;
-      9)
+      10)
         return 0
         ;;
       *) err "Choix invalide." ;;

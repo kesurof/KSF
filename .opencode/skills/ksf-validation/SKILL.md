@@ -1,6 +1,6 @@
 ---
 name: ksf-validation
-description: Use when a KSF change is ready to verify. Covers bash -n, docker compose config, dry-run expectations, and the smallest useful validation path for scripts, templates, and rendering.
+description: Use when a KSF change is ready to verify, especially after script edits, Compose template changes, route/render changes, dry-run updates, or app domain/subdomain workflow changes. Covers `bash -n`, `docker compose config`, dry-run expectations, and the smallest useful validation path.
 ---
 
 # KSF Validation
@@ -20,6 +20,12 @@ bash -n bootstrap.sh deploy.sh app.sh ksf.sh lib/*.sh
 3. If platform rendering changed, render into `/tmp/ksf-test` and validate the generated Compose files.
 
 4. If dry-run behavior changed, verify no files are written under `${BASE_DIR}` during the dry-run scenario.
+
+5. If app access flow changed, verify at least one interactive or scripted path for:
+
+- app install asking for domain/subdomain when not provided
+- app configure changing only domain and/or subdomain
+- regenerated route and persisted app env staying aligned
 
 ## Dry-run expectations
 

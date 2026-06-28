@@ -347,3 +347,23 @@ ksf_stack_state_label() {
     *) printf '%s' "unknown" ;;
   esac
 }
+
+ksf_stack_service_lines() {
+  local stack_dir="$1"
+  local compose_file="${stack_dir}/docker-compose.yml"
+
+  if [ ! -d "$stack_dir" ] || [ ! -f "$compose_file" ]; then
+    return 0
+  fi
+  if ! command -v docker >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! docker compose version >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! docker ps >/dev/null 2>&1; then
+    return 0
+  fi
+
+  (cd "$stack_dir" && docker compose ps -a --format '{{.Service}}|{{.Name}}|{{.State}}|{{.Health}}' 2>/dev/null) || true
+}

@@ -1,6 +1,6 @@
 ---
 name: ksf-platform-routing
-description: Use when changing Traefik, OAuth2 Proxy, CrowdSec, AppSec, templates/compose/, templates/traefik/, templates/oauth2-proxy/, or platform render logic. Covers platform-only boundaries and security expectations.
+description: Use when changing Traefik, OAuth2 Proxy, CrowdSec, AppSec, `templates/compose/`, `templates/traefik/`, `templates/oauth2-proxy/`, or platform render logic, especially router/middleware generation, trusted IPs, or platform security flows. Covers platform-only boundaries and security expectations.
 ---
 
 # KSF Platform Routing

@@ -1,6 +1,6 @@
 ---
 name: ksf-bash-scripts
-description: Use when changing bootstrap.sh, deploy.sh, app.sh, ksf.sh, or files under lib/*.sh. Covers script boundaries, dry-run, runtime safety, and required bash validation for KSF.
+description: Use when editing `bootstrap.sh`, `deploy.sh`, `app.sh`, `ksf.sh`, or `lib/*.sh`, especially for install flows, app lifecycle, menu/status logic, dry-run behavior, or domain/subdomain access handling. Covers KSF script boundaries, runtime safety, and required Bash validation.
 ---
 
 # KSF Bash Scripts
@@ -27,6 +27,10 @@ Do not move behavior from one script family to another unless the user explicitl
 - Preserve dry-run semantics: no persistent write in `${BASE_DIR}` when `DRY_RUN=true`.
 - Reuse existing helpers from `lib/common.sh`, `lib/render.sh`, `lib/app_steps.sh`, `lib/deploy_steps.sh`, `lib/manage_steps.sh`, and `lib/update_steps.sh` before creating new helpers.
 - Keep messages user-facing and explicit on missing inputs or invalid states.
+- Prefer instance-first user output: show `APP_INSTANCE` as the app identity and keep `APP_NAME` as template metadata.
+- For app status and diagnostics, prefer stack-aware signals from `docker compose ps -a` over single-container assumptions.
+- For exposed apps, preserve the user flow around `--host`, `--domain`, and `--subdomain`: if these are not provided, the install flow should ask for the domain and subdomain at the right time.
+- When changing app access after installation, prefer a focused reconfiguration flow that updates only host/domain/subdomain, route generation, and app DNS state without forcing a full reinstall.
 
 ## Checks before finishing
 

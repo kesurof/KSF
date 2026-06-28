@@ -128,6 +128,31 @@ app_domain_from_host() {
   return 1
 }
 
+app_prompt_domain() {
+  local app_name="$1"
+  local default_domain="$2"
+  local allowed_domains
+
+  allowed_domains="$(app_allowed_domains)"
+
+  if [ "${AUTO_YES:-false}" = true ]; then
+    APP_DOMAIN="$default_domain"
+    return 0
+  fi
+
+  if [ -z "$allowed_domains" ]; then
+    err "Aucun domaine autorisé. Configure DOMAINS ou DOMAIN dans ${KSF_ENV}."
+    exit 1
+  fi
+
+  echo "Domaines autorisés : ${allowed_domains}"
+  echo -n "Domaine pour ${app_name}"
+  [ -n "$default_domain" ] && echo -n " [${default_domain}]"
+  echo -n " : "
+  read -r domain_input
+  APP_DOMAIN="${domain_input:-${default_domain}}"
+}
+
 app_list_available() {
   info "Apps disponibles :"
   for dir in "${APP_TEMPLATE_DIR}"/*/; do
@@ -365,6 +390,7 @@ app_compose_run() {
 app_status() {
   local app_name="$1"
   local state_info stack_state running_count total_count primary_service primary_name primary_state primary_health
+  local service_lines service_line service_name container_name service_state service_health
   app_require_installed "$app_name"
 
   state_info="$(ksf_stack_state_info "${APP_MANAGED_DIR}" "${APP_DOCKER_SERVICE:-}")"
@@ -386,6 +412,19 @@ app_status() {
   echo "Etat stack : $(ksf_stack_state_label "$stack_state") (${running_count}/${total_count} service(s) running)"
   if [ -n "$primary_name" ]; then
     echo "Service clé : ${primary_service:-?} -> ${primary_name} (${primary_state:-unknown}${primary_health:+, health: ${primary_health}})"
+  fi
+  service_lines="$(ksf_stack_service_lines "${APP_MANAGED_DIR}")"
+  if [ -n "$service_lines" ]; then
+    echo "Services :"
+    while IFS= read -r service_line || [ -n "$service_line" ]; do
+      [ -n "$service_line" ] || continue
+      IFS='|' read -r service_name container_name service_state service_health <<< "$service_line"
+      if [ -n "$service_health" ]; then
+        echo "  - ${service_name}: ${service_state} (${service_health})"
+      else
+        echo "  - ${service_name}: ${service_state}"
+      fi
+    done <<< "$service_lines"
   fi
   echo ""
 
@@ -604,7 +643,8 @@ app_logs() {
 
 resolve_app_host() {
   local app_name="$1"
-  local subdomain="${APP_SUBDOMAIN_OVERRIDE:-${APP_DEFAULT_HOST}}"
+  local subdomain="${APP_SUBDOMAIN_OVERRIDE:-${APP_SUBDOMAIN:-${APP_DEFAULT_HOST}}}"
+  local default_domain="${APP_DOMAIN_OVERRIDE:-${APP_DOMAIN:-${DEFAULT_DOMAIN:-${DOMAIN:-}}}}"
 
   if [ -n "${APP_HOST_OVERRIDE}" ]; then
     APP_HOST="${APP_HOST_OVERRIDE}"
@@ -613,15 +653,15 @@ resolve_app_host() {
     return 0
   fi
 
-  APP_DOMAIN="${APP_DOMAIN_OVERRIDE:-${DEFAULT_DOMAIN:-${DOMAIN:-}}}"
+  APP_DOMAIN="$default_domain"
+
+  if [ -z "${APP_DOMAIN_OVERRIDE}" ]; then
+    app_prompt_domain "${app_name}" "$default_domain"
+  fi
 
   if [ -z "${APP_DOMAIN}" ]; then
-    if [ "${AUTO_YES}" = true ]; then
-      err "--domain est requis en mode automatique pour exposer ${app_name}."
-      exit 1
-    fi
-    echo -n "Domaine principal pour ${app_name} (ex: example.com) : "
-    read -r APP_DOMAIN
+    err "--domain est requis pour exposer ${app_name}."
+    exit 1
   fi
 
   app_validate_domain_allowed "${APP_DOMAIN}" || exit 1
@@ -634,6 +674,74 @@ resolve_app_host() {
 
   APP_SUBDOMAIN="${subdomain}"
   APP_HOST="${APP_SUBDOMAIN}.${APP_DOMAIN}"
+}
+
+app_configure() {
+  local app_name="$1"
+  local app_template_dir
+  local route_file old_host old_local_only old_domain old_subdomain old_route_state changed=false
+
+  app_require_installed "$app_name"
+  app_template_dir="${APP_TEMPLATE_DIR}/${APP_NAME:-${app_name}}"
+
+  old_host="${APP_HOST:-}"
+  old_local_only="${APP_LOCAL_ONLY:-false}"
+  old_domain="${APP_DOMAIN:-}"
+  old_subdomain="${APP_SUBDOMAIN:-${APP_INSTANCE:-${app_name}}}"
+  route_file="${BASE_DIR}/proxy/traefik/dynamic/route-${app_name}.yml"
+
+  if [ "${APP_LOCAL_ONLY:-false}" = true ] && [ -z "${APP_HOST_OVERRIDE:-}" ] && [ -z "${APP_DOMAIN_OVERRIDE:-}" ] && [ -z "${APP_SUBDOMAIN_OVERRIDE:-}" ] && [ "${AUTO_YES:-false}" = true ]; then
+    err "Precise --host, --domain et/ou --subdomain pour configurer une app en mode automatique."
+    exit 1
+  fi
+
+  if [ -z "${APP_HOST_OVERRIDE:-}" ] && [ -z "${APP_DOMAIN_OVERRIDE:-}" ] && [ -z "${APP_SUBDOMAIN_OVERRIDE:-}" ] && [ "${AUTO_YES:-false}" = false ]; then
+    echo "Configuration actuelle :"
+    echo "  Instance    : ${APP_INSTANCE:-${app_name}}"
+    echo "  Template    : ${APP_NAME:-${app_name}}"
+    echo "  Domaine     : ${old_domain:-non configure}"
+    echo "  Sous-domaine: ${old_subdomain:-non configure}"
+    echo "  Host        : ${old_host:-non configure}"
+    echo ""
+  fi
+
+  APP_DEFAULT_HOST="${old_subdomain:-${APP_INSTANCE:-${app_name}}}"
+  APP_DOMAIN="${old_domain:-${DEFAULT_DOMAIN:-${DOMAIN:-}}}"
+  APP_SUBDOMAIN="${old_subdomain:-${APP_INSTANCE:-${app_name}}}"
+  APP_LOCAL_ONLY=false
+
+  resolve_app_host "${APP_INSTANCE:-${app_name}}"
+
+  if [ "${APP_DOMAIN}" != "$old_domain" ] || [ "${APP_SUBDOMAIN}" != "$old_subdomain" ] || [ "${APP_HOST}" != "$old_host" ] || [ "$old_local_only" = true ]; then
+    changed=true
+  fi
+
+  if [ "$changed" = false ]; then
+    info "Aucune modification d'accès pour ${APP_INSTANCE:-${app_name}}."
+    return 0
+  fi
+
+  app_confirm_action "la reconfiguration d'accès" "$app_name"
+
+  render_template "${app_template_dir}/compose.yml" "${APP_MANAGED_DIR}/docker-compose.yml"
+  app_write_env_file "${APP_MANAGED_DIR}/app.env" "${APP_NAME}" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
+  app_write_env_file "${INSTALLED_DIR}/${app_name}.env" "${APP_NAME}" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
+
+  if [ -n "$old_host" ] && [ "$old_host" != "${APP_HOST}" ]; then
+    app_dns_delete_record "$old_host" "$old_local_only"
+  fi
+
+  if [ "${APP_PUBLIC:-true}" = true ] && [ "${APP_DISABLED:-false}" != true ] && [ -n "${APP_HOST:-}" ]; then
+    render_app_route_from_env "$route_file"
+  elif [ -f "$route_file" ]; then
+    run rm -f "$route_file"
+  fi
+
+  if [ "${APP_DISABLED:-false}" != true ]; then
+    app_dns_ensure_record
+  fi
+
+  ok "Accès de ${APP_INSTANCE:-${app_name}} mis à jour : ${APP_HOST}"
 }
 
 resolve_app_auth() {

@@ -1,7 +1,7 @@
 services:
   radarr:
     image: lscr.io/linuxserver/radarr:latest
-    container_name: radarr
+    container_name: ${APP_INSTANCE}
     restart: unless-stopped
     networks:
       - proxy
@@ -12,9 +12,9 @@ services:
       - PGID=${APP_PGID}
       - TZ=${TZ_VALUE}
     volumes:
-      - ${BASE_DIR}/data/radarr/config:/config
-      - ${BASE_DIR}/data/radarr/downloads:/downloads
-      - ${BASE_DIR}/data/radarr/movies:/movies
+      - ${BASE_DIR}/data/${APP_INSTANCE}/config:/config
+      - ${BASE_DIR}/data/${APP_INSTANCE}/downloads:/downloads
+      - ${BASE_DIR}/data/${APP_INSTANCE}/movies:/movies
 
 networks:
   proxy:
