@@ -45,7 +45,7 @@ cd ksf
 
 L'assistant d'installation pose les questions nécessaires, affiche un résumé, permet de modifier la configuration, puis lance l'installation après validation.
 
-`deploy.sh` est réservé à l'installation initiale. Si `~/serverbox/config/ksf.env` existe déjà, utilisez `./ksf.sh` pour gérer l'existant ; n'utilisez `./deploy.sh --force` que pour régénérer volontairement l'installation.
+`deploy.sh` est réservé à l'installation initiale. Si `~/serverbox/config/ksf.env` existe déjà, utilisez `./ksf.sh` pour gérer l'existant. En mode interactif, `deploy.sh` propose alors un choix explicite : forcer la réinstallation ou annuler. En non-interactif, utilisez `./deploy.sh --force` uniquement pour régénérer volontairement l'installation.
 
 Si Traefik ou OAuth2 Proxy sont activés, les stacks correspondantes sont générées et démarrées automatiquement.
 
@@ -75,6 +75,8 @@ Menu interactif :
 ```
 
 Le menu KSF affiche un tableau de bord dynamique du runtime, des services plateforme et des apps installees, puis propose des actions contextuelles pour l'infrastructure, la securite, les logs et les applications.
+
+Le parcours `Applications -> Installer une app` resolve maintenant les valeurs par defaut directement dans le menu, affiche un resume final unique, puis lance l'installation sans reposer les memes questions une seconde fois.
 
 Diagnostic :
 
@@ -263,16 +265,20 @@ Pour désactiver CrowdSec, passez `WITH_CROWDSEC=false` dans `~/serverbox/config
 
 ```bash
 ./app.sh list
-./app.sh install <app>
-./app.sh status <app>
-./app.sh update <app>
-./app.sh configure <app>
-./app.sh restart <app>
-./app.sh disable <app>
-./app.sh remove <app>
+./app.sh install <template>
+./app.sh status <instance>
+./app.sh update <instance>
+./app.sh configure <instance>
+./app.sh restart <instance>
+./app.sh disable <instance>
+./app.sh remove <instance>
 ```
 
-Chaque app fournie par KSF a un template minimal `templates/apps/<app>/app.env` et `compose.yml`. La route Traefik `route-<app>.yml` est générée automatiquement dans `~/serverbox/proxy/traefik/dynamic/` depuis `app.env`; par défaut une app exposée est protégée avec OAuth2 Proxy.
+`remove` supprime la stack, la route et l'enregistrement de l'instance. Si un dossier de données local existe encore dans `~/serverbox/data/<instance>`, KSF propose ensuite explicitement de le supprimer, en affichant le chemin concerné avant confirmation.
+
+`./ksf.sh clean-data <instance>` utilise le même wording: KSF affiche le chemin ciblé puis demande de confirmer avec le mot `SUPPRESSION` (majuscule ou minuscule acceptée).
+
+Chaque app installable fournie par KSF part d'un template minimal `templates/apps/<template>/app.env` et `compose.yml`. Une fois installée, l'app devient une instance gérée sous `~/serverbox/apps/<instance>/`. La route Traefik `route-<instance>.yml` est générée automatiquement dans `~/serverbox/proxy/traefik/dynamic/` depuis `app.env`; par défaut une app exposée est protégée avec OAuth2 Proxy.
 
 ### Installation : domaine et sous-domaine
 
@@ -285,9 +291,10 @@ En non-interactif, tu peux les fournir explicitement avec `--domain`, `--subdoma
 
 En interactif, si tu n'as pas fourni `--host`, KSF pose les questions au moment de `install` :
 
-1. domaine à utiliser parmi les domaines autorisés par `DOMAIN` / `DOMAINS`
-2. sous-domaine à utiliser pour l'instance
-3. protection OAuth2 si applicable
+1. mode d'accès
+2. si tu choisis `Sous-domaine`, KSF utilise directement le domaine par défaut et ne redemande que le sous-domaine
+3. si tu choisis explicitement un autre domaine, KSF demande alors le domaine puis le sous-domaine
+4. protection OAuth2 si applicable
 
 Exemples :
 
@@ -307,6 +314,8 @@ Après installation, tu peux modifier uniquement l'accès d'une app sans la réi
 ```
 
 `configure` met à jour les fichiers d'instance, la route Traefik et, si le DNS auto est actif, l'enregistrement DNS associé.
+
+Si `./app.sh install <template>` cible une instance déjà présente, KSF n'échoue plus sèchement en mode interactif : il propose explicitement de forcer la réinstallation de cette instance ou d'annuler. En non-interactif, l'installation sur une instance existante reste refusée.
 
 ### Hooks pre/post install
 
@@ -343,13 +352,13 @@ Concepts :
 - **Template** (`wordpress`) : le type d'app, défini par `templates/apps/<template>/`. Immuable, partagé entre toutes les instances.
 - **Instance** (`blog`, `shop`, `docs`) : l'identité prioritaire côté KSF. Chaque instance a ses propres chemins (`apps/<instance>/`, `data/<instance>/`), son propre fichier `installed-apps/<instance>.env`, ses propres containers Docker, et sa propre route Traefik (via le `--subdomain`).
 
-Le template doit référencer `${APP_INSTANCE}` dans son `compose.yml` pour tout ce qui doit être unique par instance, au minimum `container_name`, les volumes nommés et les chemins dérivés. C'est le template qui s'adapte : KSF raisonne d'abord en instance et ne doit pas supposer une structure Docker interne figée.
+Le template doit référencer `${APP_INSTANCE}` dans son `compose.yml` pour tout ce qui doit être unique par instance, au minimum `container_name`, les volumes nommés et les chemins dérivés. Les templates fournis par défaut doivent respecter cette règle, y compris `radarr`, `dockge` et `wordpress`. C'est le template qui s'adapte : KSF raisonne d'abord en instance et ne doit pas supposer une structure Docker interne figée.
 
 Si `--instance` n'est pas fourni, l'instance prend le nom du template (mode mono-instance historique, rétrocompatible).
 
 ### Status et apps multi-services
 
-Quand une app embarque plusieurs services dans un seul `compose.yml` comme `web`, `wp`, `db` et `cache`, KSF traite toujours l'installation comme une seule instance, mais le diagnostic affiche aussi le détail par service.
+Quand une app embarque plusieurs services dans un seul `compose.yml` comme `web`, `wp`, `db` et `cache`, KSF traite toujours l'installation comme une seule instance, mais le diagnostic affiche aussi un résumé par service.
 
 Exemple attendu :
 
@@ -357,10 +366,10 @@ Exemple attendu :
 Etat stack : running (4/4 service(s) running)
 Service cle : web -> blog-web (running, health: healthy)
 Services :
-  - web: running (healthy)
-  - wp: running (healthy)
-  - db: running (healthy)
-  - cache: running (healthy)
+  - web: healthy
+  - wp: healthy
+  - db: healthy
+  - cache: healthy
 ```
 
 `APP_DOCKER_SERVICE` dans `app.env` reste le point d'entrée principal pour Traefik et pour l'identification du service clé dans les statuts KSF. Le reste de la stack est diagnostiqué via `docker compose ps -a` dans le dossier de l'instance.

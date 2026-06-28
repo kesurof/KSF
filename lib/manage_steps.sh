@@ -147,7 +147,7 @@ manage_status() {
 
   echo "Apps installées :"
   local found=false
-  local state_info stack_state running_count total_count primary_service primary_name primary_state primary_health service_lines service_line service_name container_name service_state service_health
+  local state_info stack_state running_count total_count primary_service primary_name primary_state primary_health service_lines service_line service_name container_name service_state service_health service_label
   for f in "${INSTALLED_DIR}"/*.env; do
     [ -f "$f" ] || continue
     found=true
@@ -175,11 +175,8 @@ manage_status() {
       while IFS= read -r service_line || [ -n "$service_line" ]; do
         [ -n "$service_line" ] || continue
         IFS='|' read -r service_name container_name service_state service_health <<< "$service_line"
-        if [ -n "$service_health" ]; then
-          info "    ${service_name}: ${service_state} (${service_health})"
-        else
-          info "    ${service_name}: ${service_state}"
-        fi
+        service_label="$(ksf_service_state_label "$service_state" "$service_health")"
+        info "    ${service_name}: ${service_label}"
       done <<< "$service_lines"
     fi
   done
@@ -229,11 +226,8 @@ manage_status() {
         while IFS= read -r service_line || [ -n "$service_line" ]; do
           [ -n "$service_line" ] || continue
           IFS='|' read -r service_name container_name service_state service_health <<< "$service_line"
-          if [ -n "$service_health" ]; then
-            info "    ${service_name}: ${service_state} (${service_health})"
-          else
-            info "    ${service_name}: ${service_state}"
-          fi
+          service_label="$(ksf_service_state_label "$service_state" "$service_health")"
+          info "    ${service_name}: ${service_label}"
         done <<< "$service_lines"
       fi
     done
@@ -770,26 +764,26 @@ manage_clean_data() {
     if [ "$installed" = true ]; then
       warn "[DRY-RUN] ${app_name} est encore installée. Suppression des données nécessiterait une confirmation explicite."
     fi
-    warn "[DRY-RUN] rm -rf -- ${target}"
+    warn "[DRY-RUN] Donnees locales ciblees pour ${app_name} :"
+    warn "[DRY-RUN]   - ${target}"
+    warn "[DRY-RUN] Une suppression reelle demanderait ensuite de confirmer 'SUPPRESSION'."
     return 0
   fi
 
-  echo "Dossier ciblé : ${target}"
+  echo ""
+  echo "Données locales pour ${app_name}."
+  echo "Chemin qui sera supprimé si vous confirmez :"
+  echo "  - ${target}"
+  echo ""
   if [ "$installed" = true ]; then
     warn "L'app ${app_name} est encore installée. Cette suppression peut casser l'application."
-    echo -n "Tape 'SUPPRIMER ${app_name}' pour confirmer : "
-    local confirmation
-    if ! read -r confirmation || [ "$confirmation" != "SUPPRIMER ${app_name}" ]; then
-      err "Confirmation invalide. Suppression annulée."
-      exit 1
-    fi
-  else
-    echo -n "Tape '${app_name}' pour confirmer la suppression des données : "
-    local confirmation
-    if ! read -r confirmation || [ "$confirmation" != "$app_name" ]; then
-      err "Confirmation invalide. Suppression annulée."
-      exit 1
-    fi
+  fi
+
+  echo -n "Tape 'SUPPRESSION' pour confirmer : "
+  local confirmation
+  if ! read -r confirmation || ! ksf_confirmation_is_deletion "$confirmation"; then
+    err "Confirmation invalide. Suppression annulée."
+    exit 1
   fi
 
   rm -rf -- "$target"

@@ -154,14 +154,16 @@ app_prompt_domain() {
 }
 
 app_list_available() {
-  info "Apps disponibles :"
+  info "Templates d'apps disponibles :"
+  info "  Template      | Categorie | Description"
   for dir in "${APP_TEMPLATE_DIR}"/*/; do
     [ -d "$dir" ] || continue
     [ -f "${dir}/app.env" ] || continue
-    local name desc
+    local name desc category
     name=$(basename "$dir")
     desc=$(source "${dir}/app.env" && echo "${APP_DESCRIPTION:-${name}}")
-    info "  ${name}  -  ${desc}"
+    category=$(source "${dir}/app.env" && echo "${APP_CATEGORY:-general}")
+    info "  $(printf '%-13s | %-9s | %s' "$name" "$category" "$desc")"
   done
 }
 
@@ -390,13 +392,15 @@ app_compose_run() {
 app_status() {
   local app_name="$1"
   local state_info stack_state running_count total_count primary_service primary_name primary_state primary_health
-  local service_lines service_line service_name container_name service_state service_health
+  local service_lines service_line service_name container_name service_state service_health service_label
   app_require_installed "$app_name"
 
   state_info="$(ksf_stack_state_info "${APP_MANAGED_DIR}" "${APP_DOCKER_SERVICE:-}")"
   IFS='|' read -r stack_state running_count total_count primary_service primary_name primary_state primary_health <<< "$state_info"
 
   echo "=== App ${APP_MANAGED_NAME} ==="
+  echo "Instance   : ${APP_INSTANCE:-${APP_MANAGED_NAME}}"
+  echo "Template   : ${APP_NAME:-${app_name}}"
   echo "Stack      : ${APP_MANAGED_DIR}"
   echo "Données    : ${APP_MANAGED_DATA}"
   if [ "${APP_LOCAL_ONLY:-false}" = true ]; then
@@ -419,11 +423,8 @@ app_status() {
     while IFS= read -r service_line || [ -n "$service_line" ]; do
       [ -n "$service_line" ] || continue
       IFS='|' read -r service_name container_name service_state service_health <<< "$service_line"
-      if [ -n "$service_health" ]; then
-        echo "  - ${service_name}: ${service_state} (${service_health})"
-      else
-        echo "  - ${service_name}: ${service_state}"
-      fi
+      service_label="$(ksf_service_state_label "$service_state" "$service_health")"
+      echo "  - ${service_name}: ${service_label}"
     done <<< "$service_lines"
   fi
   echo ""
@@ -868,10 +869,125 @@ app_export_hook_env() {
   export AUTO_YES="${AUTO_YES:-false}"
 }
 
+app_prompt_remove_data_after_remove() {
+  local app_name="$1"
+  local data_path="$2"
+  local choice
+
+  [ -d "$data_path" ] || return 0
+
+  if [ "${DRY_RUN:-false}" = true ]; then
+    warn "[DRY-RUN] Donnees locales conservees pour ${app_name} :"
+    warn "[DRY-RUN]   - ${data_path}"
+    warn "[DRY-RUN] Une suppression reelle proposerait ensuite de supprimer ce chemin."
+    return 0
+  fi
+
+  if [ "${AUTO_YES:-false}" = true ]; then
+    info "Donnees locales conservees pour ${app_name} : ${data_path}"
+    return 0
+  fi
+
+  echo ""
+  echo "Données locales conservées pour ${app_name}."
+  echo "Chemin qui sera supprimé si vous confirmez :"
+  echo "  - ${data_path}"
+  echo ""
+  echo "Voulez-vous aussi supprimer ces données locales ?"
+  echo "  1) Non, conserver les données"
+  echo "  2) Oui, supprimer les données"
+  echo -n "Choix [1] : "
+  read -r choice
+
+  case "${choice:-1}" in
+    1)
+      info "Donnees locales conservees : ${data_path}"
+      return 0
+      ;;
+    2)
+      echo -n "Tape 'SUPPRESSION' pour confirmer : "
+      local confirmation
+      if ! read -r confirmation || ! ksf_confirmation_is_deletion "$confirmation"; then
+        err "Confirmation invalide. Donnees conservees."
+        return 0
+      fi
+      rm -rf -- "$data_path"
+      ok "Donnees locales supprimees : ${data_path}"
+      return 0
+      ;;
+    *)
+      err "Choix invalide. Donnees conservees."
+      return 0
+      ;;
+  esac
+}
+
+app_prompt_install_reinstall_choice() {
+  local app_instance="$1"
+  local requested_template="$2"
+  local existing_template="$3"
+  local choice
+
+  if [ "${APP_INSTALL_FORCE:-false}" = true ]; then
+    if [ "${requested_template}" != "${existing_template}" ]; then
+      err "Réinstallation refusée : ${app_instance} utilise déjà le template ${existing_template}."
+      err "Utilise un autre nom d'instance ou supprime l'existante d'abord."
+      exit 1
+    fi
+    warn "Réinstallation forcée demandée pour ${app_instance}."
+    return 0
+  fi
+
+  err "L'instance '${app_instance}' est déjà installée (template : ${existing_template})."
+
+  if [ "${AUTO_YES:-false}" = true ]; then
+    if [ "${requested_template}" = "${existing_template}" ]; then
+      err "Relance en interactif pour choisir entre forcer la réinstallation ou annuler."
+    else
+      err "Cette instance utilise déjà un autre template. Utilise un autre nom d'instance ou supprime l'existante d'abord."
+    fi
+    exit 1
+  fi
+
+  if [ "${requested_template}" != "${existing_template}" ]; then
+    err "Réinstallation refusée : ${app_instance} utilise déjà le template ${existing_template}."
+    err "Utilise un autre nom d'instance ou supprime l'existante d'abord."
+    exit 1
+  fi
+
+  while true; do
+    echo ""
+    echo "Que voulez-vous faire ?"
+    echo "  1) Forcer la réinstallation"
+    echo "  2) Annuler"
+    echo -n "Choix [2] : "
+    read -r choice
+    case "${choice:-2}" in
+      1)
+        warn "Réinstallation forcée demandée pour ${app_instance}."
+        return 0
+        ;;
+      2)
+        warn "Installation annulée."
+        exit 0
+        ;;
+      *)
+        warn "Choix invalide."
+        ;;
+    esac
+  done
+}
+
 app_install() {
   local app_name="$1"
   local app_instance="${APP_INSTANCE_OVERRIDE:-${app_name}}"
   local app_template_dir="${APP_TEMPLATE_DIR}/${app_name}"
+  local installed_env="${INSTALLED_DIR}/${app_instance}.env"
+  local reinstalling=false
+  local existing_template=""
+  local old_host=""
+  local old_local_only=false
+  local route_file="${BASE_DIR}/proxy/traefik/dynamic/route-${app_instance}.yml"
   # Exporte APP_TEMPLATE_DIR avec le chemin complet du template courant
   # pour que les hooks (sourcés en sous-shell) y accèdent correctement.
   export APP_TEMPLATE_DIR="${app_template_dir}"
@@ -882,10 +998,12 @@ app_install() {
     exit 1
   fi
 
-  if [ -f "${INSTALLED_DIR}/${app_instance}.env" ]; then
-    err "L'instance '${app_instance}' est déjà installée (template : ${app_name})."
-    err "Pour une autre instance, utilise --instance <nom>."
-    exit 1
+  if [ -f "${installed_env}" ]; then
+    existing_template="$({ APP_NAME=""; source "${installed_env}" >/dev/null 2>&1; printf '%s' "${APP_NAME:-${app_instance}}"; })"
+    app_prompt_install_reinstall_choice "${app_instance}" "${app_name}" "${existing_template}"
+    reinstalling=true
+    old_host="$({ APP_HOST=""; source "${installed_env}" >/dev/null 2>&1; printf '%s' "${APP_HOST:-}"; })"
+    old_local_only="$({ APP_LOCAL_ONLY=false; source "${installed_env}" >/dev/null 2>&1; printf '%s' "${APP_LOCAL_ONLY:-false}"; })"
   fi
 
   source "${app_template_dir}/app.env"
@@ -921,11 +1039,18 @@ app_install() {
   app_write_env_file "${app_dir}/app.env" "$app_name" "$app_dir" "$app_data"
   ok "Stack ${app_instance} générée dans ${app_dir}"
 
+  if [ "${reinstalling}" = true ] && [ -n "${old_host}" ] && [ "${old_host}" != "${APP_HOST}" ]; then
+    app_dns_delete_record "${old_host}" "${old_local_only}"
+  fi
+
   if [ "${APP_LOCAL_ONLY}" = false ] && [ "${WITH_TRAEFIK:-false}" = true ] && [ -n "${APP_HOST}" ] && [ "${APP_PUBLIC}" = true ]; then
     local dynamic_dir="${BASE_DIR}/proxy/traefik/dynamic"
     run mkdir -p "${dynamic_dir}"
     render_app_route_from_env "${dynamic_dir}/route-${app_instance}.yml"
     ok "Route Traefik générée pour ${app_instance} (${APP_HOST})"
+  elif [ -f "${route_file}" ]; then
+    run rm -f "${route_file}"
+    ok "Route Traefik supprimée pour ${app_instance}"
   fi
 
   app_dns_ensure_record
@@ -945,7 +1070,11 @@ app_install() {
       warn "[DRY-RUN] cd ${app_dir} && docker compose up -d --force-recreate"
     fi
     app_run_hook "post_install" "${app_template_dir}/post_install.sh" "$app_instance"
-    ok "Simulation d'installation de ${app_instance} terminee."
+    if [ "${reinstalling}" = true ]; then
+      ok "Simulation de réinstallation de ${app_instance} terminee."
+    else
+      ok "Simulation d'installation de ${app_instance} terminee."
+    fi
   else
     info "Demarrage de ${app_instance}..."
     local up_cmd="docker compose up -d --force-recreate"
@@ -956,7 +1085,11 @@ app_install() {
       err "Echec du demarrage de ${app_instance}. Stack generee dans ${app_dir}."
       exit 1
     fi
-    ok "App ${app_instance} installée et demarree."
+    if [ "${reinstalling}" = true ]; then
+      ok "App ${app_instance} réinstallée et demarree."
+    else
+      ok "App ${app_instance} installée et demarree."
+    fi
 
     # Hook post_install : configuration post-démarrage (ex : activation de
     # plugins, configuration WP, etc.). Ne s'exécute que si le up a réussi.
@@ -964,9 +1097,27 @@ app_install() {
   fi
 }
 
+app_remove_data_after_remove() {
+  local app_name="$1"
+  local data_path="$2"
+
+  [ -d "$data_path" ] || return 0
+
+  if [ "${DRY_RUN:-false}" = true ]; then
+    warn "[DRY-RUN] Donnees locales supprimees pour ${app_name} :"
+    warn "[DRY-RUN]   - ${data_path}"
+    return 0
+  fi
+
+  rm -rf -- "$data_path"
+  ok "Donnees locales supprimees : ${data_path}"
+}
+
 app_remove() {
   local app_name="$1"
   local APP_LOCAL_ONLY=""
+  local data_path
+  local remove_data_choice="${APP_REMOVE_DELETE_DATA:-ask}"
 
   if [ ! -f "${INSTALLED_DIR}/${app_name}.env" ]; then
     err "L'app ${app_name} n'est pas installée."
@@ -979,8 +1130,11 @@ app_remove() {
   local route_file="${BASE_DIR}/proxy/traefik/dynamic/route-${app_name}.yml"
   local app_host="${APP_HOST:-}"
   local app_local_only="${APP_LOCAL_ONLY:-}"
+  data_path="${APP_DATA:-${BASE_DIR}/data/${app_name}}"
 
-  app_confirm_action "la suppression" "$app_name"
+  if [ "${APP_REMOVE_SKIP_CONFIRM:-false}" != true ]; then
+    app_confirm_action "la suppression" "$app_name"
+  fi
 
   if [ -d "${app_dir}" ]; then
     if [ "${DRY_RUN:-false}" = true ]; then
@@ -1007,5 +1161,17 @@ app_remove() {
 
   run rm -f "${INSTALLED_DIR}/${app_name}.env"
   ok "Enregistrement supprimé."
-  warn "→ Les données dans ${APP_DATA:-${BASE_DIR}/data/${app_name}} ont été préservées."
+
+  case "$remove_data_choice" in
+    true)
+      app_remove_data_after_remove "$app_name" "$data_path"
+      ;;
+    false)
+      [ -d "$data_path" ] && info "Donnees locales conservees : ${data_path}"
+      ;;
+    *)
+      warn "→ Les données dans ${data_path} ont été préservées."
+      app_prompt_remove_data_after_remove "$app_name" "$data_path"
+      ;;
+  esac
 }

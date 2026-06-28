@@ -348,6 +348,25 @@ ksf_stack_state_label() {
   esac
 }
 
+ksf_service_state_label() {
+  local service_state="$1"
+  local service_health="$2"
+
+  if [ -n "$service_health" ]; then
+    printf '%s' "$service_health"
+    return 0
+  fi
+
+  case "$service_state" in
+    running) printf '%s' "running" ;;
+    created) printf '%s' "created" ;;
+    restarting) printf '%s' "restarting" ;;
+    exited) printf '%s' "stopped" ;;
+    dead) printf '%s' "dead" ;;
+    *) printf '%s' "unknown" ;;
+  esac
+}
+
 ksf_stack_service_lines() {
   local stack_dir="$1"
   local compose_file="${stack_dir}/docker-compose.yml"
@@ -366,4 +385,10 @@ ksf_stack_service_lines() {
   fi
 
   (cd "$stack_dir" && docker compose ps -a --format '{{.Service}}|{{.Name}}|{{.State}}|{{.Health}}' 2>/dev/null) || true
+}
+
+ksf_confirmation_is_deletion() {
+  local confirmation="${1:-}"
+  confirmation="${confirmation,,}"
+  [ "$confirmation" = "suppression" ]
 }

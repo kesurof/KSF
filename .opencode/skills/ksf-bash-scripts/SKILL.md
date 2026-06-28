@@ -29,6 +29,8 @@ Do not move behavior from one script family to another unless the user explicitl
 - Keep messages user-facing and explicit on missing inputs or invalid states.
 - Prefer instance-first user output: show `APP_INSTANCE` as the app identity and keep `APP_NAME` as template metadata.
 - For app status and diagnostics, prefer stack-aware signals from `docker compose ps -a` over single-container assumptions.
+- When `deploy.sh` detects an existing installation in interactive mode, prefer an explicit choice between forcing the reinstall and cancelling instead of a dead-end error.
+- For multi-service apps, prefer a short per-service summary such as `web: healthy` while keeping the full stack state visible.
 - For exposed apps, preserve the user flow around `--host`, `--domain`, and `--subdomain`: if these are not provided, the install flow should ask for the domain and subdomain at the right time.
 - When changing app access after installation, prefer a focused reconfiguration flow that updates only host/domain/subdomain, route generation, and app DNS state without forcing a full reinstall.
 

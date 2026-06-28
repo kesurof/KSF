@@ -157,10 +157,39 @@ if [ "$WITH_TRAEFIK_SET" = true ] && [ "$WITH_CROWDSEC_SET" = false ] && [ "$OAU
 fi
 
 validate_execution_allowed() {
-  if [ -f "${BASE_DIR}/config/ksf.env" ] && [ "$FORCE" = false ]; then
-    err "KSF semble déjà installé (${BASE_DIR}/config/ksf.env présent)."
-    err "Relance avec --force pour régénérer : ./deploy.sh --force"
-    exit 1
+  local env_file="${BASE_DIR}/config/ksf.env"
+  local choice
+
+  if [ -f "${env_file}" ] && [ "$FORCE" = false ]; then
+    err "KSF semble déjà installé (${env_file} présent)."
+
+    if [ "${AUTO_YES}" = true ]; then
+      err "Relance avec --force pour régénérer : ./deploy.sh --force"
+      exit 1
+    fi
+
+    while true; do
+      echo ""
+      echo "Que voulez-vous faire ?"
+      echo "  1) Forcer la réinstallation"
+      echo "  2) Annuler"
+      echo -n "Choix [2] : "
+      read -r choice
+      case "${choice:-2}" in
+        1)
+          FORCE=true
+          warn "Réinstallation forcée demandée. La configuration existante sera régénérée."
+          return 0
+          ;;
+        2)
+          warn "Installation annulée."
+          exit 0
+          ;;
+        *)
+          warn "Choix invalide."
+          ;;
+      esac
+    done
   fi
 }
 

@@ -38,32 +38,32 @@ APP_LOCAL_ONLY=false
 
 usage() {
   cat <<EOF
-Usage: $0 <command> [app] [options]
+Usage: $0 <command> [template|instance] [options]
 
 Commands:
-  list                  Liste les apps disponibles
+  list                  Liste les templates d'apps disponibles
   installed             Liste les apps installées
-  install <app>         Installe une app
-  status <app>          Affiche l'état Docker d'une app installée
-  update <app>          Met à jour une app (build incrémental)
-  configure <app>       Modifie l'accès d'une app (host, domaine, sous-domaine)
-  rebuild <app>         Reconstruit l'image sans cache puis recrée le container
-  start <app>           Démarre une app installée
-  stop <app>            Arrête une app installée sans suppression
-  restart <app>         Redémarre une app installée
-  disable <app>         Désactive une app sans supprimer ses données
-  logs <app>            Affiche les logs Docker Compose d'une app
-  remove <app>          Supprime une app (données préservées)
+  install <template>    Installe une app depuis un template
+  status <instance>     Affiche l'état Docker d'une app installée
+  update <instance>     Met à jour une app installée (build incrémental)
+  configure <instance>  Modifie l'accès d'une app installée (host, domaine, sous-domaine)
+  rebuild <instance>    Reconstruit l'image d'une app installée sans cache puis recrée le container
+  start <instance>      Démarre une app installée
+  stop <instance>       Arrête une app installée sans suppression
+  restart <instance>    Redémarre une app installée
+  disable <instance>    Désactive une app installée sans supprimer ses données
+  logs <instance>       Affiche les logs Docker Compose d'une app installée
+  remove <instance>     Supprime une app installée puis propose de supprimer les données locales conservées
 
 Options:
   --base-dir PATH       Répertoire racine (défaut: ~/serverbox)
-  --domain DOMAIN       Domaine principal pour cette app
-  --subdomain NAME      Sous-domaine de l'app (défaut: nom de l'app)
-  --host HOST           Hostname complet de l'app
-  --port PORT           Port de l'app (override le port du template)
+  --domain DOMAIN       Domaine principal pour cette instance
+  --subdomain NAME      Sous-domaine de l'instance (défaut: nom de l'instance)
+  --host HOST           Hostname complet de l'instance
+  --port PORT           Port de l'instance (override le port du template)
   --instance NAME       Nom d'instance (permet d'installer plusieurs fois le même template)
-  --auth                Protège l'app avec OAuth2 Proxy (si OAuth2 Proxy est configuré)
-  --no-auth             N'applique pas OAuth2 à cette app
+  --auth                Protège cette instance avec OAuth2 Proxy (si OAuth2 Proxy est configuré)
+  --no-auth             N'applique pas OAuth2 à cette instance
   --local-only          Ne génère pas de route Traefik
   --dry-run             Affiche les actions sans modifier les fichiers
   -y, --yes             Répondre oui automatiquement
@@ -188,77 +188,77 @@ case "${COMMAND}" in
     ;;
   install)
     if [ -z "$APP_NAME" ]; then
-      err "Nom d'application requis."
+      err "Nom de template requis."
       exit 1
     fi
     app_install "$APP_NAME"
     ;;
   status)
     if [ -z "$APP_NAME" ]; then
-      err "Nom d'application requis."
+      err "Nom d'instance requis."
       exit 1
     fi
     app_status "$APP_NAME"
     ;;
   update)
     if [ -z "$APP_NAME" ]; then
-      err "Nom d'application requis."
+      err "Nom d'instance requis."
       exit 1
     fi
     app_update "$APP_NAME"
     ;;
   configure)
     if [ -z "$APP_NAME" ]; then
-      err "Nom d'application requis."
+      err "Nom d'instance requis."
       exit 1
     fi
     app_configure "$APP_NAME"
     ;;
   rebuild)
     if [ -z "$APP_NAME" ]; then
-      err "Nom d'application requis."
+      err "Nom d'instance requis."
       exit 1
     fi
     app_rebuild "$APP_NAME"
     ;;
   start)
     if [ -z "$APP_NAME" ]; then
-      err "Nom d'application requis."
+      err "Nom d'instance requis."
       exit 1
     fi
     app_start "$APP_NAME"
     ;;
   stop)
     if [ -z "$APP_NAME" ]; then
-      err "Nom d'application requis."
+      err "Nom d'instance requis."
       exit 1
     fi
     app_stop "$APP_NAME"
     ;;
   restart)
     if [ -z "$APP_NAME" ]; then
-      err "Nom d'application requis."
+      err "Nom d'instance requis."
       exit 1
     fi
     app_restart "$APP_NAME"
     ;;
   disable)
     if [ -z "$APP_NAME" ]; then
-      err "Nom d'application requis."
+      err "Nom d'instance requis."
       exit 1
     fi
     app_disable "$APP_NAME"
     ;;
   logs)
     if [ -z "$APP_NAME" ]; then
-      err "Nom d'application requis."
+      err "Nom d'instance requis."
       exit 1
     fi
     app_logs "$APP_NAME"
     ;;
   remove)
     if [ -z "$APP_NAME" ]; then
-      err "Nom d'application requis."
+      err "Nom d'instance requis."
       exit 1
     fi
     app_remove "$APP_NAME"

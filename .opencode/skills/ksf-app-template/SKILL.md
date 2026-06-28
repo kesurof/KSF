@@ -51,6 +51,7 @@ Templates must be safe for `--instance` installs. Use `${APP_INSTANCE}` in names
 - `APP_NAME` remains the template name only.
 - For apps with several services in one `compose.yml`, declare `APP_DOCKER_SERVICE` in `app.env` when one service is the main upstream exposed by Traefik.
 - Assume KSF diagnostics will inspect the full stack with `docker compose ps -a`, not a single hardcoded container name.
+- Keep service names readable in diagnostics so KSF can render concise summaries like `web: healthy` or `db: healthy`.
 - Keep app host/domain behavior compatible with KSF's access flow: exposed apps should work whether the user provides `--host`, `--domain` + `--subdomain`, or answers the interactive questions during install/configure.
 
 ## Hooks

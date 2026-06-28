@@ -103,6 +103,7 @@ Autorisé :
 - Générer CrowdSec et AppSec si activés.
 - Sauvegarder `~/serverbox/config/ksf.env`.
 - Démarrer les stacks d'infrastructure générées.
+- Si une installation existe déjà et que l'agent est en mode interactif, proposer un choix explicite entre forcer la réinstallation et annuler ; en non-interactif, exiger `--force`.
 
 Interdit :
 
@@ -115,9 +116,10 @@ Interdit :
 Autorisé :
 
 - Lister les apps disponibles et installées.
-- Installer une app depuis `templates/apps/<app>/`.
+- Lister les templates d'apps disponibles et les apps installées.
+- Installer une app depuis `templates/apps/<template>/`.
 - Installer plusieurs instances d'un même template via `--instance`.
-- Mettre à jour, reconfigurer l'accès, reconstruire, démarrer, arrêter, redémarrer, désactiver ou supprimer une app.
+- Mettre à jour, reconfigurer l'accès, reconstruire, démarrer, arrêter, redémarrer, désactiver ou supprimer une instance installée.
 - Générer la stack applicative et la route Traefik associée.
 - Appliquer OAuth2 Proxy par app si demandé.
 - Gérer les hooks optionnels `pre_install.sh` et `post_install.sh` d'une app.
@@ -178,8 +180,10 @@ Règles :
 - Les ports directs doivent être limités à `127.0.0.1` si nécessaires.
 - Ne pas exposer une app publiquement hors Traefik.
 - En mode multi-instance, le template doit utiliser `${APP_INSTANCE}` pour éviter les collisions de noms, volumes ou containers, y compris dans `container_name`, les volumes nommés et les chemins dérivés.
+- Les templates fournis par défaut doivent eux aussi rester multi-instance safe ; ne pas laisser d'exception implicite pour `radarr`, `dockge`, `wordpress` ou une autre app du dépôt.
 - Dans KSF, `APP_INSTANCE` est l'identité prioritaire affichee a l'utilisateur ; `APP_NAME` reste le nom du template.
 - Pour les apps multi-services dans un seul `compose.yml`, utiliser `APP_DOCKER_SERVICE` pour declarer le service upstream principal ; les autres services doivent etre diagnostiquables via `docker compose ps -a`.
+- Le diagnostic doit pouvoir afficher un resume simple par service, par exemple `web: healthy`, `db: healthy`, `cache: healthy`.
 - Quand une app est exposee, le parcours d'installation doit poser les questions de domaine et sous-domaine si `--host`, `--domain` et `--subdomain` n'ont pas deja ete fournis.
 - La reconfiguration d'une app doit permettre de modifier seulement le sous-domaine et/ou le domaine sans reinstallation complete.
 
