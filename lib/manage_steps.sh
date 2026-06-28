@@ -151,6 +151,8 @@ manage_status() {
   for f in "${INSTALLED_DIR}"/*.env; do
     [ -f "$f" ] || continue
     found=true
+    local installed_key app_label
+    installed_key=$(basename "$f" .env)
     manage_reset_app_env
     source "$f"
     if [ -z "${APP_DOCKER_SERVICE:-}" ] && [ -f "${TEMPLATE_DIR}/apps/${APP_NAME}/app.env" ]; then
@@ -160,12 +162,13 @@ manage_status() {
     [ "${APP_AUTH:-false}" = true ] && auth_label="protégé"
     state_info="$(ksf_stack_state_info "${APP_DIR:-${BASE_DIR}/apps/${APP_NAME}}" "${APP_DOCKER_SERVICE:-}")"
     IFS='|' read -r stack_state running_count total_count primary_service primary_name primary_state primary_health <<< "$state_info"
+    app_label="${APP_INSTANCE:-$installed_key}"
     if [ "${APP_LOCAL_ONLY:-false}" = true ]; then
-      info "  ${APP_NAME}  (local, ${auth_label}, état: $(ksf_stack_state_label "$stack_state"))"
+      info "  ${app_label}  (local, ${auth_label}, état: $(ksf_stack_state_label "$stack_state"))"
     elif [ -n "${APP_HOST:-}" ]; then
-      info "  ${APP_NAME}  (${APP_HOST}, ${auth_label}, état: $(ksf_stack_state_label "$stack_state"))"
+      info "  ${app_label}  (${APP_HOST}, ${auth_label}, état: $(ksf_stack_state_label "$stack_state"))"
     else
-      info "  ${APP_NAME}  (${auth_label}, état: $(ksf_stack_state_label "$stack_state"))"
+      info "  ${app_label}  (${auth_label}, état: $(ksf_stack_state_label "$stack_state"))"
     fi
   done
   if [ "$found" = false ]; then
@@ -194,17 +197,20 @@ manage_status() {
     for f in "${INSTALLED_DIR}"/*.env; do
       [ -f "$f" ] || continue
       found=true
+      local installed_key app_label
+      installed_key=$(basename "$f" .env)
       manage_reset_app_env
       source "$f"
       if [ -z "${APP_DOCKER_SERVICE:-}" ] && [ -f "${TEMPLATE_DIR}/apps/${APP_NAME}/app.env" ]; then
         APP_DOCKER_SERVICE="$({ APP_DOCKER_SERVICE=""; source "${TEMPLATE_DIR}/apps/${APP_NAME}/app.env" >/dev/null 2>&1; printf '%s' "${APP_DOCKER_SERVICE:-}"; })"
       fi
+      app_label="${APP_INSTANCE:-$installed_key}"
       state_info="$(ksf_stack_state_info "${APP_DIR:-${BASE_DIR}/apps/${APP_NAME}}" "${APP_DOCKER_SERVICE:-}")"
       IFS='|' read -r stack_state running_count total_count primary_service primary_name primary_state primary_health <<< "$state_info"
       if [ -n "$primary_name" ]; then
-        info "  ${APP_NAME} : $(ksf_stack_state_label "$stack_state") (${running_count}/${total_count}, ${primary_name}${primary_health:+, ${primary_health}})"
+        info "  ${app_label} : $(ksf_stack_state_label "$stack_state") (${running_count}/${total_count}, ${primary_name}${primary_health:+, ${primary_health}})"
       else
-        info "  ${APP_NAME} : $(ksf_stack_state_label "$stack_state") (${running_count}/${total_count})"
+        info "  ${app_label} : $(ksf_stack_state_label "$stack_state") (${running_count}/${total_count})"
       fi
     done
     if [ "$found" = false ]; then
