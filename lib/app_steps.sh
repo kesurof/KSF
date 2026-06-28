@@ -201,6 +201,9 @@ app_normalize_loaded() {
   if [ -z "${APP_HOST:-}" ]; then
     APP_HOST="$(app_template_value "$app_template_name" APP_HOST)"
   fi
+  if [ -z "${APP_DOCKER_SERVICE:-}" ]; then
+    APP_DOCKER_SERVICE="$(app_template_value "$app_template_name" APP_DOCKER_SERVICE)"
+  fi
   : "${APP_DIR:=${BASE_DIR}/apps/${app_instance_name}}"
   # Fallback : si APP_DIR pointe vers un chemin inexistant mais qu'un chemin
   # équivalent sous BASE_DIR existe (cas typique : APP_DIR est l'ancien chemin
@@ -361,7 +364,11 @@ app_compose_run() {
 
 app_status() {
   local app_name="$1"
+  local state_info stack_state running_count total_count primary_service primary_name primary_state primary_health
   app_require_installed "$app_name"
+
+  state_info="$(ksf_stack_state_info "${APP_MANAGED_DIR}" "${APP_DOCKER_SERVICE:-}")"
+  IFS='|' read -r stack_state running_count total_count primary_service primary_name primary_state primary_health <<< "$state_info"
 
   echo "=== App ${APP_MANAGED_NAME} ==="
   echo "Stack      : ${APP_MANAGED_DIR}"
@@ -376,20 +383,15 @@ app_status() {
     echo "Accès      : non exposé"
   fi
   echo "OAuth2 Proxy: ${APP_PROTECTED:-${APP_AUTH:-true}}"
+  echo "Etat stack : $(ksf_stack_state_label "$stack_state") (${running_count}/${total_count} service(s) running)"
+  if [ -n "$primary_name" ]; then
+    echo "Service clé : ${primary_service:-?} -> ${primary_name} (${primary_state:-unknown}${primary_health:+, health: ${primary_health}})"
+  fi
   echo ""
 
-  if ! command -v docker >/dev/null 2>&1 || ! docker ps >/dev/null 2>&1; then
+  if [ "$stack_state" = "docker-unavailable" ]; then
     warn "Docker est inaccessible, état container indisponible."
     return 0
-  fi
-
-  if docker inspect "${APP_MANAGED_NAME}" >/dev/null 2>&1; then
-    local state health
-    state=$(docker inspect -f '{{.State.Status}}' "${APP_MANAGED_NAME}" 2>/dev/null || echo "unknown")
-    health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "${APP_MANAGED_NAME}" 2>/dev/null || echo "unknown")
-    ok "Container   : ${APP_MANAGED_NAME} (${state}, health: ${health})"
-  else
-    warn "Container   : ${APP_MANAGED_NAME} absent"
   fi
 
   echo ""

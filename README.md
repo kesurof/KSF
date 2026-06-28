@@ -67,6 +67,15 @@ Variables importantes :
 
 ## Commandes principales
 
+Menu interactif :
+
+```bash
+./ksf.sh
+./ksf.sh menu
+```
+
+Le menu KSF affiche un tableau de bord dynamique du runtime, des services plateforme et des apps installees, puis propose des actions contextuelles pour l'infrastructure, la securite, les logs et les applications.
+
 Diagnostic :
 
 ```bash

@@ -147,19 +147,25 @@ manage_status() {
 
   echo "Apps installées :"
   local found=false
+  local state_info stack_state running_count total_count primary_service primary_name primary_state primary_health
   for f in "${INSTALLED_DIR}"/*.env; do
     [ -f "$f" ] || continue
     found=true
     manage_reset_app_env
     source "$f"
+    if [ -z "${APP_DOCKER_SERVICE:-}" ] && [ -f "${TEMPLATE_DIR}/apps/${APP_NAME}/app.env" ]; then
+      APP_DOCKER_SERVICE="$({ APP_DOCKER_SERVICE=""; source "${TEMPLATE_DIR}/apps/${APP_NAME}/app.env" >/dev/null 2>&1; printf '%s' "${APP_DOCKER_SERVICE:-}"; })"
+    fi
     local auth_label="public"
     [ "${APP_AUTH:-false}" = true ] && auth_label="protégé"
+    state_info="$(ksf_stack_state_info "${APP_DIR:-${BASE_DIR}/apps/${APP_NAME}}" "${APP_DOCKER_SERVICE:-}")"
+    IFS='|' read -r stack_state running_count total_count primary_service primary_name primary_state primary_health <<< "$state_info"
     if [ "${APP_LOCAL_ONLY:-false}" = true ]; then
-      info "  ${APP_NAME}  (local, ${auth_label})"
+      info "  ${APP_NAME}  (local, ${auth_label}, état: $(ksf_stack_state_label "$stack_state"))"
     elif [ -n "${APP_HOST:-}" ]; then
-      info "  ${APP_NAME}  (${APP_HOST}, ${auth_label})"
+      info "  ${APP_NAME}  (${APP_HOST}, ${auth_label}, état: $(ksf_stack_state_label "$stack_state"))"
     else
-      info "  ${APP_NAME}  (${auth_label})"
+      info "  ${APP_NAME}  (${auth_label}, état: $(ksf_stack_state_label "$stack_state"))"
     fi
   done
   if [ "$found" = false ]; then
@@ -173,12 +179,6 @@ manage_status() {
     names="$names${TRAEFIK_HOST:+ traefik}"
     names="$names${OAUTH2_HOST:+ oauth2-proxy}"
     [ "${WITH_CROWDSEC}" = true ] && names="$names crowdsec"
-    for f in "${INSTALLED_DIR}"/*.env; do
-      [ -f "$f" ] || continue
-      manage_reset_app_env
-      source "$f"
-      names="$names ${APP_NAME}"
-    done
     for name in $names; do
       local status_line
       status_line=$(docker ps --filter "name=${name}$" --format "{{.Names}}\t{{.Status}}" 2>/dev/null || true)
@@ -188,9 +188,56 @@ manage_status() {
         warn "  ${name} : arrêté ou absent"
       fi
     done
+    echo ""
+    echo "Stacks apps :"
+    found=false
+    for f in "${INSTALLED_DIR}"/*.env; do
+      [ -f "$f" ] || continue
+      found=true
+      manage_reset_app_env
+      source "$f"
+      if [ -z "${APP_DOCKER_SERVICE:-}" ] && [ -f "${TEMPLATE_DIR}/apps/${APP_NAME}/app.env" ]; then
+        APP_DOCKER_SERVICE="$({ APP_DOCKER_SERVICE=""; source "${TEMPLATE_DIR}/apps/${APP_NAME}/app.env" >/dev/null 2>&1; printf '%s' "${APP_DOCKER_SERVICE:-}"; })"
+      fi
+      state_info="$(ksf_stack_state_info "${APP_DIR:-${BASE_DIR}/apps/${APP_NAME}}" "${APP_DOCKER_SERVICE:-}")"
+      IFS='|' read -r stack_state running_count total_count primary_service primary_name primary_state primary_health <<< "$state_info"
+      if [ -n "$primary_name" ]; then
+        info "  ${APP_NAME} : $(ksf_stack_state_label "$stack_state") (${running_count}/${total_count}, ${primary_name}${primary_health:+, ${primary_health}})"
+      else
+        info "  ${APP_NAME} : $(ksf_stack_state_label "$stack_state") (${running_count}/${total_count})"
+      fi
+    done
+    if [ "$found" = false ]; then
+      warn "  Aucune app installée."
+    fi
   else
     warn "Docker inaccessible, skip status containers."
   fi
+}
+
+_manage_disabled_app_matches_stack() {
+  local stack_name="$1"
+  local app_dir="$2"
+  local disabled_dir="${INSTALLED_DIR}/disabled"
+  local env_file line disabled_instance disabled_stack_dir
+
+  [ -d "$disabled_dir" ] || return 1
+
+  for env_file in "${disabled_dir}"/*.env.disabled; do
+    [ -f "$env_file" ] || continue
+    line=$(
+      APP_INSTANCE=""
+      APP_DIR=""
+      source "$env_file" >/dev/null 2>&1
+      printf '%s|%s\n' "${APP_INSTANCE:-}" "${APP_DIR:-}"
+    )
+    IFS='|' read -r disabled_instance disabled_stack_dir <<< "$line"
+    if [ "$disabled_instance" = "$stack_name" ] || [ "$disabled_stack_dir" = "$app_dir" ]; then
+      return 0
+    fi
+  done
+
+  return 1
 }
 
 # ---------- Config ----------
@@ -1711,8 +1758,13 @@ manage_doctor() {
     local stack_name
     stack_name=$(basename "$app_dir")
     if [ -f "${app_dir}/docker-compose.yml" ] && [ ! -f "${INSTALLED_DIR}/${stack_name}.env" ]; then
-      _manage_check err "App ${stack_name}" "app.env d'installation absent"
-      ((errors++)) || true
+      if _manage_disabled_app_matches_stack "$stack_name" "$app_dir"; then
+        _manage_check warn "App ${stack_name}" "stack legacy/desactivee presente dans installed-apps/disabled"
+        ((warnings++)) || true
+      else
+        _manage_check err "App ${stack_name}" "app.env d'installation absent"
+        ((errors++)) || true
+      fi
     fi
   done
 

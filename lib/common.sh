@@ -223,3 +223,127 @@ step_validation() {
     warn "Docker n'est pas installé ou n'est pas dans le PATH."
   fi
 }
+
+# ---------- Etat des stacks applicatives ----------
+
+ksf_stack_state_info() {
+  local stack_dir="$1"
+  local primary_service="${2:-}"
+  local stack_name="$(basename "$stack_dir")"
+  local compose_file="${stack_dir}/docker-compose.yml"
+  local lines=""
+  local selected_service=""
+  local selected_name=""
+  local selected_state=""
+  local selected_health=""
+  local total=0
+  local running=0
+  local unhealthy=0
+  local created=0
+  local restarting=0
+  local exited=0
+  local dead=0
+  local line service name state health summary
+
+  if [ ! -d "$stack_dir" ]; then
+    printf 'stack-missing|0|0||||\n'
+    return 0
+  fi
+  if [ ! -f "$compose_file" ]; then
+    printf 'compose-missing|0|0||||\n'
+    return 0
+  fi
+  if ! command -v docker >/dev/null 2>&1; then
+    printf 'docker-unavailable|0|0||||\n'
+    return 0
+  fi
+  if ! docker compose version >/dev/null 2>&1; then
+    printf 'docker-unavailable|0|0||||\n'
+    return 0
+  fi
+  if ! docker ps >/dev/null 2>&1; then
+    printf 'docker-unavailable|0|0||||\n'
+    return 0
+  fi
+
+  if ! lines=$(cd "$stack_dir" && docker compose ps -a --format '{{.Service}}|{{.Name}}|{{.State}}|{{.Health}}' 2>/dev/null); then
+    printf 'compose-error|0|0||||\n'
+    return 0
+  fi
+  if [ -z "$lines" ]; then
+    printf 'not-created|0|0||||\n'
+    return 0
+  fi
+
+  if [ -z "$primary_service" ]; then
+    primary_service="$stack_name"
+  fi
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -n "$line" ] || continue
+    IFS='|' read -r service name state health <<< "$line"
+    [ -n "$service" ] || continue
+
+    total=$((total + 1))
+    case "$state" in
+      running) running=$((running + 1)) ;;
+      created) created=$((created + 1)) ;;
+      restarting) restarting=$((restarting + 1)) ;;
+      exited) exited=$((exited + 1)) ;;
+      dead) dead=$((dead + 1)) ;;
+    esac
+    [ "$health" = "unhealthy" ] && unhealthy=$((unhealthy + 1))
+
+    if [ -z "$selected_service" ]; then
+      selected_service="$service"
+      selected_name="$name"
+      selected_state="$state"
+      selected_health="$health"
+    fi
+    if [ -n "$primary_service" ] && [ "$service" = "$primary_service" ]; then
+      selected_service="$service"
+      selected_name="$name"
+      selected_state="$state"
+      selected_health="$health"
+    fi
+  done <<< "$lines"
+
+  if [ "$running" -eq "$total" ] && [ "$total" -gt 0 ] && [ "$unhealthy" -eq 0 ]; then
+    summary="running"
+  elif [ "$running" -gt 0 ]; then
+    summary="degraded"
+  elif [ "$restarting" -gt 0 ]; then
+    summary="restarting"
+  elif [ "$created" -gt 0 ]; then
+    summary="created"
+  elif [ "$exited" -gt 0 ] || [ "$dead" -gt 0 ]; then
+    summary="stopped"
+  else
+    summary="unknown"
+  fi
+
+  printf '%s|%s|%s|%s|%s|%s|%s\n' \
+    "$summary" \
+    "$running" \
+    "$total" \
+    "$selected_service" \
+    "$selected_name" \
+    "$selected_state" \
+    "$selected_health"
+}
+
+ksf_stack_state_label() {
+  case "$1" in
+    running) printf '%s' "running" ;;
+    degraded) printf '%s' "degraded" ;;
+    restarting) printf '%s' "restarting" ;;
+    created) printf '%s' "created" ;;
+    stopped) printf '%s' "stopped" ;;
+    not-created) printf '%s' "not-created" ;;
+    stack-missing) printf '%s' "stack-missing" ;;
+    compose-missing) printf '%s' "compose-missing" ;;
+    compose-error) printf '%s' "compose-error" ;;
+    docker-unavailable) printf '%s' "docker-unavailable" ;;
+    *) printf '%s' "unknown" ;;
+  esac
+}
