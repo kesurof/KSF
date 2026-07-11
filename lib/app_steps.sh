@@ -403,7 +403,7 @@ resolve_app_host_port() {
   fi
   read -r choice
 
-  case "${choice:-${APP_HOST_PORT:+2}${APP_HOST_PORT:-1}}" in
+  case "${choice:-$( [ -n "${APP_HOST_PORT:-}" ] && echo 2 || echo 1 )}" in
     1)
       APP_HOST_PORT=""
       ;;
