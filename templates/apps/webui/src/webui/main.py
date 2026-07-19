@@ -1,10 +1,8 @@
 import os
 from pathlib import Path
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.exceptions import HTTPException
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.sessions import SessionMiddleware
 
 from .core.config import get_config
 from .templates import templates
@@ -19,11 +17,8 @@ from .api.router_templates import router as templates_router
 from .api.router_jobs import router as jobs_router
 from .api.router_maintenance import router as maintenance_router
 from .api.router_operations import router as operations_router
-from .core.security import enforce_webui_security
 
 app = FastAPI(title="KSF Web UI")
-app.add_middleware(SessionMiddleware, secret_key=os.environ.get("WEBUI_SESSION_SECRET", os.urandom(32).hex()), https_only=True, same_site="strict")
-app.middleware("http")(enforce_webui_security)
 
 static_dir = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")

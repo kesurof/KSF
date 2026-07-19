@@ -1,9 +1,4 @@
 async function ksfFetch(path, options = {}) {
-  const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
-  const method = (options.method || 'GET').toUpperCase();
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && csrf) {
-    options.headers = {...(options.headers || {}), 'X-CSRF-Token': csrf};
-  }
   const response = await fetch(path, options);
   const contentType = response.headers.get('content-type') || '';
   const payload = contentType.includes('application/json')

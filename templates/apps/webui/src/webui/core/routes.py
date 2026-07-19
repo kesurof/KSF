@@ -16,7 +16,7 @@ def render_app_route(instance: str, host: str, port: str,
         if not config.has_oauth2():
             raise ValueError("OAuth2 Proxy is not configured for this platform")
         middlewares.append("oauth2-chain")
-    if config.has_crowdsec():
+    elif config.has_crowdsec():
         middlewares.append("security-chain")
 
     middleware_block = ""
