@@ -130,18 +130,13 @@
             no_auth: this.noAuth,
             local_only: this.accessMode === 'local',
           };
-          const res = await fetch('/api/apps/install', {
+          const data = await ksfFetch('/api/apps/install', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
           });
-          const data = await res.json();
-          if (res.ok) {
-            this.success = 'App installée : ' + (data.host || 'local-only');
-            setTimeout(() => window.location.href = '/apps', 1500);
-          } else {
-            this.error = data.error || 'Erreur inconnue';
-          }
+          this.success = 'App installée : ' + (data.host || 'local-only');
+          setTimeout(() => window.location.href = '/apps', 1500);
         } catch(e) {
           this.error = ksfError(e);
         } finally {

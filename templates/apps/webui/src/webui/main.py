@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from .core.config import get_config
 from .templates import templates
@@ -17,8 +18,10 @@ from .api.router_templates import router as templates_router
 from .api.router_jobs import router as jobs_router
 from .api.router_maintenance import router as maintenance_router
 from .api.router_operations import router as operations_router
+from .core.security import enforce_webui_csrf
 
 app = FastAPI(title="KSF Web UI")
+app.add_middleware(BaseHTTPMiddleware, dispatch=enforce_webui_csrf)
 
 static_dir = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
