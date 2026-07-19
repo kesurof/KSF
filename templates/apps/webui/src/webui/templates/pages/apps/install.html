@@ -1,14 +1,19 @@
 {% extends "base.html" %}
+{% from "_components.html" import page_header, icon, breadcrumb %}
+{% block title %}Installer une application — KSF{% endblock %}
+{% block breadcrumb %}{{ breadcrumb([('Applications', '/apps'), ('Installer', None)]) }}{% endblock %}
 {% block content %}
-<h1>Installer une application</h1>
+{% call page_header('Installer une application', subtitle='Choisissez un template et configurez l\'accès.') %}
+  <a href="/apps" class="btn btn-sm btn-ghost">Retour à la liste</a>
+{% endcall %}
 
 <div x-data="installForm()">
   <form @submit.prevent="submit">
     <div class="card">
       <div class="form-group">
-        <label>Template</label>
-        <select x-model="template" required>
-          <option value="">Choisir un template...</option>
+        <label for="tpl-select">Template</label>
+        <select id="tpl-select" x-model="template" required>
+          <option value="">Choisir un template…</option>
           <template x-for="t in templates" :key="t.name">
             <option :value="t.name" x-text="t.name + ' — ' + t.description"></option>
           </template>
@@ -16,30 +21,28 @@
       </div>
 
       <div class="form-group">
-        <label>Nom d'instance (optionnel, défaut = nom du template)</label>
-        <input type="text" x-model="instance" placeholder="ex: films">
+        <label for="inst-name">Nom d'instance (optionnel, défaut = nom du template)</label>
+        <input id="inst-name" type="text" x-model="instance" placeholder="ex: films">
       </div>
 
       <template x-if="templateInfo && templateInfo.public">
         <div>
-          <div class="form-group">
-            <label>Mode d'accès</label>
-            <select x-model="accessMode">
-              <option value="subdomain">Sous-domaine</option>
-              <option value="host">Host complet</option>
-              <option value="local">Local seulement</option>
-            </select>
-          </div>
+          <fieldset>
+            <legend class="text-muted text-sm">Mode d'accès</legend>
+            <label><input type="radio" name="accessMode" value="subdomain" x-model="accessMode"> Sous-domaine</label>
+            <label><input type="radio" name="accessMode" value="host" x-model="accessMode"> Host complet</label>
+            <label><input type="radio" name="accessMode" value="local" x-model="accessMode"> Local seulement</label>
+          </fieldset>
 
           <template x-if="accessMode === 'subdomain'">
             <div>
               <div class="form-group">
-                <label>Sous-domaine</label>
-                <input type="text" x-model="subdomain" :placeholder="templateInfo.default_host">
+                <label for="sub-field">Sous-domaine</label>
+                <input id="sub-field" type="text" x-model="subdomain" :placeholder="templateInfo.default_host">
               </div>
               <div class="form-group">
-                <label>Domaine</label>
-                <select x-model="domain">
+                <label for="dom-field">Domaine</label>
+                <select id="dom-field" x-model="domain">
                   <template x-for="d in domains" :key="d">
                     <option :value="d" x-text="d"></option>
                   </template>
@@ -50,100 +53,89 @@
 
           <template x-if="accessMode === 'host'">
             <div class="form-group">
-              <label>Host complet</label>
-              <input type="text" x-model="host" placeholder="ex: app.example.com">
+              <label for="host-field">Host complet</label>
+              <input id="host-field" type="text" x-model="host" placeholder="ex: app.example.com">
             </div>
           </template>
         </div>
       </template>
 
       <div class="form-group">
-        <label>
-          <input type="checkbox" x-model="noAuth">
-          Désactiver OAuth2 Proxy
-        </label>
+        <label><input type="checkbox" x-model="noAuth"> Désactiver OAuth2 Proxy</label>
       </div>
 
       <div class="form-group">
-        <label>Port hôte local (optionnel, 127.0.0.1)</label>
-        <input type="text" x-model="hostPort" placeholder="ex: 8080">
+        <label for="host-port">Port hôte local (optionnel, 127.0.0.1)</label>
+        <input id="host-port" type="text" x-model="hostPort" placeholder="ex: 8080">
       </div>
       <div class="form-group">
-        <label>Port interne (optionnel, défaut du template)</label>
-        <input type="number" min="1" max="65535" x-model="port" placeholder="ex: 8080">
+        <label for="int-port">Port interne (optionnel, défaut du template)</label>
+        <input id="int-port" type="number" min="1" max="65535" x-model="port" placeholder="ex: 8080">
       </div>
     </div>
 
-    <button type="submit" class="btn" :disabled="submitting" x-text="submitting ? 'Installation...' : 'Installer'"></button>
-    <div x-show="error" class="status-err mt-1" x-text="error"></div>
-    <div x-show="success" class="status-ok mt-1" x-text="success"></div>
+    <button type="submit" class="btn" :disabled="submitting" x-text="submitting ? 'Installation…' : 'Installer'">{{ icon('plus', 14) }} Installer</button>
+    <div x-show="error" class="error-box mt-1" x-text="error" role="alert"></div>
+    <div x-show="success" class="success-box mt-1" x-text="success" role="status"></div>
   </form>
 </div>
 
 <script>
-  function installForm() {
-    return {
-      templates: [],
-      template: '',
-      instance: '',
-      accessMode: 'subdomain',
-      subdomain: '',
-      domain: '',
-      domains: [],
-      host: '',
-      hostPort: '',
-      port: '',
-      noAuth: false,
-      submitting: false,
-      error: '',
-      success: '',
+function installForm() {
+  return {
+    templates: [], template: '', instance: '',
+    accessMode: 'subdomain', subdomain: '', domain: '', domains: [], host: '',
+    hostPort: '', port: '', noAuth: false,
+    submitting: false, error: '', success: '',
 
-      async init() {
-        try {
-          const [templatesData, configData] = await Promise.all([ksfFetch('/api/templates'), ksfFetch('/api/config')]);
-          this.templates = templatesData.templates;
-          const cfg = configData.config;
-          if (cfg.DOMAINS) this.domains = cfg.DOMAINS.split(',').map(d => d.trim()).filter(Boolean);
-          else if (cfg.DOMAIN) this.domains = [cfg.DOMAIN];
-          if (this.domains.length) this.domain = this.domains[0];
-        } catch (error) { this.error = ksfError(error); }
-      },
-
-      get templateInfo() {
-        if (!this.template) return null;
-        return this.templates.find(t => t.name === this.template) || null;
-      },
-
-      async submit() {
-        this.submitting = true;
-        this.error = '';
-        this.success = '';
-        try {
-          const body = {
-            template: this.template,
-            instance: this.instance || this.template,
-            subdomain: this.subdomain || undefined,
-            domain: this.domain || undefined,
-            host: this.host || undefined,
-            host_port: this.hostPort || undefined,
-            port: this.port || undefined,
-            no_auth: this.noAuth,
-            local_only: this.accessMode === 'local',
-          };
-          const data = await ksfFetch('/api/apps/install', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-          this.success = 'App installée : ' + (data.host || 'local-only');
-          setTimeout(() => window.location.href = '/apps', 1500);
-        } catch(e) {
-          this.error = ksfError(e);
-        } finally {
-          this.submitting = false;
-        }
+    async init() {
+      try {
+        const [templatesData, configData] = await Promise.all([ksfFetch('/api/templates'), ksfFetch('/api/config')]);
+        this.templates = templatesData.templates;
+        const cfg = configData.config;
+        if (cfg.DOMAINS) this.domains = cfg.DOMAINS.split(',').map(d => d.trim()).filter(Boolean);
+        else if (cfg.DOMAIN) this.domains = [cfg.DOMAIN];
+        if (this.domains.length) this.domain = this.domains[0];
+      } catch (error) {
+        this.error = ksfError(error);
+        Alpine.store('toasts').error(ksfError(error));
       }
-    };
-  }
+    },
+
+    get templateInfo() {
+      if (!this.template) return null;
+      return this.templates.find(t => t.name === this.template) || null;
+    },
+
+    async submit() {
+      this.submitting = true;
+      this.error = ''; this.success = '';
+      try {
+        const body = {
+          template: this.template,
+          instance: this.instance || this.template,
+          subdomain: this.subdomain || undefined,
+          domain: this.domain || undefined,
+          host: this.host || undefined,
+          host_port: this.hostPort || undefined,
+          port: this.port || undefined,
+          no_auth: this.noAuth,
+          local_only: this.accessMode === 'local',
+        };
+        const data = await ksfFetch('/api/apps/install', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        this.success = 'App installée : ' + (data.host || 'local-only');
+        Alpine.store('toasts').success('App installée : ' + (data.host || 'local-only'));
+        setTimeout(() => window.location.href = '/apps', 1500);
+      } catch (e) {
+        this.error = ksfError(e);
+        Alpine.store('toasts').error(ksfError(e));
+      } finally { this.submitting = false; }
+    }
+  };
+}
 </script>
 {% endblock %}

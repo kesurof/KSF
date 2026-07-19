@@ -1,11 +1,15 @@
-<table>
-  <thead><tr><th>Clé</th><th>Valeur</th></tr></thead>
-  <tbody>
-    {% for key, value in config.items() %}
-    <tr>
-      <td class="text-sm text-muted">{{ key }}</td>
-      <td><code>{{ value }}</code></td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+{% from "_components.html" import icon %}
+<div class="table-scroll">
+  <table>
+    <caption class="sr-only">Configuration de la plateforme</caption>
+    <thead><tr><th scope="col">Clé</th><th scope="col">Valeur</th></tr></thead>
+    <tbody>
+      {% for key, value in config.items() %}
+      <tr>
+        <td class="text-sm text-muted">{{ key }}</td>
+        <td><code>{{ value }}</code></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

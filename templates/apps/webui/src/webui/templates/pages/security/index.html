@@ -1,16 +1,88 @@
 {% extends "base.html" %}
+{% from "_components.html" import page_header, icon, breadcrumb, status_badge %}
+{% block title %}CrowdSec — KSF{% endblock %}
+{% block breadcrumb %}{{ breadcrumb([('Sécurité', None), ('CrowdSec', None)]) }}{% endblock %}
 {% block content %}
 <div x-data="crowdsecPage()" x-init="load()">
-  <div class="flex gap-2 items-center mb-1"><h1>CrowdSec</h1><button class="btn btn-sm btn-ghost" @click="load()">Rafraîchir</button></div>
-  <template x-if="error"><p class="error-box" x-text="error"></p></template>
-  <div class="card"><strong>État: </strong><span x-text="status ? (status.enabled ? status.state || 'configuré' : 'non configuré') : 'Chargement...'"></span></div>
-  <div class="card"><div class="card-header"><strong>Console CrowdSec</strong><button class="btn btn-sm btn-ghost" @click="loadConsole()">Actualiser</button></div><pre x-text="consoleOutput"></pre><p x-show="consoleError" class="status-err" x-text="consoleError"></p></div>
-  <div class="flex gap-1 mt-2"><a href="/security/alerts" class="btn btn-sm btn-ghost">Alertes</a><a href="/security/metrics" class="btn btn-sm btn-ghost">Métriques</a><a href="/security/bouncers" class="btn btn-sm btn-ghost">Bouncers</a><a href="/security/decisions" class="btn btn-sm btn-ghost">Décisions</a><a href="/security/appsec" class="btn btn-sm btn-ghost">AppSec</a><button class="btn btn-sm btn-warning" @click="restart()">Redémarrer CrowdSec</button></div>
-  <div class="card mt-2"><h2>Bannir une IP</h2><div class="flex gap-1"><input type="text" x-model="ip" placeholder="IP à bannir"><input type="text" x-model="duration" placeholder="durée"><button class="btn btn-danger btn-sm" @click="ban()">Bannir</button></div></div>
-  <div class="card mt-2"><h2>Débannir une IP</h2><div class="flex gap-1"><input type="text" x-model="unbanIp" placeholder="IP à débannir"><button class="btn btn-warning btn-sm" @click="unban()">Débannir</button></div></div>
-  <template x-if="message"><p class="mt-1" :class="messageType" x-text="message"></p></template>
+  {% call page_header('CrowdSec', subtitle='Sécurité et bannissement d\'IPs malveillantes.') %}
+  <button class="btn btn-sm btn-ghost" @click="load()" :disabled="loading">{{ icon('refresh', 14) }} Rafraîchir</button>
+  {% endcall %}
+  <template x-if="error"><p class="error-box" x-text="error" role="alert"></p></template>
+  <div class="card"><strong>État: </strong><span x-text="status ? (status.enabled ? status.state || 'configuré' : 'non configuré') : 'Chargement…'"></span></div>
+  <div class="card">
+    <div class="card-header"><strong>Console CrowdSec</strong><button class="btn btn-sm btn-ghost" @click="loadConsole()">{{ icon('refresh', 14) }} Actualiser</button></div>
+    <pre x-text="consoleOutput"></pre>
+    <p x-show="consoleError" class="status-err" x-text="consoleError" role="alert"></p>
+  </div>
+  <div class="flex gap-1 mt-2">
+    <a href="/security/alerts" class="btn btn-sm btn-ghost">{{ icon('bell', 14) }} Alertes</a>
+    <a href="/security/metrics" class="btn btn-sm btn-ghost">{{ icon('chart', 14) }} Métriques</a>
+    <a href="/security/bouncers" class="btn btn-sm btn-ghost">{{ icon('users', 14) }} Bouncers</a>
+    <a href="/security/decisions" class="btn btn-sm btn-ghost">{{ icon('gavel', 14) }} Décisions</a>
+    <a href="/security/appsec" class="btn btn-sm btn-ghost">{{ icon('shield-alert', 14) }} AppSec</a>
+    <button class="btn btn-sm btn-warning" @click="restart()">{{ icon('rotate-ccw', 14) }} Redémarrer CrowdSec</button>
+  </div>
+  <div class="card mt-2">
+    <h2>Bannir une IP</h2>
+    <div class="flex gap-1">
+      <label for="ban-ip" class="sr-only">IP à bannir</label>
+      <input id="ban-ip" type="text" x-model="ip" placeholder="IP à bannir">
+      <label for="ban-dur" class="sr-only">Durée</label>
+      <input id="ban-dur" type="text" x-model="duration" placeholder="durée">
+      <button class="btn btn-danger btn-sm" @click="ban()">{{ icon('ban', 14) }} Bannir</button>
+    </div>
+  </div>
+  <div class="card mt-2">
+    <h2>Débannir une IP</h2>
+    <div class="flex gap-1">
+      <label for="unban-ip" class="sr-only">IP à débannir</label>
+      <input id="unban-ip" type="text" x-model="unbanIp" placeholder="IP à débannir">
+      <button class="btn btn-warning btn-sm" @click="unban()">{{ icon('power', 14) }} Débannir</button>
+    </div>
+  </div>
 </div>
 <script>
-function crowdsecPage(){return{status:null,consoleOutput:'',consoleError:'',ip:'',unbanIp:'',duration:'4h',error:'',message:'',messageType:'',async load(){try{this.status=await ksfFetch('/api/crowdsec/status');await this.loadConsole();}catch(error){this.error=ksfError(error);}},async loadConsole(){try{this.consoleOutput=(await ksfFetch('/api/crowdsec/console/status')).output||'';}catch(error){this.consoleError=ksfError(error);}},async request(action,body){try{const result=await ksfFetch('/api/crowdsec/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});this.message=result.output||'Action effectuée.';this.messageType='status-ok';}catch(error){this.message=ksfError(error);this.messageType='status-err';}},async restart(){if(confirm('Redémarrer CrowdSec ?')){await this.request('restart',{confirmed:true});await this.load();}},async ban(){if(confirm('Bannir cette IP ?')){await this.request('ban',{ip:this.ip,duration:this.duration,confirmed:true});this.ip='';}},async unban(){if(confirm('Débannir cette IP ?')){await this.request('unban',{ip:this.unbanIp,confirmed:true});this.unbanIp='';}}};}
+function crowdsecPage() {
+  return {
+    status: null, consoleOutput: '', consoleError: '',
+    ip: '', unbanIp: '', duration: '4h', error: '', loading: false,
+    async load() {
+      this.loading = true; this.error = '';
+      try {
+        this.status = await ksfFetch('/api/crowdsec/status');
+        await this.loadConsole();
+      } catch (error) { this.error = ksfError(error); Alpine.store('toasts').error(ksfError(error)); }
+      finally { this.loading = false; }
+    },
+    async loadConsole() {
+      try { this.consoleOutput = (await ksfFetch('/api/crowdsec/console/status')).output || ''; }
+      catch (error) { this.consoleError = ksfError(error); }
+    },
+    async request(action, body) {
+      try {
+        const result = await ksfFetch('/api/crowdsec/' + action, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+        Alpine.store('toasts').success(result.output || 'Action effectuée.');
+      } catch (error) { Alpine.store('toasts').error(ksfError(error)); }
+    },
+    async restart() {
+      const ok = await ksfConfirm('Redémarrer CrowdSec ?');
+      if (!ok) return;
+      await this.request('restart', {confirmed: true});
+      await this.load();
+    },
+    async ban() {
+      const ok = await ksfConfirm(`Bannir ${this.ip} pour ${this.duration} ?`, { danger: true });
+      if (!ok) return;
+      await this.request('ban', {ip: this.ip, duration: this.duration, confirmed: true});
+      this.ip = '';
+    },
+    async unban() {
+      const ok = await ksfConfirm(`Débannir ${this.unbanIp} ?`);
+      if (!ok) return;
+      await this.request('unban', {ip: this.unbanIp, confirmed: true});
+      this.unbanIp = '';
+    }
+  };
+}
 </script>
 {% endblock %}

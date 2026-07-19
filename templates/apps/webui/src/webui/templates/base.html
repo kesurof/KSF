@@ -3,82 +3,122 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KSF Web UI</title>
-  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="description" content="Panneau d'administration KSF — apps, infrastructure, sécurité et maintenance de la plateforme Docker.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <title>{% block title %}KSF Web UI{% endblock %}</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12" crossorigin="anonymous"></script>
   <link rel="stylesheet" href="/static/app.css">
   <script defer src="/static/app.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js" crossorigin="anonymous"></script>
+  {% block head %}{% endblock %}
 </head>
 <body>
-  <div class="layout" x-data="{ sidebarOpen: true }">
-    <aside class="sidebar" x-show="sidebarOpen" x-transition>
+  {% from "_components.html" import icon, nav_item %}
+  <a href="#main" class="skip-link">Aller au contenu principal</a>
+
+  <div class="layout" x-data="ksfLayout()" @keydown.escape.window="sidebarClose()">
+    <div class="sidebar-backdrop" :class="{ 'is-open': sidebarOpen && isMobile }" @click="sidebarClose()" aria-hidden="true" x-cloak></div>
+
+    <aside class="sidebar" :class="{ 'is-open': sidebarOpen }"
+           :aria-hidden="sidebarOpen ? 'false' : 'true'"
+           aria-label="Navigation principale">
       <div class="sidebar-header">
-        <h2>KSF</h2>
+        <h2>{{ icon('server', 22) }} KSF</h2>
         <span class="badge" :class="'{{ 'installed' if installed else 'not-installed' }}'">
           {{ 'installé' if installed else 'non installé' }}
         </span>
       </div>
-      <nav class="nav">
-        <a href="/" class="nav-link">Tableau de bord</a>
+      <nav class="nav" aria-label="Sections">
+        {{ nav_item('Tableau de bord', '/', 'layout-dashboard', request.url.path) }}
         {% if installed %}
         <div class="nav-section">
           <span class="nav-section-title">Général</span>
-          <a href="/overview" class="nav-link">Vue d'ensemble</a>
-          <a href="/config" class="nav-link">Configuration</a>
-          <a href="/routes" class="nav-link">Routes</a>
-          <a href="/doctor" class="nav-link">Diagnostic</a>
-          <a href="/operations" class="nav-link">Opérations plateforme</a>
-          <a href="/jobs" class="nav-link">Historique des jobs</a>
+          {{ nav_item("Vue d'ensemble", '/overview', 'grid', request.url.path) }}
+          {{ nav_item('Configuration', '/config', 'settings', request.url.path) }}
+          {{ nav_item('Routes', '/routes', 'route', request.url.path) }}
+          {{ nav_item('Diagnostic', '/doctor', 'stethoscope', request.url.path) }}
+          {{ nav_item('Opérations plateforme', '/operations', 'wrench', request.url.path) }}
+          {{ nav_item('Historique des jobs', '/jobs', 'clock', request.url.path) }}
         </div>
         <div class="nav-section">
           <span class="nav-section-title">Applications</span>
-          <a href="/apps" class="nav-link">Apps installées</a>
-          <a href="/apps/install" class="nav-link">Installer une app</a>
+          {{ nav_item('Apps installées', '/apps', 'package', request.url.path) }}
+          {{ nav_item('Installer une app', '/apps/install', 'plus', request.url.path) }}
         </div>
         <div class="nav-section">
           <span class="nav-section-title">Infrastructure</span>
-          <a href="/infrastructure" class="nav-link">Services</a>
-          <a href="/logs" class="nav-link">Logs</a>
+          {{ nav_item('Services', '/infrastructure', 'server', request.url.path) }}
+          {{ nav_item('Logs', '/logs', 'scroll-text', request.url.path) }}
         </div>
         <div class="nav-section">
           <span class="nav-section-title">Sécurité</span>
-          <a href="/security" class="nav-link">CrowdSec</a>
-          <a href="/security/alerts" class="nav-link">Alertes</a>
-          <a href="/security/metrics" class="nav-link">Métriques</a>
-           <a href="/security/bouncers" class="nav-link">Bouncers</a>
-           <a href="/security/decisions" class="nav-link">Décisions</a>
-          <a href="/security/appsec" class="nav-link">AppSec / WAF</a>
+          {{ nav_item('CrowdSec', '/security', 'shield', request.url.path) }}
+          {{ nav_item('Alertes', '/security/alerts', 'bell', request.url.path) }}
+          {{ nav_item('Métriques', '/security/metrics', 'chart', request.url.path) }}
+          {{ nav_item('Bouncers', '/security/bouncers', 'users', request.url.path) }}
+          {{ nav_item('Décisions', '/security/decisions', 'gavel', request.url.path) }}
+          {{ nav_item('AppSec / WAF', '/security/appsec', 'shield-alert', request.url.path) }}
         </div>
         <div class="nav-section">
           <span class="nav-section-title">Maintenance</span>
-          <a href="/maintenance" class="nav-link">Actions</a>
+          {{ nav_item('Actions', '/maintenance', 'trash', request.url.path) }}
         </div>
         {% endif %}
       </nav>
     </aside>
 
-    <main class="main">
+    <main class="main" id="main">
       <header class="topbar">
-        <button @click="sidebarOpen = !sidebarOpen" class="btn-icon">☰</button>
+        <button type="button"
+                class="btn-icon"
+                @click="sidebarToggle()"
+                :aria-expanded="sidebarOpen ? 'true' : 'false'"
+                :aria-label="sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'">{{ icon('menu', 20) }}</button>
         <span class="topbar-title">KSF Web UI</span>
         {% if config and installed %}
         <span class="topbar-domain">{{ config.domain }}</span>
         {% endif %}
       </header>
 
-      <div class="content" id="content">
+      {% block breadcrumb %}{% endblock %}
+
+      <div class="content" id="content" aria-live="polite">
         {% block content %}{% endblock %}
       </div>
     </main>
   </div>
 
-  <div id="modal" class="modal" x-data="{ show: false, message: '' }" x-show="show" x-cloak>
-    <div class="modal-backdrop" @click="show = false"></div>
-    <div class="modal-body">
-      <p x-text="message"></p>
-      <button @click="show = false" class="btn">Fermer</button>
+  {# Lot 5 : Modal de confirmation unifiée #}
+  <div id="modal" class="modal" x-data="ksfModal()" @keydown.escape.window="cancel()"
+       role="dialog" aria-modal="true" aria-labelledby="modal-title" x-show="open" x-cloak>
+    <div class="modal-backdrop" @click="cancel()" aria-hidden="true"></div>
+    <div class="modal-body" :class="{ 'modal-danger': danger }" x-ref="body">
+      <button type="button" class="btn-icon modal-close" @click="cancel()" aria-label="Fermer la fenêtre">{{ icon('x', 18) }}</button>
+      <h3 id="modal-title" class="modal-title">Confirmation</h3>
+      <p class="modal-message" x-text="message"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost btn-sm" @click="cancel()">Annuler</button>
+        <button type="button" class="btn btn-sm" :class="danger ? 'btn-danger' : 'btn'" @click="confirm()">Confirmer</button>
+      </div>
     </div>
   </div>
 
+  {# Lot 5 : Zone de toasts unifiée #}
+  <div class="toast-holder" x-data x-cloak aria-live="polite" aria-atomic="false">
+    <template x-for="t in $store.toasts.items" :key="t.id">
+      <div class="toast" :class="'toast-' + t.type">
+        <span class="toast-icon">{{ icon('check-circle', 18) }}</span>
+        <span class="toast-msg" x-text="t.message"></span>
+        <button type="button" class="toast-close" @click="$store.toasts.dismiss(t.id)" aria-label="Fermer">{{ icon('x', 14) }}</button>
+      </div>
+    </template>
+  </div>
+
+  {# Lot 3 : sprite SVG des icônes (chargé une fois par page) #}
+  {% from "_components.html" import icon_sprite %}{{ icon_sprite() }}
 </body>
 </html>

@@ -1,10 +1,12 @@
 {% extends "base.html" %}
+{% from "_components.html" import page_header, status_badge, icon, breadcrumb, empty_state %}
+{% block title %}Historique des jobs — KSF{% endblock %}
+{% block breadcrumb %}{{ breadcrumb([('Général', None), ('Historique des jobs', None)]) }}{% endblock %}
 {% block content %}
-<div x-data="jobsPage()" x-init="load()">
-  <div class="flex gap-2 items-center mb-1"><h1>Historique des jobs</h1><button class="btn btn-sm btn-ghost" @click="load()">Rafraîchir</button></div>
-  <template x-if="error"><p class="error-box" x-text="error"></p></template>
-  <div class="card" x-show="!jobs.length && !loading">Aucune opération enregistrée.</div>
-  <div class="card" x-show="jobs.length"><table><thead><tr><th>Date</th><th>Action</th><th>Cible</th><th>Mode</th><th>État</th><th>Message</th></tr></thead><tbody><template x-for="job in jobs" :key="job.id"><tr><td class="text-sm" x-text="format(job.created_at)"></td><td x-text="job.action"></td><td x-text="job.target"></td><td x-text="job.dry_run ? 'simulation' : 'réel'"></td><td :class="statusClass(job.status)" x-text="job.status"></td><td class="text-sm" x-text="job.message"></td></tr></template></tbody></table></div>
+{% call page_header('Historique des jobs', subtitle='Opérations lancées depuis le panneau d\'administration.') %}
+  <button class="btn btn-sm btn-ghost" hx-get="/api/jobs/html" hx-target="#jobs-output" hx-swap="innerHTML">{{ icon('refresh', 14) }} Rafraîchir</button>
+{% endcall %}
+<div id="jobs-output" hx-get="/api/jobs/html" hx-trigger="load, ksf-refresh from:body" hx-swap="innerHTML" role="status" aria-live="polite">
+  <span class="spinner" role="status" aria-label="Chargement"></span> Chargement…
 </div>
-<script>function jobsPage(){return{jobs:[],loading:false,error:'',async load(){this.loading=true;this.error='';try{this.jobs=(await ksfFetch('/api/jobs')).jobs;}catch(error){this.error=ksfError(error);}finally{this.loading=false;}},format(value){return value?new Date(value*1000).toLocaleString('fr-FR'):'—';},statusClass(status){return status==='completed'?'status-ok':status==='failed'?'status-err':'status-warn';}};}</script>
 {% endblock %}

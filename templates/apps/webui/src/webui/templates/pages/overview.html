@@ -1,19 +1,21 @@
 {% extends "base.html" %}
+{% from "_components.html" import page_header, icon, breadcrumb %}
+{% block title %}Vue d'ensemble — KSF{% endblock %}
+{% block breadcrumb %}{{ breadcrumb([('Général', None), ('Vue d\'ensemble', None)]) }}{% endblock %}
 {% block content %}
-<h1>Vue d'ensemble</h1>
-<div class="flex gap-2 mb-1">
-  <a href="/api/status" class="btn btn-sm btn-ghost" target="_blank">Status (JSON)</a>
-  <a href="/api/doctor" class="btn btn-sm btn-ghost" target="_blank">Doctor (JSON)</a>
-  <a href="/api/routes" class="btn btn-sm btn-ghost" target="_blank">Routes (JSON)</a>
-</div>
+{% call page_header('Vue d\'ensemble', subtitle='État global de la plateforme et diagnostic automatique.') %}
+  <a href="/api/status" class="btn btn-sm btn-ghost" target="_blank" rel="noopener">{{ icon('external-link', 14) }} Status JSON</a>
+  <a href="/api/doctor" class="btn btn-sm btn-ghost" target="_blank" rel="noopener">{{ icon('external-link', 14) }} Doctor JSON</a>
+  <a href="/api/routes" class="btn btn-sm btn-ghost" target="_blank" rel="noopener">{{ icon('external-link', 14) }} Routes JSON</a>
+{% endcall %}
 
 <h2 class="mt-2">Status</h2>
-<div id="overview-status" hx-get="/api/status/dashboard" hx-trigger="load" hx-swap="innerHTML">
-  <div class="spinner"></div>
+<div id="overview-status" hx-get="/api/status/dashboard" hx-trigger="load, ksf-refresh from:body" hx-swap="innerHTML" role="status" aria-live="polite">
+  <span class="spinner" role="status" aria-label="Chargement"></span> Chargement…
 </div>
 
 <h2 class="mt-2">Diagnostic</h2>
-<div id="overview-doctor" hx-get="/api/doctor/html" hx-trigger="load" hx-swap="innerHTML">
-  <div class="spinner"></div>
+<div id="overview-doctor" hx-get="/api/doctor/html" hx-trigger="load, ksf-refresh from:body" hx-swap="innerHTML" role="status" aria-live="polite">
+  <span class="spinner" role="status" aria-label="Chargement"></span> Chargement…
 </div>
 {% endblock %}

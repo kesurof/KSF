@@ -1,7 +1,12 @@
 {% extends "base.html" %}
+{% from "_components.html" import page_header, icon, breadcrumb %}
+{% block title %}Diagnostic — KSF{% endblock %}
+{% block breadcrumb %}{{ breadcrumb([('Général', None), ('Diagnostic', None)]) }}{% endblock %}
 {% block content %}
-<h1>Diagnostic</h1>
-<div id="doctor-output" hx-get="/api/doctor/html" hx-trigger="load" hx-swap="innerHTML">
-  <div class="spinner"></div>
+{% call page_header('Diagnostic', subtitle='Vérifications automatiques de l\'installation KSF.') %}
+  <button class="btn btn-sm btn-ghost" hx-get="/api/doctor/html" hx-target="#doctor-output" hx-swap="innerHTML">{{ icon('refresh', 14) }} Rafraîchir</button>
+{% endcall %}
+<div id="doctor-output" hx-get="/api/doctor/html" hx-trigger="load, ksf-refresh from:body" hx-swap="innerHTML" role="status" aria-live="polite">
+  <span class="spinner" role="status" aria-label="Chargement"></span> Chargement…
 </div>
 {% endblock %}

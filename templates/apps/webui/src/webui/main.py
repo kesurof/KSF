@@ -1,9 +1,10 @@
 import os
 from pathlib import Path
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .core.config import get_config
 from .templates import templates
@@ -39,6 +40,21 @@ app.include_router(maintenance_router, prefix="/api", tags=["maintenance"])
 app.include_router(operations_router, prefix="/api/operations", tags=["operations"])
 
 
+def _render_with_context(request: Request, template_name: str) -> HTMLResponse:
+    """Rend une page avec le contexte commun (config, installed)."""
+    cfg = get_config()
+    return templates.TemplateResponse(request, template_name, {
+        "config": cfg,
+        "installed": cfg.loaded,
+    })
+
+
+@app.get("/favicon.svg", response_class=PlainTextResponse)
+async def favicon():
+    p = static_dir / "favicon.svg"
+    return PlainTextResponse(p.read_text(encoding="utf-8"), media_type="image/svg+xml")
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     cfg = get_config()
@@ -70,7 +86,6 @@ async def app_detail_page(request: Request, instance: str):
 
 @app.get("/{path:path}", response_class=HTMLResponse)
 async def catch_all(request: Request, path: str):
-    cfg = get_config()
     page_map = {
         "overview": "pages/overview.html",
         "apps": "pages/apps/index.html",
@@ -92,11 +107,34 @@ async def catch_all(request: Request, path: str):
     }
     template_name = page_map.get(path)
     if not template_name:
-        return HTMLResponse("<h1>404 - Page introuvable</h1>", status_code=404)
-    return templates.TemplateResponse(request, template_name, {
+        return _render_error(request, 404, None)
+    return _render_with_context(request, template_name)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def ksf_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    # Pages d'erreur statiques rendues dans le layout de base.
+    if exc.status_code == 404:
+        return _render_error(request, 404, None)
+    # 403, 405 etc. → on rend aussi une 404, message informatif
+    return _render_error(request, exc.status_code, str(exc.detail) if exc.detail else None)
+
+
+@app.exception_handler(Exception)
+async def ksf_unhandled_exception_handler(request: Request, exc: Exception):
+    import traceback
+    traceback.print_exc()  # journalisé côté serveur stdout (Docker logs)
+    return _render_error(request, 500, None)
+
+
+def _render_error(request: Request, status: int, detail) -> HTMLResponse:
+    cfg = get_config()
+    template = {404: "pages/error/404.html"}.get(status, "pages/error/500.html")
+    return templates.TemplateResponse(request, template, {
         "config": cfg,
         "installed": cfg.loaded,
-    })
+        "detail": detail,
+    }, status_code=status)
 
 
 @app.on_event("startup")

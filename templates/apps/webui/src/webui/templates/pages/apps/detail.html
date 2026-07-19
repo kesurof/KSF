@@ -1,19 +1,25 @@
 {% extends "base.html" %}
+{% from "_components.html" import page_header, icon, breadcrumb, status_badge, empty_state %}
+{% block title %}{{ instance }} — Application KSF{% endblock %}
+{% block breadcrumb %}{{ breadcrumb([('Applications', '/apps'), (instance, None)]) }}{% endblock %}
 {% block content %}
 <div x-data="appDetail('{{ instance }}')" x-init="init()">
-  <div x-show="loading" class="card"><span class="spinner"></span> Chargement de l'application...</div>
-  <template x-if="error"><p class="error-box" x-text="error"></p></template>
+  <div x-show="loading" class="card" role="status" aria-live="polite">
+    <span class="spinner" aria-label="Chargement"></span> Chargement de l'application…
+  </div>
+  <template x-if="error"><p class="error-box" x-text="error" role="alert"></p></template>
 
   <template x-if="!loading && app">
     <div>
-      <div class="flex gap-2 items-center mb-1">
-        <h1 x-text="app.display_name"></h1>
-        <span class="badge" :class="app.disabled ? 'not-installed' : (app.state === 'running' ? 'installed' : 'not-installed')" x-text="app.disabled ? 'désactivée' : app.state"></span>
-        <a x-show="app.host && !app.disabled" class="btn btn-sm btn-ghost" :href="'https://' + app.host" target="_blank" rel="noopener">Ouvrir</a>
+      <div class="page-header flex gap-2 items-center mb-1">
+        <h1 x-text="app.display_name">{{ instance }}</h1>
+        <div class="flex gap-1 items-center ml-auto">
+          <template x-if="app"><span class="badge" :class="app.disabled ? 'not-installed' : (app.state === 'running' ? 'installed' : 'not-installed')" x-text="app.disabled ? 'désactivée' : app.state"></span></template>
+          <a x-show="app && app.host && !app.disabled" class="btn btn-sm btn-ghost" :href="'https://' + app.host" target="_blank" rel="noopener">{{ icon('external-link', 14) }} Ouvrir</a>
+        </div>
       </div>
 
-      <template x-if="app.disabled"><p class="error-box mb-1">Cette application est désactivée: sa stack et sa route Traefik sont arrêtées.</p></template>
-      <template x-if="message"><p class="mt-1" :class="messageType" x-text="message"></p></template>
+      <template x-if="app && app.disabled"><p class="error-box mb-1">Cette application est désactivée: sa stack et sa route Traefik sont arrêtées.</p></template>
 
       <div class="card-grid">
         <div class="card stat"><span class="stat-value" x-text="app.running + '/' + app.total"></span><span class="stat-label">Services actifs</span></div>
@@ -25,43 +31,68 @@
       <div class="card">
         <div class="card-header"><strong>Cycle de vie</strong></div>
         <div class="flex gap-1" x-show="!app.disabled">
-          <button class="btn btn-sm" @click="action('start')" :disabled="busy">Démarrer</button>
-          <button class="btn btn-sm btn-warning" @click="action('stop')" :disabled="busy">Arrêter</button>
-          <button class="btn btn-sm btn-ghost" @click="action('restart')" :disabled="busy">Redémarrer</button>
-          <button class="btn btn-sm btn-ghost" @click="action('update')" :disabled="busy">Mettre à jour</button>
-          <button class="btn btn-sm btn-ghost" @click="action('rebuild')" :disabled="busy">Rebuild</button>
-          <button class="btn btn-sm btn-danger" @click="disable()" :disabled="busy">Désactiver</button>
+          <button class="btn btn-sm" @click="action('start')" :disabled="busy">{{ icon('play', 14) }} Démarrer</button>
+          <button class="btn btn-sm btn-warning" @click="action('stop')" :disabled="busy">{{ icon('square', 14) }} Arrêter</button>
+          <button class="btn btn-sm btn-ghost" @click="action('restart')" :disabled="busy">{{ icon('rotate-ccw', 14) }} Redémarrer</button>
+          <button class="btn btn-sm btn-ghost" @click="action('update')" :disabled="busy">{{ icon('download', 14) }} Mettre à jour</button>
+          <button class="btn btn-sm btn-ghost" @click="action('rebuild')" :disabled="busy">{{ icon('refresh', 14) }} Rebuild</button>
+          <button class="btn btn-sm btn-danger" @click="disable()" :disabled="busy">{{ icon('power', 14) }} Désactiver</button>
         </div>
-        <div class="flex gap-1" x-show="app.disabled"><button class="btn btn-sm" @click="action('enable')" :disabled="busy">Activer et démarrer</button><button class="btn btn-sm btn-ghost" @click="action('update')" :disabled="busy">Mettre à jour</button><button class="btn btn-sm btn-ghost" @click="action('rebuild')" :disabled="busy">Rebuild</button></div>
+        <div class="flex gap-1" x-show="app.disabled">
+          <button class="btn btn-sm" @click="action('enable')" :disabled="busy">{{ icon('power', 14) }} Activer et démarrer</button>
+          <button class="btn btn-sm btn-ghost" @click="action('update')" :disabled="busy">{{ icon('download', 14) }} Mettre à jour</button>
+          <button class="btn btn-sm btn-ghost" @click="action('rebuild')" :disabled="busy">{{ icon('refresh', 14) }} Rebuild</button>
+        </div>
       </div>
 
       <div class="card">
         <div class="card-header"><strong>Accès</strong></div>
         <p class="text-muted text-sm mb-1" x-text="app.host ? 'Actuel: https://' + app.host : 'Actuel: accès local uniquement'"></p>
-        <div class="form-group"><label>Sous-domaine</label><input type="text" x-model="subdomain" placeholder="app"></div>
-        <div class="form-group"><label>Domaine</label><input type="text" x-model="domain" placeholder="example.com"></div>
-        <div class="form-group"><label>Port hôte local, optionnel</label><input type="number" min="1" max="65535" x-model="hostPort" placeholder="8080"></div>
+        <div class="form-group"><label for="cfg-sub">Sous-domaine</label><input id="cfg-sub" type="text" x-model="subdomain" placeholder="app"></div>
+        <div class="form-group"><label for="cfg-dom">Domaine</label><input id="cfg-dom" type="text" x-model="domain" placeholder="example.com"></div>
+        <div class="form-group"><label for="cfg-port">Port hôte local, optionnel</label><input id="cfg-port" type="number" min="1" max="65535" x-model="hostPort" placeholder="8080"></div>
         <div class="form-group"><label><input type="checkbox" x-model="localOnly"> Accès local uniquement</label></div>
         <div class="form-group"><label><input type="checkbox" x-model="noHostPort"> Désactiver le port hôte local</label></div>
-        <button class="btn btn-sm" @click="configure()" :disabled="busy">Enregistrer l'accès</button>
+        <button class="btn btn-sm" @click="configure()" :disabled="busy">{{ icon('pencil', 14) }} Enregistrer l'accès</button>
       </div>
 
       <div class="card">
-        <div class="card-header"><strong>Services</strong><button class="btn btn-sm btn-ghost" @click="load()" :disabled="busy">Actualiser</button></div>
-        <table x-show="app.services.length"><thead><tr><th>Service</th><th>Conteneur</th><th>État</th><th>Santé</th></tr></thead><tbody><template x-for="service in app.services" :key="service.service"><tr><td x-text="service.service"></td><td class="text-sm text-muted" x-text="service.name"></td><td x-text="service.state" :class="service.state === 'running' ? 'status-ok' : 'status-warn'"></td><td x-text="service.health || '—'" :class="service.health === 'unhealthy' ? 'status-err' : (service.health === 'healthy' ? 'status-ok' : '')"></td></tr></template></tbody></table>
-        <p x-show="!app.services.length" class="text-muted">Aucun conteneur créé pour cette stack.</p>
+        <div class="card-header"><strong>Services</strong><button class="btn btn-sm btn-ghost" @click="load()" :disabled="busy">{{ icon('refresh', 14) }} Actualiser</button></div>
+        <div class="table-scroll" x-show="app.services.length">
+          <table>
+            <caption class="sr-only">Conteneurs de la stack</caption>
+            <thead><tr><th scope="col">Service</th><th scope="col">Conteneur</th><th scope="col">État</th><th scope="col">Santé</th></tr></thead>
+            <tbody>
+              <template x-for="service in app.services" :key="service.service">
+                <tr>
+                  <td x-text="service.service"></td>
+                  <td class="text-sm text-muted" x-text="service.name"></td>
+                  <td x-text="service.state" :class="service.state === 'running' ? 'status-ok' : 'status-warn'"></td>
+                  <td x-text="service.health || '—'" :class="service.health === 'unhealthy' ? 'status-err' : (service.health === 'healthy' ? 'status-ok' : '')"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <template x-if="!app.services.length">{{ empty_state('Aucun conteneur créé pour cette stack.') }}</template>
       </div>
 
       <div class="card">
-        <div class="card-header"><strong>Logs</strong><div class="flex gap-1"><input type="number" min="1" max="5000" x-model.number="logTail" aria-label="Nombre de lignes"><button class="btn btn-sm btn-ghost" @click="loadLogs()">Rafraîchir</button></div></div>
-        <pre x-ref="logs" x-text="logs || (logsLoading ? 'Chargement...' : 'Aucun log')"></pre>
+        <div class="card-header"><strong>Logs</strong>
+          <div class="flex gap-1">
+            <label for="log-tail" class="sr-only">Nombre de lignes</label>
+            <input id="log-tail" type="number" min="1" max="5000" x-model.number="logTail">
+            <button class="btn btn-sm btn-ghost" @click="loadLogs()">{{ icon('refresh', 14) }} Rafraîchir</button>
+          </div>
+        </div>
+        <pre x-ref="logs" x-text="logs || (logsLoading ? 'Chargement…' : 'Aucun log')"></pre>
       </div>
 
       <div class="card">
         <div class="card-header"><strong>Suppression</strong></div>
         <p class="text-muted text-sm mb-1">La stack et son enregistrement seront supprimés. Les données sont conservées par défaut.</p>
         <label class="text-sm"><input type="checkbox" x-model="removeData"> Supprimer aussi les données persistantes</label><br>
-        <button class="btn btn-sm btn-danger mt-1" @click="removeApp()" :disabled="busy">Supprimer l'application</button>
+        <button class="btn btn-sm btn-danger mt-1" @click="removeApp()" :disabled="busy">{{ icon('trash', 14) }} Supprimer l'application</button>
       </div>
     </div>
   </template>
@@ -70,14 +101,13 @@
 <script>
 function appDetail(instance) {
   return {
-    instance, app: null, loading: true, busy: false, error: '', message: '', messageType: '',
+    instance, app: null, loading: true, busy: false, error: '',
     subdomain: '', domain: '', hostPort: '', localOnly: false, noHostPort: false,
     logs: '', logsLoading: false, logTail: 200, removeData: false,
 
     async init() { await this.load(); },
     async load() {
-      this.loading = true;
-      this.error = '';
+      this.loading = true; this.error = '';
       try {
         this.app = await ksfFetch('/api/apps/' + encodeURIComponent(this.instance));
         this.subdomain = this.app.subdomain || '';
@@ -87,8 +117,10 @@ function appDetail(instance) {
         this.noHostPort = false;
         await this.$nextTick();
         await this.loadLogs();
-      } catch (error) { this.app = null; this.error = ksfError(error); }
-      finally { this.loading = false; }
+      } catch (error) {
+        this.app = null; this.error = ksfError(error);
+        Alpine.store('toasts').error(ksfError(error));
+      } finally { this.loading = false; }
     },
     async loadLogs() {
       this.logsLoading = true;
@@ -100,41 +132,40 @@ function appDetail(instance) {
     },
     async action(action) {
       this.busy = true;
-      this.message = '';
       try {
         await ksfFetch(`/api/apps/${encodeURIComponent(this.instance)}/${action}`, {method: 'POST'});
-        this.message = 'Action effectuée: ' + action + '.';
-        this.messageType = 'status-ok';
+        Alpine.store('toasts').success(`Action effectuée: ${action}.`);
         await this.load();
-      } catch (error) { this.message = ksfError(error); this.messageType = 'status-err'; }
+      } catch (error) { Alpine.store('toasts').error(ksfError(error)); }
       finally { this.busy = false; }
     },
     async disable() {
-      if (!confirm(`Désactiver ${this.instance} ? La stack et la route publique seront arrêtées.`)) return;
+      const ok = await ksfConfirm(`Désactiver ${this.instance} ? La stack et la route publique seront arrêtées.`, { danger: true });
+      if (!ok) return;
       await this.action('disable');
     },
     async configure() {
       this.busy = true;
-      this.message = '';
       try {
         const data = await ksfFetch(`/api/apps/${encodeURIComponent(this.instance)}/configure`, {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({subdomain: this.subdomain, domain: this.domain, host_port: String(this.hostPort || ''), local_only: this.localOnly, no_host_port: this.noHostPort})
         });
-        this.message = data.host ? 'Accès mis à jour: ' + data.host : 'Accès local mis à jour.';
-        this.messageType = 'status-ok';
+        Alpine.store('toasts').success(data.host ? 'Accès mis à jour: ' + data.host : 'Accès local mis à jour.');
         await this.load();
-      } catch (error) { this.message = ksfError(error); this.messageType = 'status-err'; }
+      } catch (error) { Alpine.store('toasts').error(ksfError(error)); }
       finally { this.busy = false; }
     },
     async removeApp() {
       const dataMessage = this.removeData ? ' Les données persistantes seront aussi supprimées.' : ' Les données persistantes seront conservées.';
-      if (!confirm(`Supprimer ${this.instance} ?${dataMessage}`)) return;
+      const ok = await ksfConfirm(`Supprimer ${this.instance} ?${dataMessage}`, { danger: true });
+      if (!ok) return;
       this.busy = true;
       try {
         await ksfFetch(`/api/apps/${encodeURIComponent(this.instance)}/remove`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({remove_data: this.removeData, confirmed: true})});
+        Alpine.store('toasts').success('Application supprimée.');
         window.location.assign('/apps');
-      } catch (error) { this.message = ksfError(error); this.messageType = 'status-err'; this.busy = false; }
+      } catch (error) { Alpine.store('toasts').error(ksfError(error)); this.busy = false; }
     }
   };
 }

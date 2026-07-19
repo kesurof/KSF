@@ -1,9 +1,10 @@
+{% from "_components.html" import icon %}
 <div>
   {% for c in checks %}
   <div class="card" style="padding:0.75rem;margin-bottom:0.5rem">
-    <span class="{% if c.status == 'ok' %}status-ok{% elif c.status == 'warn' %}status-warn{% else %}status-err{% endif %}">
-      {{ '✓' if c.status == 'ok' else '⚠' if c.status == 'warn' else '✗' }}
-    </span>
+    {% if c.status == 'ok' %}{{ icon('check-circle', 18, 'status-ok') }}
+    {% elif c.status == 'warn' %}{{ icon('alert-triangle', 18, 'status-warn') }}
+    {% else %}{{ icon('x-circle', 18, 'status-err') }}{% endif %}
     <strong>{{ c.label }}</strong>
     {% if c.detail %}<span class="text-muted text-sm"> — {{ c.detail }}</span>{% endif %}
   </div>

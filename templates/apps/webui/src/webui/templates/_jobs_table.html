@@ -1,0 +1,32 @@
+{% from "_components.html" import icon, status_badge, empty_state %}
+{% if not jobs %}
+{{ empty_state('Aucune opération enregistrée.') }}
+{% else %}
+<div class="card">
+  <div class="table-scroll">
+    <table>
+      <caption class="sr-only">Historique des opérations</caption>
+      <thead><tr>
+        <th scope="col">Date</th><th scope="col">Action</th><th scope="col">Cible</th>
+        <th scope="col">Mode</th><th scope="col">État</th><th scope="col">Message</th>
+      </tr></thead>
+      <tbody>
+        {% for job in jobs %}
+        <tr>
+          <td class="text-sm">{{ job.created_at | ts_local }}</td>
+          <td>{{ job.action }}</td>
+          <td>{{ job.target }}</td>
+          <td>{{ 'simulation' if job.dry_run else 'réel' }}</td>
+          <td>
+            {% if job.status == 'completed' %}{{ status_badge('ok', 'completed') }}
+            {% elif job.status == 'failed' %}{{ status_badge('err', 'failed') }}
+            {% else %}{{ status_badge('warn', job.status) }}{% endif %}
+          </td>
+          <td class="text-sm">{{ job.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}

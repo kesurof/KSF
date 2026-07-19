@@ -1,6 +1,7 @@
-from fastapi import APIRouter
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from ..core.jobs import get_job, list_recent_jobs
+from ..templates import templates
 
 router = APIRouter()
 
@@ -9,6 +10,12 @@ router = APIRouter()
 async def jobs_list():
     jobs = await list_recent_jobs()
     return {"jobs": jobs}
+
+
+@router.get("/html", response_class=HTMLResponse)
+async def jobs_html(request: Request):
+    jobs = await list_recent_jobs()
+    return templates.TemplateResponse(request, "_jobs_table.html", {"jobs": jobs})
 
 
 @router.get("/{job_id}")
