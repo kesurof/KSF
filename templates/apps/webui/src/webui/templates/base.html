@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token(request) }}">
+  <title>KSF Web UI</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <link rel="stylesheet" href="/static/app.css">
+  <script defer src="/static/app.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+</head>
+<body>
+  <div class="layout" x-data="{ sidebarOpen: true }">
+    <aside class="sidebar" x-show="sidebarOpen" x-transition>
+      <div class="sidebar-header">
+        <h2>KSF</h2>
+        <span class="badge" :class="'{{ 'installed' if installed else 'not-installed' }}'">
+          {{ 'installé' if installed else 'non installé' }}
+        </span>
+      </div>
+      <nav class="nav">
+        <a href="/" class="nav-link">Tableau de bord</a>
+        {% if installed %}
+        <div class="nav-section">
+          <span class="nav-section-title">Général</span>
+          <a href="/overview" class="nav-link">Vue d'ensemble</a>
+          <a href="/config" class="nav-link">Configuration</a>
+          <a href="/routes" class="nav-link">Routes</a>
+          <a href="/doctor" class="nav-link">Diagnostic</a>
+          <a href="/operations" class="nav-link">Opérations plateforme</a>
+          <a href="/jobs" class="nav-link">Historique des jobs</a>
+        </div>
+        <div class="nav-section">
+          <span class="nav-section-title">Applications</span>
+          <a href="/apps" class="nav-link">Apps installées</a>
+          <a href="/apps/install" class="nav-link">Installer une app</a>
+        </div>
+        <div class="nav-section">
+          <span class="nav-section-title">Infrastructure</span>
+          <a href="/infrastructure" class="nav-link">Services</a>
+          <a href="/logs" class="nav-link">Logs</a>
+        </div>
+        <div class="nav-section">
+          <span class="nav-section-title">Sécurité</span>
+          <a href="/security" class="nav-link">CrowdSec</a>
+          <a href="/security/alerts" class="nav-link">Alertes</a>
+          <a href="/security/metrics" class="nav-link">Métriques</a>
+           <a href="/security/bouncers" class="nav-link">Bouncers</a>
+           <a href="/security/decisions" class="nav-link">Décisions</a>
+          <a href="/security/appsec" class="nav-link">AppSec / WAF</a>
+        </div>
+        <div class="nav-section">
+          <span class="nav-section-title">Maintenance</span>
+          <a href="/maintenance" class="nav-link">Actions</a>
+        </div>
+        {% endif %}
+      </nav>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button @click="sidebarOpen = !sidebarOpen" class="btn-icon">☰</button>
+        <span class="topbar-title">KSF Web UI</span>
+        {% if config and installed %}
+        <span class="topbar-domain">{{ config.domain }}</span>
+        {% endif %}
+      </header>
+
+      <div class="content" id="content">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
+
+  <div id="modal" class="modal" x-data="{ show: false, message: '' }" x-show="show" x-cloak>
+    <div class="modal-backdrop" @click="show = false"></div>
+    <div class="modal-body">
+      <p x-text="message"></p>
+      <button @click="show = false" class="btn">Fermer</button>
+    </div>
+  </div>
+
+</body>
+</html>

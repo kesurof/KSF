@@ -1,0 +1,30 @@
+<div class="card-grid">
+  <div class="card stat">
+    <span class="stat-value {% if installed %}status-ok{% else %}status-warn{% endif %}">
+      {{ 'Oui' if installed else 'Non' }}
+    </span>
+    <span class="stat-label">Installation</span>
+  </div>
+  <div class="card stat">
+    <span class="stat-value {% if docker_available %}status-ok{% else %}status-err{% endif %}">
+      {{ 'OK' if docker_available else 'Indisponible' }}
+    </span>
+    <span class="stat-label">Docker</span>
+  </div>
+  <div class="card stat">
+    <span class="stat-value">{{ apps_total }}</span>
+    <span class="stat-label">Apps installées</span>
+  </div>
+  <div class="card stat">
+    <span class="stat-value status-ok">{{ apps_running }}</span>
+    <span class="stat-label">Apps actives</span>
+  </div>
+  <div class="card stat">
+    <span class="stat-value">{{ apps_total - apps_running }}</span>
+    <span class="stat-label">Apps inactives</span>
+  </div>
+  <div class="card stat">
+    <span class="stat-value">{{ config.domain or '—' }}</span>
+    <span class="stat-label">Domaine</span>
+  </div>
+</div>

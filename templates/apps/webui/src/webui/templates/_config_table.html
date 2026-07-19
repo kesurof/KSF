@@ -1,0 +1,11 @@
+<table>
+  <thead><tr><th>Clé</th><th>Valeur</th></tr></thead>
+  <tbody>
+    {% for key, value in config.items() %}
+    <tr>
+      <td class="text-sm text-muted">{{ key }}</td>
+      <td><code>{{ value }}</code></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>

@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Diagnostic</h1>
+<div id="doctor-output" hx-get="/api/doctor/html" hx-trigger="load" hx-swap="innerHTML">
+  <div class="spinner"></div>
+</div>
+{% endblock %}

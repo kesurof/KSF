@@ -280,6 +280,12 @@ Pour désactiver CrowdSec, passez `WITH_CROWDSEC=false` dans `~/serverbox/config
 
 Chaque app installable fournie par KSF part d'un template minimal `templates/apps/<template>/app.env` et `compose.yml`. Une fois installée, l'app devient une instance gérée sous `~/serverbox/apps/<instance>/`. La route Traefik `route-<instance>.yml` est générée automatiquement dans `~/serverbox/proxy/traefik/dynamic/` depuis `app.env`; par défaut une app exposée est protégée avec OAuth2 Proxy.
 
+### Web UI
+
+L'app `webui` expose les opérations d'administration KSF dans le navigateur. Elle doit être installée sur une plateforme déjà déployée et protégée par OAuth2 Proxy. La page **Opérations plateforme** permet de lancer le redémarrage et la mise à jour globale de l'infrastructure, le rendu complet, la réapplication d'OAuth2, les trusted IPs Cloudflare et les actions AppSec/CrowdSec.
+
+Les opérations longues sont lancées comme jobs avec leur sortie affichée dans l'interface. Elles réutilisent les scripts KSF embarqués dans le conteneur Web UI, avec les mêmes mécanismes de rendu et de validation que le CLI. Les actions sensibles demandent une confirmation explicite. Les secrets Cloudflare et OAuth2 ne sont jamais renvoyés au navigateur.
+
 ### Ports
 
 KSF adopte le modèle suivant pour les apps :

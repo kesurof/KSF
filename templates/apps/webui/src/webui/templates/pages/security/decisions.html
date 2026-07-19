@@ -1,0 +1,4 @@
+{% extends "base.html" %}
+{% block content %}
+<div x-data="decisionsPage()" x-init="load()"><div class="flex gap-2 items-center mb-1"><h1>Décisions CrowdSec</h1><button class="btn btn-sm btn-ghost" @click="load()">Rafraîchir</button><button class="btn btn-sm btn-danger" @click="flush()">Vider toutes les décisions</button></div><template x-if="error"><p class="error-box" x-text="error"></p></template><pre x-text="output || 'Aucune décision'"></pre></div><script>function decisionsPage(){return{output:'',error:'',async load(){try{this.output=(await ksfFetch('/api/crowdsec/decisions')).output||'';}catch(error){this.error=ksfError(error);}},async flush(){if(!confirm('Supprimer toutes les décisions CrowdSec ?'))return;try{await ksfFetch('/api/crowdsec/decisions/flush',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirmed:true})});await this.load();}catch(error){this.error=ksfError(error);}}};}</script>
+{% endblock %}

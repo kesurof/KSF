@@ -278,6 +278,10 @@ render_app_route_from_env() {
       fi
       middlewares_block="      middlewares:
         - oauth2-chain"
+      if [ -n "${TRAEFIK_PUBLIC_MIDDLEWARES_BLOCK:-}" ]; then
+        middlewares_block="${middlewares_block}
+        - security-chain"
+      fi
       ;;
     false)
       middlewares_block="${TRAEFIK_PUBLIC_MIDDLEWARES_BLOCK}"

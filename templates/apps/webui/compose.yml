@@ -1,0 +1,34 @@
+services:
+  webui:
+    build:
+      context: ${BASE_DIR}/apps/${APP_INSTANCE}
+      dockerfile: Dockerfile
+    container_name: ${APP_INSTANCE}
+    restart: unless-stopped
+    networks:
+      - proxy
+    ${APP_PORTS_BLOCK}
+    environment:
+      - PUID=${APP_PUID}
+      - PGID=${APP_PGID}
+      - TZ=${TZ_VALUE}
+      - KSF_BASE_DIR=${BASE_DIR}
+      - KSF_NETWORK_NAME=${NETWORK_NAME}
+      - KSF_TZ_VALUE=${TZ_VALUE}
+      - KSF_SCRIPT_DIR=/app
+      - KSF_CLI_DIR=/app/ksf
+    volumes:
+      - ${BASE_DIR}:${BASE_DIR}:rw
+      - ${BASE_DIR}/apps/${APP_INSTANCE}/templates/apps:/app/templates/apps:ro
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${APP_PORT}/api/status')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+networks:
+  proxy:
+    name: ${NETWORK_NAME}
+    external: true

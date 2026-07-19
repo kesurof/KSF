@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Routes Traefik</h1>
+<div id="routes-output" hx-get="/api/routes/html" hx-trigger="load" hx-swap="innerHTML">
+  <div class="spinner"></div>
+</div>
+{% endblock %}

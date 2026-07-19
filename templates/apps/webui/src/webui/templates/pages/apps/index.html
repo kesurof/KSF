@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<div x-data="appsPage()" x-init="load()">
+  <div class="flex gap-2 items-center mb-1"><h1>Applications installées</h1><a href="/apps/install" class="btn btn-sm">Installer</a><button class="btn btn-sm btn-ghost" @click="load()">Rafraîchir</button></div>
+  <template x-if="error"><p class="error-box" x-text="error"></p></template>
+  <div class="card" x-show="loading"><span class="spinner"></span> Chargement...</div>
+  <div class="card" x-show="!loading && !apps.length">Aucune app installée.</div>
+  <div class="card" x-show="apps.length"><table><thead><tr><th>Instance</th><th>État</th><th>Accès</th><th>Actions</th></tr></thead><tbody><template x-for="app in apps" :key="app.instance"><tr><td><a :href="'/apps/' + app.instance" class="nav-link" style="padding:0;display:inline" x-text="app.display_name"></a></td><td :class="app.state === 'running' ? 'status-ok' : 'status-warn'" x-text="app.state + ' (' + app.running + '/' + app.total + ')'"></td><td class="text-sm text-muted" x-text="app.access_label"></td><td class="flex gap-1"><button class="btn btn-xs btn-ghost" @click="action(app.instance, 'start')">Démarrer</button><button class="btn btn-xs btn-ghost" @click="action(app.instance, 'stop')">Arrêter</button><button class="btn btn-xs btn-ghost" @click="action(app.instance, 'restart')">Redémarrer</button></td></tr></template></tbody></table></div>
+</div>
+<script>
+function appsPage() { return { apps: [], loading: false, error: '', async load() { this.loading = true; this.error = ''; try { this.apps = (await ksfFetch('/api/apps')).apps; } catch (error) { this.error = ksfError(error); } finally { this.loading = false; } }, async action(instance, action) { try { await ksfFetch(`/api/apps/${instance}/${action}`, {method: 'POST'}); await this.load(); } catch (error) { this.error = ksfError(error); } } }; }
+</script>
+{% endblock %}

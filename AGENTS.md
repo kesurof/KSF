@@ -43,8 +43,18 @@ lib/
   render.sh
   steps.sh
   update_steps.sh
+  templates/
+    apps/
+      dockge/
+      radarr/
+      webui/
+      wordpress/
 templates/
   apps/
+    dockge/
+    radarr/
+    webui/
+    wordpress/
   compose/
   crowdsec/
   env/
@@ -285,3 +295,39 @@ docker compose -f /tmp/ksf-test/apps/radarr/docker-compose.yml config >/dev/null
 - Ne pas modifier l'historique Git sans demande explicite.
 - Ne pas ajouter les fichiers générés sous `~/serverbox`.
 - Ne pas ajouter de logs, secrets, données applicatives ou artefacts runtime.
+
+## Web UI (app webui)
+
+Le Web UI KSF (`templates/apps/webui/`) est une application FastAPI + Jinja2 + HTMX + Alpine.js qui expose un panneau d'administration accessible via `webui.<domaine>`.
+
+### Architecture
+- Stack : FastAPI + Jinja2 + HTMX + Alpine.js + SQLite + Docker
+- Authentifié par OAuth2 Proxy (par défaut)
+- Installable via `app.sh install webui` ou via `deploy.sh --with-webui`
+- Le code Python lit l'état directement (Docker SDK, filesystem) pour les actions applicatives. Les opérations plateforme complexes réutilisent la copie versionnée de `ksf.sh`, `lib/` et `templates/` embarquée au build dans le conteneur.
+- Les scripts Bash (`app.sh`, `ksf.sh`) restent le CLI pour SSH — ils partagent le même état filesystem/Docker
+
+### Structure du template
+```text
+templates/apps/webui/
+  app.env                  # APP_PORT=8000, APP_PROTECTED=true
+  compose.yml              # Build Dockerfile + volumes
+  Dockerfile               # python:3.12-slim
+  pre_install.sh           # Copie les sources dans APP_DIR
+  ksf/                     # Runtime KSF copié par le hook pour les opérations plateforme
+  requirements.txt
+  src/webui/
+    main.py                # App FastAPI
+    core/config.py         # Lecture ksf.env
+    core/state.py          # Lecture installed-apps, templates
+    core/docker.py         # Docker SDK + compose subprocess
+    core/routes.py         # Génération routes Traefik
+    core/jobs.py           # File SQLite async
+    core/schemas.py        # Pydantic
+    api/                   # Routes REST (apps, status, infra, crowdsec, logs, etc.)
+    templates/             # Jinja2 (base.html + pages)
+    static/app.css         # CSS dark theme
+```
+
+### deploy.sh --with-webui
+Le flag `--with-webui` lance `app.sh install webui` automatiquement après le déploiement de l'infrastructure. Nécessite `--with-traefik` et un domaine configuré.

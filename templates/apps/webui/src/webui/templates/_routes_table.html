@@ -1,0 +1,23 @@
+<table>
+  <thead><tr><th>Fichier</th><th>Host</th><th>Type</th><th>CrowdSec</th></tr></thead>
+  <tbody>
+    {% for r in routes %}
+    <tr>
+      <td class="text-sm">{{ r.filename }}</td>
+      <td><code>{{ r.host or '—' }}</code></td>
+      <td>
+        {% if r.has_placeholder %}
+        <span class="status-err">placeholder</span>
+        {% elif r.has_oauth2 %}
+        <span class="status-ok">protégée</span>
+        {% else %}
+        <span class="status-warn">publique</span>
+        {% endif %}
+      </td>
+      <td>{{ '✓' if r.has_crowdsec else '—' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="text-muted">Aucune route</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

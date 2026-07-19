@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Vue d'ensemble</h1>
+<div class="flex gap-2 mb-1">
+  <a href="/api/status" class="btn btn-sm btn-ghost" target="_blank">Status (JSON)</a>
+  <a href="/api/doctor" class="btn btn-sm btn-ghost" target="_blank">Doctor (JSON)</a>
+  <a href="/api/routes" class="btn btn-sm btn-ghost" target="_blank">Routes (JSON)</a>
+</div>
+
+<h2 class="mt-2">Status</h2>
+<div id="overview-status" hx-get="/api/status/dashboard" hx-trigger="load" hx-swap="innerHTML">
+  <div class="spinner"></div>
+</div>
+
+<h2 class="mt-2">Diagnostic</h2>
+<div id="overview-doctor" hx-get="/api/doctor/html" hx-trigger="load" hx-swap="innerHTML">
+  <div class="spinner"></div>
+</div>
+{% endblock %}

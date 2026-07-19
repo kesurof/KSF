@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div x-data="dashboardPage()" x-init="load()">
+  <div class="flex gap-2 items-center mb-1">
+    <h1>Tableau de bord</h1>
+    <button class="btn btn-sm btn-ghost" @click="load()" :disabled="loading">Rafraîchir</button>
+  </div>
+
+  <template x-if="error"><p class="error-box mb-1" x-text="error"></p></template>
+  <div class="card-grid" x-show="status">
+    <div class="card stat"><span class="stat-value" :class="status && status.installed ? 'status-ok' : 'status-warn'" x-text="status && status.installed ? 'Oui' : 'Non'"></span><span class="stat-label">Installation</span></div>
+    <div class="card stat"><span class="stat-value" :class="status && status.docker_available ? 'status-ok' : 'status-err'" x-text="status && status.docker_available ? 'OK' : 'Indisponible'"></span><span class="stat-label">Docker</span></div>
+    <div class="card stat"><span class="stat-value" x-text="status ? status.apps_total : '—'"></span><span class="stat-label">Apps installées</span></div>
+    <div class="card stat"><span class="stat-value status-ok" x-text="status ? status.apps_running : '—'"></span><span class="stat-label">Apps actives</span></div>
+    <div class="card stat"><span class="stat-value" x-text="status ? status.domain || '—' : '—'"></span><span class="stat-label">Domaine</span></div>
+  </div>
+
+  {% if installed %}
+  <section class="mt-2">
+    <h2>Infrastructure</h2>
+    <div class="card-grid">
+      <template x-for="service in services" :key="service.name">
+        <div class="card"><strong x-text="service.name"></strong><p class="mt-1" :class="service.state === 'running' ? 'status-ok' : 'status-warn'" x-text="service.enabled ? service.state + ' (' + (service.running || 0) + '/' + (service.total || 0) + ')' : 'non configuré'"></p></div>
+      </template>
+    </div>
+  </section>
+  <section class="mt-2">
+    <div class="flex gap-2 items-center mb-1"><h2>Applications</h2><a href="/apps/install" class="btn btn-sm">Installer</a></div>
+    <div class="card" x-show="!apps.length && !loading">Aucune app installée.</div>
+    <div class="card" x-show="apps.length"><table><thead><tr><th>Instance</th><th>État</th><th>Accès</th></tr></thead><tbody><template x-for="app in apps" :key="app.instance"><tr><td><a class="nav-link" :href="'/apps/' + app.instance" style="padding:0;display:inline" x-text="app.display_name"></a></td><td x-text="app.state + ' (' + app.running + '/' + app.total + ')'" :class="app.state === 'running' ? 'status-ok' : 'status-warn'"></td><td class="text-sm text-muted" x-text="app.access_label"></td></tr></template></tbody></table></div>
+  </section>
+  {% endif %}
+</div>
+<script>
+function dashboardPage() { return { status: null, services: [], apps: [], error: '', loading: false,
+  async load() { this.loading = true; this.error = ''; try { const [status, services, apps] = await Promise.all([ksfFetch('/api/status'), ksfFetch('/api/services'), ksfFetch('/api/apps')]); this.status = status; this.services = services.services; this.apps = apps.apps; } catch (error) { this.error = ksfError(error); } finally { this.loading = false; } }
+}; }
+</script>
+{% endblock %}

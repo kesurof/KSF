@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<div x-data="maintenancePage()" x-init="load()">
+  <div class="flex gap-2 items-center mb-1"><h1>Maintenance</h1><button class="btn btn-sm btn-ghost" @click="load()">Rafraîchir</button></div>
+  <p class="text-muted mb-1">Les données d'une application installée ne peuvent pas être supprimées ici.</p>
+  <template x-if="error"><p class="error-box" x-text="error"></p></template>
+  <div class="card" x-show="!directories.length && !loading">Aucune donnée conservée à nettoyer.</div>
+  <div class="card" x-show="directories.length"><table><thead><tr><th>Instance</th><th>Chemin</th><th>État</th><th>Action</th></tr></thead><tbody><template x-for="directory in directories" :key="directory.name"><tr><td x-text="directory.name"></td><td class="text-sm text-muted" x-text="directory.path"></td><td :class="directory.installed ? 'status-warn' : 'status-ok'" x-text="directory.installed ? 'installée' : 'orpheline'"></td><td><button class="btn btn-sm btn-danger" x-show="!directory.installed" @click="remove(directory.name)">Supprimer les données</button></td></tr></template></tbody></table></div>
+</div>
+<script>
+function maintenancePage() { return { directories: [], error: '', loading: false, async load() { this.loading = true; this.error = ''; try { this.directories = (await ksfFetch('/api/clean-data')).directories; } catch (error) { this.error = ksfError(error); } finally { this.loading = false; } }, async remove(name) { if (!confirm(`Supprimer définitivement les données de ${name} ?`)) return; try { await ksfFetch('/api/clean-data/' + encodeURIComponent(name), {method: 'DELETE'}); await this.load(); } catch (error) { this.error = ksfError(error); } } }; }
+</script>
+{% endblock %}

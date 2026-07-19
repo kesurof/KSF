@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Installer une application</h1>
+
+<div x-data="installForm()">
+  <form @submit.prevent="submit">
+    <div class="card">
+      <div class="form-group">
+        <label>Template</label>
+        <select x-model="template" required>
+          <option value="">Choisir un template...</option>
+          <template x-for="t in templates" :key="t.name">
+            <option :value="t.name" x-text="t.name + ' — ' + t.description"></option>
+          </template>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Nom d'instance (optionnel, défaut = nom du template)</label>
+        <input type="text" x-model="instance" placeholder="ex: films">
+      </div>
+
+      <template x-if="templateInfo && templateInfo.public">
+        <div>
+          <div class="form-group">
+            <label>Mode d'accès</label>
+            <select x-model="accessMode">
+              <option value="subdomain">Sous-domaine</option>
+              <option value="host">Host complet</option>
+              <option value="local">Local seulement</option>
+            </select>
+          </div>
+
+          <template x-if="accessMode === 'subdomain'">
+            <div>
+              <div class="form-group">
+                <label>Sous-domaine</label>
+                <input type="text" x-model="subdomain" :placeholder="templateInfo.default_host">
+              </div>
+              <div class="form-group">
+                <label>Domaine</label>
+                <select x-model="domain">
+                  <template x-for="d in domains" :key="d">
+                    <option :value="d" x-text="d"></option>
+                  </template>
+                </select>
+              </div>
+            </div>
+          </template>
+
+          <template x-if="accessMode === 'host'">
+            <div class="form-group">
+              <label>Host complet</label>
+              <input type="text" x-model="host" placeholder="ex: app.example.com">
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <div class="form-group">
+        <label>
+          <input type="checkbox" x-model="noAuth">
+          Désactiver OAuth2 Proxy
+        </label>
+      </div>
+
+      <div class="form-group">
+        <label>Port hôte local (optionnel, 127.0.0.1)</label>
+        <input type="text" x-model="hostPort" placeholder="ex: 8080">
+      </div>
+      <div class="form-group">
+        <label>Port interne (optionnel, défaut du template)</label>
+        <input type="number" min="1" max="65535" x-model="port" placeholder="ex: 8080">
+      </div>
+    </div>
+
+    <button type="submit" class="btn" :disabled="submitting" x-text="submitting ? 'Installation...' : 'Installer'"></button>
+    <div x-show="error" class="status-err mt-1" x-text="error"></div>
+    <div x-show="success" class="status-ok mt-1" x-text="success"></div>
+  </form>
+</div>
+
+<script>
+  function installForm() {
+    return {
+      templates: [],
+      template: '',
+      instance: '',
+      accessMode: 'subdomain',
+      subdomain: '',
+      domain: '',
+      domains: [],
+      host: '',
+      hostPort: '',
+      port: '',
+      noAuth: false,
+      submitting: false,
+      error: '',
+      success: '',
+
+      async init() {
+        try {
+          const [templatesData, configData] = await Promise.all([ksfFetch('/api/templates'), ksfFetch('/api/config')]);
+          this.templates = templatesData.templates;
+          const cfg = configData.config;
+          if (cfg.DOMAINS) this.domains = cfg.DOMAINS.split(',').map(d => d.trim()).filter(Boolean);
+          else if (cfg.DOMAIN) this.domains = [cfg.DOMAIN];
+          if (this.domains.length) this.domain = this.domains[0];
+        } catch (error) { this.error = ksfError(error); }
+      },
+
+      get templateInfo() {
+        if (!this.template) return null;
+        return this.templates.find(t => t.name === this.template) || null;
+      },
+
+      async submit() {
+        this.submitting = true;
+        this.error = '';
+        this.success = '';
+        try {
+          const body = {
+            template: this.template,
+            instance: this.instance || this.template,
+            subdomain: this.subdomain || undefined,
+            domain: this.domain || undefined,
+            host: this.host || undefined,
+            host_port: this.hostPort || undefined,
+            port: this.port || undefined,
+            no_auth: this.noAuth,
+            local_only: this.accessMode === 'local',
+          };
+          const res = await fetch('/api/apps/install', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content },
+            body: JSON.stringify(body),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            this.success = 'App installée : ' + (data.host || 'local-only');
+            setTimeout(() => window.location.href = '/apps', 1500);
+          } else {
+            this.error = data.error || 'Erreur inconnue';
+          }
+        } catch(e) {
+          this.error = ksfError(e);
+        } finally {
+          this.submitting = false;
+        }
+      }
+    };
+  }
+</script>
+{% endblock %}

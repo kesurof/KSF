@@ -81,6 +81,7 @@ OAUTH2_CLIENT_SECRET_SET=false
 OAUTH2_ALLOWED_EMAILS_SET=false
 OAUTH2_GITHUB_USER_SET=false
 OAUTH2_COOKIE_SECRET_SET=false
+WITH_WEBUI=false
 TRAEFIK_ONLY_CLI=false
 
 usage() {
@@ -111,6 +112,7 @@ Options:
   --oauth-github-user USER  Utilisateur GitHub autorisé (mode avancé)
   --oauth-host HOST       Hostname OAuth2 (défaut: oauth2.<DOMAIN>)
   --oauth-cookie-secret SEC  Secret cookie OAuth2 Proxy, 16/24/32 caractères
+  --with-webui              Installer le Web UI (webui.<DOMAIN>)
   --dry-run             Affiche les actions sans modifier les fichiers
   --force               Force la réinstallation (attention: écrase les fichiers existants)
   -y, --yes               Répondre oui automatiquement
@@ -144,6 +146,7 @@ while [[ $# -gt 0 ]]; do
     --oauth-github-user)  OAUTH2_GITHUB_USER="$2"; OAUTH2_GITHUB_USER_SET=true; OAUTH2_ENABLED=true; OAUTH2_ENABLED_SET=true; shift 2 ;;
     --oauth-host)         OAUTH2_HOST="$2"; OAUTH2_HOST_SET=true; shift 2 ;;
     --oauth-cookie-secret) OAUTH2_COOKIE_SECRET="$2"; OAUTH2_COOKIE_SECRET_SET=true; OAUTH2_ENABLED=true; OAUTH2_ENABLED_SET=true; shift 2 ;;
+    --with-webui)     WITH_WEBUI=true;   shift ;;
     --dry-run)        DRY_RUN=true;      shift ;;
     --force)          FORCE=true;        shift ;;
     -y|--yes)         AUTO_YES=true;     shift ;;
@@ -747,6 +750,7 @@ show_deploy_plan() {
   fi
   echo "OAuth2 Proxy         : $(display_bool "${OAUTH2_ENABLED}")"
   echo "Host OAuth2 Proxy    : $(display_value "${OAUTH2_HOST}")"
+  echo "Web UI               : $(display_bool "${WITH_WEBUI}")"
   echo "OAuth2 client ID     : $(display_presence "${OAUTH2_CLIENT_ID}")"
   echo "OAuth2 secret        : $(display_secret "${OAUTH2_CLIENT_SECRET}")"
   if [ "$OAUTH2_AUTH_MODE" = "email" ]; then
@@ -1017,6 +1021,7 @@ if [ "$DRY_RUN" = false ]; then
   ksf_env_write_var "${KSF_ENV}" OAUTH2_EMAIL_DOMAINS "${OAUTH2_EMAIL_DOMAINS}"
   ksf_env_write_var "${KSF_ENV}" OAUTH2_AUTHENTICATED_EMAILS_FILE "${OAUTH2_AUTHENTICATED_EMAILS_FILE}"
   ksf_env_write_var "${KSF_ENV}" OAUTH2_COOKIE_SECRET "${OAUTH2_COOKIE_SECRET}"
+  ksf_env_write_var "${KSF_ENV}" WITH_WEBUI "${WITH_WEBUI}"
   chmod 600 "${KSF_ENV}"
   ok "Configuration sauvegardée dans ${KSF_ENV}"
 else
@@ -1052,6 +1057,21 @@ step_traefik
 step_crowdsec
 step_oauth2
 step_start_infrastructure
+
+# Installation du Web UI si demandée
+if [ "$WITH_WEBUI" = true ]; then
+  if [ "$DRY_RUN" = true ]; then
+    warn "[DRY-RUN] Installation du Web UI : ./app.sh install webui --base-dir ${BASE_DIR} --subdomain webui --auth -y"
+  else
+    info "Installation du Web UI..."
+    AUTO_YES=true \
+    bash "${SCRIPT_DIR}/app.sh" install webui \
+      --base-dir "${BASE_DIR}" \
+      --subdomain webui \
+      --auth \
+      -y || warn "Échec de l'installation du Web UI."
+  fi
+fi
 
 echo ""
 echo "============================================================"
