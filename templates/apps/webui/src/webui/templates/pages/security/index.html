@@ -1,51 +1,74 @@
 {% extends "base.html" %}
-{% from "_components.html" import page_header, icon, breadcrumb, status_badge %}
+{% from "_components.html" import page_header, icon, breadcrumb, status_badge, chip, tabs %}
 {% block title %}CrowdSec — KSF{% endblock %}
-{% block breadcrumb %}{{ breadcrumb([('Sécurité', None), ('CrowdSec', None)]) }}{% endblock %}
+{% block topbar_breadcrumb %}{{ breadcrumb([('Sécurité', None), ('CrowdSec', None)]) }}{% endblock %}
 {% block content %}
 <div x-data="crowdsecPage()" x-init="load()">
-  {% call page_header('CrowdSec', subtitle='Sécurité et bannissement d\'IPs malveillantes.') %}
-  <button class="btn btn-sm btn-ghost" @click="load()" :disabled="loading">{{ icon('refresh', 14) }} Rafraîchir</button>
+  {% call page_header('CrowdSec', subtitle='Sécurité et bannissement d\'IPs malveillantes.', section='security') %}
+  <button class="btn btn-sm btn-ghost" @click="load()" :disabled="loading">{{ icon('refresh', 16) }} Rafraîchir</button>
   {% endcall %}
   <template x-if="error"><p class="error-box" x-text="error" role="alert"></p></template>
-  <div class="card"><strong>État: </strong><span x-text="status ? (status.enabled ? status.state || 'configuré' : 'non configuré') : 'Chargement…'"></span></div>
-  <div class="card">
-    <div class="card-header"><strong>Console CrowdSec</strong><button class="btn btn-sm btn-ghost" @click="loadConsole()">{{ icon('refresh', 14) }} Actualiser</button></div>
-    <pre x-text="consoleOutput"></pre>
-    <p x-show="consoleError" class="status-err" x-text="consoleError" role="alert"></p>
-  </div>
-  <div class="flex gap-1 mt-2">
-    <a href="/security/alerts" class="btn btn-sm btn-ghost">{{ icon('bell', 14) }} Alertes</a>
-    <a href="/security/metrics" class="btn btn-sm btn-ghost">{{ icon('chart', 14) }} Métriques</a>
-    <a href="/security/bouncers" class="btn btn-sm btn-ghost">{{ icon('users', 14) }} Bouncers</a>
-    <a href="/security/decisions" class="btn btn-sm btn-ghost">{{ icon('gavel', 14) }} Décisions</a>
-    <a href="/security/appsec" class="btn btn-sm btn-ghost">{{ icon('shield-alert', 14) }} AppSec</a>
-    <button class="btn btn-sm btn-warning" @click="restart()">{{ icon('rotate-ccw', 14) }} Redémarrer CrowdSec</button>
-  </div>
-  <div class="card mt-2">
-    <h2>Bannir une IP</h2>
-    <div class="flex gap-1">
-      <label for="ban-ip" class="sr-only">IP à bannir</label>
-      <input id="ban-ip" type="text" x-model="ip" placeholder="IP à bannir">
-      <label for="ban-dur" class="sr-only">Durée</label>
-      <input id="ban-dur" type="text" x-model="duration" placeholder="durée">
-      <button class="btn btn-danger btn-sm" @click="ban()">{{ icon('ban', 14) }} Bannir</button>
-    </div>
-  </div>
-  <div class="card mt-2">
-    <h2>Débannir une IP</h2>
-    <div class="flex gap-1">
-      <label for="unban-ip" class="sr-only">IP à débannir</label>
-      <input id="unban-ip" type="text" x-model="unbanIp" placeholder="IP à débannir">
-      <button class="btn btn-warning btn-sm" @click="unban()">{{ icon('power', 14) }} Débannir</button>
-    </div>
-  </div>
+
+  {% call tabs([
+    {'label': 'Console', 'icon': 'scroll-text'},
+    {'label': 'Bannir', 'icon': 'ban'},
+    {'label': 'Débannir', 'icon': 'power'},
+    {'label': 'Sous-pages', 'icon': 'grid'}
+  ]) %}
+    <template x-if="active === 0">
+      <div>
+        <div class="card"><strong>État: </strong><span x-text="status ? (status.enabled ? status.state || 'configuré' : 'non configuré') : 'Chargement…'"></span></div>
+        <div class="card">
+          <div class="card-header"><strong>Console CrowdSec</strong><button class="btn btn-sm btn-ghost" @click="loadConsole()">{{ icon('refresh', 14) }} Actualiser</button></div>
+          <pre x-text="consoleOutput"></pre>
+          <p x-show="consoleError" class="status-err" x-text="consoleError" role="alert"></p>
+        </div>
+        <div class="flex gap-1 mt-1">
+          <button class="btn btn-sm btn-warning" @click="restart()">{{ icon('rotate-ccw', 14) }} Redémarrer CrowdSec</button>
+        </div>
+      </div>
+    </template>
+
+    <template x-if="active === 1">
+      <div class="card">
+        <h2>Bannir une IP</h2>
+        <div class="flex gap-1">
+          <label for="ban-ip" class="sr-only">IP à bannir</label>
+          <input id="ban-ip" type="text" x-model="ip" placeholder="IP à bannir" inputmode="numeric" style="flex:1">
+          <label for="ban-dur" class="sr-only">Durée</label>
+          <input id="ban-dur" type="text" x-model="duration" placeholder="durée" style="flex:0 0 6ch">
+          <button class="btn btn-danger btn-sm" @click="ban()">{{ icon('ban', 14) }} Bannir</button>
+        </div>
+      </div>
+    </template>
+
+    <template x-if="active === 2">
+      <div class="card">
+        <h2>Débannir une IP</h2>
+        <div class="flex gap-1">
+          <label for="unban-ip" class="sr-only">IP à débannir</label>
+          <input id="unban-ip" type="text" x-model="unbanIp" placeholder="IP à débannir" inputmode="numeric" style="flex:1">
+          <button class="btn btn-warning btn-sm" @click="unban()">{{ icon('power', 14) }} Débannir</button>
+        </div>
+      </div>
+    </template>
+
+    <template x-if="active === 3">
+      <div class="card-grid">
+        <a href="/security/alerts" class="card">{{ icon('bell', 24) }}<strong class="mt-1">Alertes</strong><p class="text-sm text-muted">Alertes remontées par CrowdSec.</p></a>
+        <a href="/security/metrics" class="card">{{ icon('chart', 24) }}<strong class="mt-1">Métriques</strong><p class="text-sm text-muted">Activité locale.</p></a>
+        <a href="/security/bouncers" class="card">{{ icon('users', 24) }}<strong class="mt-1">Bouncers</strong><p class="text-sm text-muted">Composants actifs.</p></a>
+        <a href="/security/decisions" class="card">{{ icon('gavel', 24) }}<strong class="mt-1">Décisions</strong><p class="text-sm text-muted">IPs bannies actives.</p></a>
+        <a href="/security/appsec" class="card">{{ icon('shield-alert', 24) }}<strong class="mt-1">AppSec / WAF</strong><p class="text-sm text-muted">Protection applicative.</p></a>
+      </div>
+    </template>
+  {% endcall %}
 </div>
 <script>
 function crowdsecPage() {
   return {
     status: null, consoleOutput: '', consoleError: '',
-    ip: '', unbanIp: '', duration: '4h', error: '', loading: false,
+    ip: '', unbanIp: '', duration: '4h', error: '', loading: false, active: 0,
     async load() {
       this.loading = true; this.error = '';
       try {

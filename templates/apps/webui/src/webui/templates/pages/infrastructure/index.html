@@ -1,19 +1,20 @@
 {% extends "base.html" %}
-{% from "_components.html" import page_header, icon, breadcrumb %}
+{% from "_components.html" import page_header, icon, breadcrumb, chip, skeleton_cards %}
 {% block title %}Infrastructure — KSF{% endblock %}
-{% block breadcrumb %}{{ breadcrumb([('Infrastructure', None), ('Services', None)]) }}{% endblock %}
+{% block topbar_breadcrumb %}{{ breadcrumb([('Infrastructure', None), ('Services', None)]) }}{% endblock %}
 {% block content %}
 <div x-data="infraPage()" x-init="load()">
-  {% call page_header('Infrastructure', subtitle='Stacks système gérées par KSF.') %}
+  {% call page_header('Infrastructure', subtitle='Stacks système gérées par KSF.', section='infra') %}
   <button class="btn btn-sm btn-ghost" @click="load()" :disabled="loading">{{ icon('refresh', 14) }} Rafraîchir</button>
   {% endcall %}
   <template x-if="error"><p class="error-box" x-text="error" role="alert"></p></template>
+  <template x-if="loading">{{ skeleton_cards(3) }}</template>
   <div class="card-grid" role="status" aria-live="polite">
     <template x-for="service in services" :key="service.name">
       <div class="card">
         <div class="card-header">
           <strong x-text="service.name"></strong>
-          <span :class="service.state === 'running' ? 'status-ok' : 'status-warn'" x-text="service.enabled ? service.state : 'non configuré'"></span>
+          <span :class="service.state === 'running' ? 'chip chip-ok' : 'chip chip-warn'" x-text="service.enabled ? service.state : 'non configuré'"></span>
         </div>
         <p class="text-muted text-sm" x-show="service.enabled" x-text="(service.running || 0) + ' service(s) actif(s) sur ' + (service.total || 0)"></p>
         <div class="flex gap-1 mt-1" x-show="service.enabled">

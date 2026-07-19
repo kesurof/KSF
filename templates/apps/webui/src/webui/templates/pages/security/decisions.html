@@ -1,15 +1,18 @@
 {% extends "base.html" %}
-{% from "_components.html" import page_header, icon, breadcrumb %}
+{% from "_components.html" import page_header, icon, breadcrumb, chip %}
 {% block title %}Décisions CrowdSec — KSF{% endblock %}
-{% block breadcrumb %}{{ breadcrumb([('Sécurité', '/security'), ('Décisions', None)]) }}{% endblock %}
+{% block topbar_breadcrumb %}{{ breadcrumb([('Sécurité', '/security'), ('Décisions', None)]) }}{% endblock %}
 {% block content %}
 <div x-data="decisionsPage()" x-init="load()">
-  {% call page_header('Décisions CrowdSec', subtitle='Liste active des IPs temporarily bannies par CrowdSec.') %}
+  {% call page_header('Décisions CrowdSec', subtitle='Liste active des IPs temporary bannies par CrowdSec.', section='security') %}
   <button class="btn btn-sm btn-ghost" @click="load()" :disabled="loading">{{ icon('refresh', 14) }} Rafraîchir</button>
   <button class="btn btn-sm btn-danger" @click="flush()">{{ icon('trash', 14) }} Vider toutes les décisions</button>
   {% endcall %}
   <template x-if="error"><p class="error-box" x-text="error" role="alert"></p></template>
-  <pre x-text="output || 'Aucune décision'"></pre>
+  <div class="card">
+    <template x-if="loading"><div><span class="skeleton skeleton-row"></span></div></template>
+    <pre x-show="!loading" x-text="output || 'Aucune décision'"></pre>
+  </div>
 </div>
 <script>
 function decisionsPage() {

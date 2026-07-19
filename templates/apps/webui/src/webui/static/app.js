@@ -51,16 +51,18 @@ document.addEventListener('alpine:init', () => {
     isMobile: window.innerWidth <= 760,
     init() {
       const mq = window.matchMedia('(max-width: 760px)');
-      const handler = (e) => { this.isMobile = e.matches; };
+      const handler = (e) => { this.isMobile = e.matches; if (!e.matches) this.sidebarOpen = true; };
       mq.addEventListener('change', handler);
       this.sidebarOpen = !this.isMobile;
+      // Auto-close au clic d'un lien en mobile (Lot A)
+      this.$nextTick(() => {
+        document.querySelectorAll('.sidebar .nav-link').forEach(link => {
+          link.addEventListener('click', () => { if (this.isMobile) this.sidebarOpen = false; });
+        });
+      });
     },
-    sidebarToggle() {
-      this.sidebarOpen = !this.sidebarOpen;
-    },
-    sidebarClose() {
-      if (this.isMobile) this.sidebarOpen = false;
-    },
+    sidebarToggle() { this.sidebarOpen = !this.sidebarOpen; },
+    sidebarClose() { if (this.isMobile) this.sidebarOpen = false; },
   }));
 
   /* === Alpine.data : ksfModal (modal de confirmation) ===

@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% from "_components.html" import page_header, icon, breadcrumb, status_badge %}
+{% from "_components.html" import page_header, icon, breadcrumb, chip %}
 {% block title %}AppSec / WAF — KSF{% endblock %}
-{% block breadcrumb %}{{ breadcrumb([('Sécurité', '/security'), ('AppSec / WAF', None)]) }}{% endblock %}
+{% block topbar_breadcrumb %}{{ breadcrumb([('Sécurité', '/security'), ('AppSec / WAF', None)]) }}{% endblock %}
 {% block content %}
 <div x-data="appsecPage()" x-init="load()">
-  {% call page_header('AppSec / WAF', subtitle='Couche de protection applicative CrowdSec.') %}
+  {% call page_header('AppSec / WAF', subtitle='Couche de protection applicative CrowdSec.', section='security') %}
   <button class="btn btn-sm btn-ghost" @click="load()" :disabled="loading">{{ icon('refresh', 14) }} Rafraîchir</button>
   {% endcall %}
   <template x-if="error"><p class="error-box" x-text="error" role="alert"></p></template>

@@ -1,20 +1,22 @@
-{% from "_components.html" import icon, status_badge %}
+{% from "_components.html" import icon, status_badge, chip %}
 <div class="table-scroll">
-  <table>
+  <table class="responsive-table">
     <caption class="sr-only">Routes Traefik chargées</caption>
-    <thead><tr><th scope="col">Fichier</th><th scope="col">Host</th><th scope="col">Type</th><th scope="col">CrowdSec</th></tr></thead>
+    <thead><tr>
+      <th scope="col">Fichier</th><th scope="col">Host</th><th scope="col">Type</th><th scope="col" class="col-secondary">CrowdSec</th>
+    </tr></thead>
     <tbody>
       {% for r in routes %}
       <tr>
-        <td class="text-sm">{{ r.filename }}</td>
-        <td><code>{{ r.host or '—' }}</code></td>
-        <td>
-          {% if r.has_placeholder %}{{ status_badge('err', 'placeholder') }}
-          {% elif r.has_oauth2 %}{{ status_badge('ok', 'protégée') }}
-          {% else %}{{ status_badge('warn', 'publique') }}{% endif %}
+        <td data-label="Fichier" class="text-sm">{{ r.filename }}</td>
+        <td data-label="Host"><code>{{ r.host or '—' }}</code></td>
+        <td data-label="Type">
+          {% if r.has_placeholder %}{{ chip('err', 'placeholder') }}
+          {% elif r.has_oauth2 %}{{ chip('ok', 'protégée') }}
+          {% else %}{{ chip('warn', 'publique') }}{% endif %}
         </td>
-        <td>
-          {% if r.has_crowdsec %}{{ icon('check-circle', 16, 'status-ok') }}<span class="sr-only">oui</span>
+        <td data-label="CrowdSec" class="col-secondary">
+          {% if r.has_crowdsec %}<span class="chip-ok">{{ icon('check-circle', 16) }}</span><span class="sr-only">oui</span>
           {% else %}—{% endif %}
         </td>
       </tr>

@@ -1,55 +1,72 @@
 {% extends "base.html" %}
-{% from "_components.html" import page_header, icon, breadcrumb %}
+{% from "_components.html" import page_header, icon, breadcrumb, tabs %}
 {% block title %}Opérations plateforme — KSF{% endblock %}
-{% block breadcrumb %}{{ breadcrumb([('Général', None), ('Opérations plateforme', None)]) }}{% endblock %}
+{% block topbar_breadcrumb %}{{ breadcrumb([('Général', None), ('Opérations plateforme', None)]) }}{% endblock %}
 {% block content %}
 <div x-data="operationsPage()" x-init="loadDns()">
-  {% call page_header('Opérations plateforme', subtitle='Actions globales sur la plateforme. Une seule opération par cible à la fois.') %}
+  {% call page_header('Opérations plateforme', subtitle='Actions globales sur la plateforme. Une seule opération par cible à la fois.', section='general') %}
   <a href="/jobs" class="btn btn-sm btn-ghost">{{ icon('clock', 14) }} Historique des jobs</a>
   {% endcall %}
-  <p class="text-muted mb-1">Une seule opération par cible peut être exécutée à la fois.</p>
   <label class="text-sm mb-1"><input type="checkbox" x-model="dryRun"> Mode simulation, sans écriture persistante</label>
-  <template x-if="message"><p :class="messageType" class="error-box" x-text="message" role="status" x-show="message"></p></template>
-  <div class="card-grid">
-    <div class="card">
-      <h2>Infrastructure</h2>
-      <div class="flex gap-1">
-        <button class="btn btn-sm" @click="run('/api/operations/infrastructure/restart', 'Redémarrer toute l\'infrastructure ?')" :disabled="busy">{{ icon('rotate-ccw', 14) }} Tout redémarrer</button>
-        <button class="btn btn-sm btn-ghost" @click="run('/api/operations/infrastructure/update-all', 'Mettre à jour toutes les stacks système ?')" :disabled="busy">{{ icon('download', 14) }} Tout mettre à jour</button>
-        <button class="btn btn-sm btn-ghost" @click="run('/api/operations/apps/update-all', 'Mettre à jour toutes les applications actives ?')" :disabled="busy">{{ icon('download', 14) }} Mettre à jour les apps</button>
+  <template x-if="message"><p class="error-box mb-1" x-text="message" role="status" x-show="message"></p></template>
+
+  {% call tabs([
+    {'label': 'Infrastructure', 'icon': 'server'},
+    {'label': 'Sécurité', 'icon': 'shield'},
+    {'label': 'DNS Cloudflare', 'icon': 'route'}
+  ]) %}
+    <template x-if="active === 0">
+      <div class="card-grid">
+        <div class="card">
+          <h2 class="section-title section-infra">Stacks</h2>
+          <div class="flex gap-1">
+            <button class="btn btn-sm" @click="run('/api/operations/infrastructure/restart', 'Redémarrer toute l\'infrastructure ?')" :disabled="busy">{{ icon('rotate-ccw', 14) }} Tout redémarrer</button>
+            <button class="btn btn-sm btn-ghost" @click="run('/api/operations/infrastructure/update-all', 'Mettre à jour toutes les stacks système ?')" :disabled="busy">{{ icon('download', 14) }} Tout mettre à jour</button>
+            <button class="btn btn-sm btn-ghost" @click="run('/api/operations/apps/update-all', 'Mettre à jour toutes les applications actives ?')" :disabled="busy">{{ icon('package', 14) }} Mettre à jour les apps</button>
+          </div>
+        </div>
+        <div class="card">
+          <h2 class="section-title section-general">Rendu & protection</h2>
+          <div class="flex gap-1">
+            <button class="btn btn-sm" @click="run('/api/operations/render', 'Régénérer toute la plateforme ?')" :disabled="busy">{{ icon('refresh', 14) }} Régénérer</button>
+            <button class="btn btn-sm btn-ghost" @click="run('/api/operations/protect', 'Réappliquer OAuth2 aux applications protégées ?')" :disabled="busy">{{ icon('shield', 14) }} Réappliquer OAuth2</button>
+          </div>
+        </div>
       </div>
-    </div>
-    <div class="card">
-      <h2>Rendu et protection</h2>
-      <div class="flex gap-1">
-        <button class="btn btn-sm" @click="run('/api/operations/render', 'Régénérer toute la plateforme ?')" :disabled="busy">{{ icon('refresh', 14) }} Régénérer</button>
-        <button class="btn btn-sm btn-ghost" @click="run('/api/operations/protect', 'Réappliquer OAuth2 aux applications protégées ?')" :disabled="busy">{{ icon('shield', 14) }} Réappliquer OAuth2</button>
+    </template>
+
+    <template x-if="active === 1">
+      <div class="card-grid">
+        <div class="card">
+          <h2 class="section-title section-security">CrowdSec Console</h2>
+          <div class="form-group"><label for="enroll-token">Token d'enrôlement</label><input id="enroll-token" type="password" x-model="enrollToken" autocomplete="off" placeholder="Token CrowdSec Console"></div>
+          <button class="btn btn-sm" @click="enroll()" :disabled="busy || !enrollToken">{{ icon('plus', 14) }} Enrôler</button>
+          <p class="text-sm text-muted mt-1">L'enrôlement ne prend pas en charge la simulation.</p>
+        </div>
+        <div class="card">
+          <h2 class="section-title section-security">AppSec / WAF</h2>
+          <div class="flex gap-1">
+            <button class="btn btn-sm" @click="appsec('enable', 'Activer AppSec ?')" :disabled="busy">{{ icon('shield', 14) }} Activer</button>
+            <button class="btn btn-sm btn-warning" @click="appsec('disable', 'Désactiver AppSec ?')" :disabled="busy">{{ icon('power', 14) }} Désactiver</button>
+            <button class="btn btn-sm btn-ghost" @click="appsec('metrics', 'Lire les métriques AppSec ?')" :disabled="busy">{{ icon('chart', 14) }} Métriques</button>
+            <button class="btn btn-sm btn-ghost" @click="appsec('test', 'Lancer le test AppSec ?')" :disabled="busy">{{ icon('stethoscope', 14) }} Tester</button>
+          </div>
+        </div>
       </div>
-    </div>
-    <div class="card">
-      <h2>Trusted IPs Cloudflare</h2>
-      <p class="text-sm text-muted mb-1" x-text="dnsLabel"></p>
-      <div class="flex gap-1">
-        <button class="btn btn-sm btn-ghost" @click="run('/api/operations/trusted-ips/cloudflare', 'Récupérer les CIDR Cloudflare ?', {}, false)" :disabled="busy">{{ icon('download', 14) }} Récupérer les CIDR</button>
-        <button class="btn btn-sm" @click="run('/api/operations/trusted-ips/cloudflare/apply', 'Appliquer les CIDR Cloudflare et redémarrer Traefik ?')" :disabled="busy">{{ icon('shield', 14) }} Appliquer</button>
+    </template>
+
+    <template x-if="active === 2">
+      <div class="card">
+        <h2 class="section-title section-infra">Trusted IPs Cloudflare</h2>
+        <p class="text-sm text-muted mb-1" x-text="dnsLabel"></p>
+        <div class="flex gap-1">
+          <button class="btn btn-sm btn-ghost" @click="run('/api/operations/trusted-ips/cloudflare', 'Récupérer les CIDR Cloudflare ?', {}, false)" :disabled="busy">{{ icon('download', 14) }} Récupérer les CIDR</button>
+          <button class="btn btn-sm" @click="run('/api/operations/trusted-ips/cloudflare/apply', 'Appliquer les CIDR Cloudflare et redémarrer Traefik ?')" :disabled="busy">{{ icon('shield', 14) }} Appliquer</button>
+        </div>
       </div>
-    </div>
-    <div class="card">
-      <h2>CrowdSec Console</h2>
-      <div class="form-group"><label for="enroll-token">Token d'enrôlement</label><input id="enroll-token" type="password" x-model="enrollToken" autocomplete="off" placeholder="Token CrowdSec Console"></div>
-      <button class="btn btn-sm" @click="enroll()" :disabled="busy || !enrollToken">{{ icon('plus', 14) }} Enrôler</button>
-      <p class="text-sm text-muted mt-1">L'enrôlement ne prend pas en charge la simulation.</p>
-    </div>
-    <div class="card">
-      <h2>AppSec / WAF</h2>
-      <div class="flex gap-1">
-        <button class="btn btn-sm" @click="appsec('enable', 'Activer AppSec ?')" :disabled="busy">{{ icon('shield', 14) }} Activer</button>
-        <button class="btn btn-sm btn-warning" @click="appsec('disable', 'Désactiver AppSec ?')" :disabled="busy">{{ icon('power', 14) }} Désactiver</button>
-        <button class="btn btn-sm btn-ghost" @click="appsec('metrics', 'Lire les métriques AppSec ?')" :disabled="busy">{{ icon('chart', 14) }} Métriques</button>
-        <button class="btn btn-sm btn-ghost" @click="appsec('test', 'Lancer le test AppSec ?')" :disabled="busy">{{ icon('stethoscope', 14) }} Tester</button>
-      </div>
-    </div>
-  </div>
+    </template>
+  {% endcall %}
+
   <div class="card" x-show="job" :class="job && job.dry_run ? 'job-dry-run' : ''" role="status" aria-live="polite">
     <div class="card-header">
       <strong x-text="job && job.dry_run ? 'Simulation' : 'Opération'"></strong>
@@ -69,7 +86,7 @@
 <script>
 function operationsPage() {
   return {
-    busy: false, dryRun: false, message: '', messageType: '',
+    busy: false, dryRun: false, message: '', messageType: '', active: 0,
     job: null, enrollToken: '', enrollJobId: null,
     dnsLabel: 'Configuration DNS: chargement…',
     get resultLines() { return this.job && this.job.result ? this.job.result.split('\n') : []; },
@@ -94,7 +111,7 @@ function operationsPage() {
         this.poll();
         return result.job_id;
       } catch (error) {
-        this.message = ksfError(error); this.messageType = 'error-box';
+        this.message = ksfError(error);
         Alpine.store('toasts').error(ksfError(error));
         this.busy = false;
         return null;
@@ -119,18 +136,16 @@ function operationsPage() {
         this.busy = false;
         if (data.status === 'completed') {
           this.message = data.dry_run ? 'Simulation terminée.' : 'Opération terminée.';
-          this.messageType = 'success-box';
           Alpine.store('toasts').success(this.message);
         } else {
           this.message = data.message || 'Échec de l\'opération.';
-          this.messageType = 'error-box';
           Alpine.store('toasts').error(this.message);
         }
         if (data.status === 'completed' && this.enrollJobId === data.id) {
           this.enrollToken = ''; this.enrollJobId = null;
         }
       } catch (error) {
-        this.busy = false; this.message = ksfError(error); this.messageType = 'error-box';
+        this.busy = false; this.message = ksfError(error);
         Alpine.store('toasts').error(ksfError(error));
       }
     },

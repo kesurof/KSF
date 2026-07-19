@@ -1,31 +1,33 @@
 {% extends "base.html" %}
-{% from "_components.html" import page_header, icon, breadcrumb, empty_state, status_badge %}
+{% from "_components.html" import page_header, icon, breadcrumb, empty_state, chip, skeleton_rows %}
 {% block title %}Maintenance — KSF{% endblock %}
-{% block breadcrumb %}{{ breadcrumb([('Maintenance', None), ('Actions', None)]) }}{% endblock %}
+{% block topbar_breadcrumb %}{{ breadcrumb([('Maintenance', None), ('Actions', None)]) }}{% endblock %}
 {% block content %}
 <div x-data="maintenancePage()" x-init="load()">
-  {% call page_header('Maintenance', subtitle='Nettoyage des données orphelines conservées.') %}
+  {% call page_header('Maintenance', subtitle='Nettoyage des données orphelines conservées.', section='maintenance') %}
   <button class="btn btn-sm btn-ghost" @click="load()" :disabled="loading">{{ icon('refresh', 14) }} Rafraîchir</button>
   {% endcall %}
   <p class="text-muted mb-1">Les données d'une application installée ne peuvent pas être supprimées ici.</p>
   <template x-if="error"><p class="error-box" x-text="error" role="alert"></p></template>
-  <template x-if="!loading && !directories.length">{{ empty_state('Aucune donnée conservée à nettoyer.') }}</template>
+  <template x-if="loading">{{ skeleton_rows(3) }}</template>
+  <template x-if="!loading && !directories.length">{{ empty_state('Aucune donnée conservée à nettoyer.', icon_name='trash') }}</template>
   <div class="card" x-show="directories.length">
     <div class="table-scroll">
-      <table>
+      <table class="responsive-table">
         <caption class="sr-only">Données conservées</caption>
-        <thead><tr><th scope="col">Instance</th><th scope="col">Chemin</th><th scope="col">État</th><th scope="col">Action</th></tr></thead>
+        <thead><tr>
+          <th scope="col">Instance</th><th scope="col" class="col-secondary">Chemin</th><th scope="col">État</th><th scope="col">Action</th>
+        </tr></thead>
         <tbody>
           <template x-for="directory in directories" :key="directory.name">
             <tr>
-              <td x-text="directory.name"></td>
-              <td class="text-sm text-muted" x-text="directory.path"></td>
-              <td>
-                {% if false %}{{ status_badge('warn', 'installée') }}{% endif %}
-                <span :class="directory.installed ? 'status-warn' : 'status-ok'" x-text="directory.installed ? 'installée' : 'orpheline'"></span>
+              <td data-label="Instance" x-text="directory.name"></td>
+              <td data-label="Chemin" class="text-sm text-muted col-secondary" x-text="directory.path"></td>
+              <td data-label="État">
+                <span :class="directory.installed ? 'chip chip-warn' : 'chip chip-ok'" x-text="directory.installed ? 'installée' : 'orpheline'"></span>
               </td>
-              <td>
-                <button class="btn btn-sm btn-danger" x-show="!directory.installed" @click="remove(directory.name)">{{ icon('trash', 14) }} Supprimer les données</button>
+              <td data-label="Action">
+                <button class="btn btn-sm btn-danger" x-show="!directory.installed" @click="remove(directory.name)">{{ icon('trash', 14) }} Supprimer</button>
               </td>
             </tr>
           </template>

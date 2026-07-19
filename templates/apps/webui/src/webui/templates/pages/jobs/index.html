@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% from "_components.html" import page_header, status_badge, icon, breadcrumb, empty_state %}
+{% from "_components.html" import page_header, icon, breadcrumb, skeleton_rows, tabs %}
 {% block title %}Historique des jobs — KSF{% endblock %}
-{% block breadcrumb %}{{ breadcrumb([('Général', None), ('Historique des jobs', None)]) }}{% endblock %}
+{% block topbar_breadcrumb %}{{ breadcrumb([('Général', None), ('Historique des jobs', None)]) }}{% endblock %}
 {% block content %}
-{% call page_header('Historique des jobs', subtitle='Opérations lancées depuis le panneau d\'administration.') %}
-  <button class="btn btn-sm btn-ghost" hx-get="/api/jobs/html" hx-target="#jobs-output" hx-swap="innerHTML">{{ icon('refresh', 14) }} Rafraîchir</button>
+{% call page_header('Historique des jobs', subtitle='Opérations lancées depuis le panneau d\'administration.', section='general') %}
+<button class="btn btn-sm btn-ghost" hx-get="/api/jobs/html" hx-target="#jobs-output" hx-swap="innerHTML">{{ icon('refresh', 14) }} Rafraîchir</button>
 {% endcall %}
 <div id="jobs-output" hx-get="/api/jobs/html" hx-trigger="load, ksf-refresh from:body" hx-swap="innerHTML" role="status" aria-live="polite">
-  <span class="spinner" role="status" aria-label="Chargement"></span> Chargement…
+  {{ skeleton_rows(5) }}
 </div>
 {% endblock %}

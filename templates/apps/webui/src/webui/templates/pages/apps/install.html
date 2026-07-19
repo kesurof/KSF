@@ -1,80 +1,124 @@
 {% extends "base.html" %}
 {% from "_components.html" import page_header, icon, breadcrumb %}
 {% block title %}Installer une application — KSF{% endblock %}
-{% block breadcrumb %}{{ breadcrumb([('Applications', '/apps'), ('Installer', None)]) }}{% endblock %}
+{% block topbar_breadcrumb %}{{ breadcrumb([('Applications', '/apps'), ('Installer', None)]) }}{% endblock %}
 {% block content %}
-{% call page_header('Installer une application', subtitle='Choisissez un template et configurez l\'accès.') %}
-  <a href="/apps" class="btn btn-sm btn-ghost">Retour à la liste</a>
-{% endcall %}
+{% call page_header('Installer une application', section='apps') %}{% endcall %}
 
 <div x-data="installForm()">
+  {# Stepper progress (Lot E) #}
+  <div class="stepper-progress" role="progressbar" :aria-valuenow="step" aria-valuemin="1" aria-valuemax="3">
+    <template x-for="(s, i) in [{n:1,l:'Template'},{n:2,l:'Accès'},{n:3,l:'Avancé'}]" :key="s.n">
+      <div class="stepper-step" :class="{ 'active': step === s.n, 'done': step > s.n }">
+        <span class="dot"><span x-text="s.n"></span></span>
+        <span x-text="s.l" class="text-sm"></span>
+        <div class="stepper-line" x-show="i < 2"></div>
+      </div>
+    </template>
+  </div>
+
   <form @submit.prevent="submit">
     <div class="card">
-      <div class="form-group">
-        <label for="tpl-select">Template</label>
-        <select id="tpl-select" x-model="template" required>
-          <option value="">Choisir un template…</option>
-          <template x-for="t in templates" :key="t.name">
-            <option :value="t.name" x-text="t.name + ' — ' + t.description"></option>
-          </template>
-        </select>
-      </div>
+      {# Étape 1 — Template & Instance (Lot E) #}
+      <template x-if="step === 1">
+        <div class="stepper-variant-enter">
+          <div class="form-group">
+            <label for="tpl-select">Template</label>
+            <select id="tpl-select" x-model="template" required :class="{ invalid: step1Touched && !template }">
+              <option value="">Choisir un template…</option>
+              <template x-for="t in templates" :key="t.name">
+                <option :value="t.name" x-text="t.name + ' — ' + t.description"></option>
+              </template>
+            </select>
+            <template x-if="step1Touched && !template"><span class="form-error">Sélectionnez un template.</span></template>
+          </div>
+          <div class="form-group">
+            <label for="inst-name">Nom d'instance (optionnel, défaut = nom du template)</label>
+            <input id="inst-name" type="text" x-model="instance" placeholder="ex: films">
+          </div>
+        </div>
+      </template>
 
-      <div class="form-group">
-        <label for="inst-name">Nom d'instance (optionnel, défaut = nom du template)</label>
-        <input id="inst-name" type="text" x-model="instance" placeholder="ex: films">
-      </div>
-
-      <template x-if="templateInfo && templateInfo.public">
-        <div>
-          <fieldset>
-            <legend class="text-muted text-sm">Mode d'accès</legend>
-            <label><input type="radio" name="accessMode" value="subdomain" x-model="accessMode"> Sous-domaine</label>
-            <label><input type="radio" name="accessMode" value="host" x-model="accessMode"> Host complet</label>
-            <label><input type="radio" name="accessMode" value="local" x-model="accessMode"> Local seulement</label>
-          </fieldset>
-
-          <template x-if="accessMode === 'subdomain'">
+      {# Étape 2 — Accès (Lot E) #}
+      <template x-if="step === 2">
+        <div class="stepper-variant-enter">
+          <template x-if="templateInfo && templateInfo.public">
             <div>
+              <fieldset class="form-group">
+                <legend class="text-muted text-sm mb-1">Mode d'accès</legend>
+                <div class="radio-row">
+                  <label><input type="radio" name="accessMode" value="subdomain" x-model="accessMode">{{ icon('route', 16) }} Sous-domaine</label>
+                  <label><input type="radio" name="accessMode" value="host" x-model="accessMode">{{ icon('grid', 16) }} Host complet</label>
+                  <label><input type="radio" name="accessMode" value="local" x-model="accessMode">{{ icon('server', 16) }} Local seulement</label>
+                </div>
+              </fieldset>
+
+              <template x-if="accessMode === 'subdomain'">
+                <div>
+                  <div class="form-group">
+                    <label for="sub-field">Sous-domaine</label>
+                    <input id="sub-field" type="text" x-model="subdomain" :placeholder="templateInfo.default_host">
+                  </div>
+                  <div class="form-group">
+                    <label for="dom-field">Domaine</label>
+                    <select id="dom-field" x-model="domain">
+                      <template x-for="d in domains" :key="d">
+                        <option :value="d" x-text="d"></option>
+                      </template>
+                    </select>
+                  </div>
+                </div>
+              </template>
+
+              <template x-if="accessMode === 'host'">
+                <div class="form-group">
+                  <label for="host-field">Host complet</label>
+                  <input id="host-field" type="text" x-model="host" placeholder="ex: app.example.com">
+                </div>
+              </template>
+
               <div class="form-group">
-                <label for="sub-field">Sous-domaine</label>
-                <input id="sub-field" type="text" x-model="subdomain" :placeholder="templateInfo.default_host">
-              </div>
-              <div class="form-group">
-                <label for="dom-field">Domaine</label>
-                <select id="dom-field" x-model="domain">
-                  <template x-for="d in domains" :key="d">
-                    <option :value="d" x-text="d"></option>
-                  </template>
-                </select>
+                <label><input type="checkbox" x-model="noAuth"> Désactiver OAuth2 Proxy</label>
               </div>
             </div>
           </template>
-
-          <template x-if="accessMode === 'host'">
-            <div class="form-group">
-              <label for="host-field">Host complet</label>
-              <input id="host-field" type="text" x-model="host" placeholder="ex: app.example.com">
-            </div>
+          <template x-if="!templateInfo || !templateInfo.public">
+            <p class="text-muted">Ce template n'expose pas d'accès public. Les options d'accès ne sont pas disponibles.</p>
           </template>
         </div>
       </template>
 
-      <div class="form-group">
-        <label><input type="checkbox" x-model="noAuth"> Désactiver OAuth2 Proxy</label>
-      </div>
+      {# Étape 3 — Avancé + récapitulatif (Lot E) #}
+      <template x-if="step === 3">
+        <div class="stepper-variant-enter">
+          <div class="form-group">
+            <label for="host-port">Port hôte local (optionnel, 127.0.0.1)</label>
+            <input id="host-port" type="number" min="1" max="65535" x-model="hostPort" placeholder="ex: 8080" inputmode="numeric">
+          </div>
+          <div class="form-group">
+            <label for="int-port">Port interne (optionnel, défaut du template)</label>
+            <input id="int-port" type="number" min="1" max="65535" x-model="port" placeholder="ex: 8080" inputmode="numeric">
+          </div>
 
-      <div class="form-group">
-        <label for="host-port">Port hôte local (optionnel, 127.0.0.1)</label>
-        <input id="host-port" type="text" x-model="hostPort" placeholder="ex: 8080">
-      </div>
-      <div class="form-group">
-        <label for="int-port">Port interne (optionnel, défaut du template)</label>
-        <input id="int-port" type="number" min="1" max="65535" x-model="port" placeholder="ex: 8080">
-      </div>
+          <div class="card card-subtle">
+            <strong>Récapitulatif</strong>
+            <ul class="text-sm mt-1" style="list-style:none;padding-left:0">
+              <li><strong x-text="instance || template"></strong> <span class="text-muted">— template <span x-text="template"></span></span></li>
+              <li x-show="templateInfo && templateInfo.public"><span class="text-muted">Accès:</span> <span x-text="accessLabel()"></span></li>
+              <li x-show="templateInfo && templateInfo.public"><span class="text-muted">OAuth2 Proxy:</span> <span x-text="noAuth ? 'Désactivé' : 'Activé'"></span></li>
+              <li x-show="hostPort"><span class="text-muted">Port hôte local:</span> <span x-text="hostPort"></span></li>
+            </ul>
+          </div>
+        </div>
+      </template>
     </div>
 
-    <button type="submit" class="btn" :disabled="submitting" x-text="submitting ? 'Installation…' : 'Installer'">{{ icon('plus', 14) }} Installer</button>
+    {# Actions sticky par étape (Lot E) #}
+    <div class="flex gap-1 mt-1">
+      <button type="button" class="btn btn-sm btn-ghost" @click="prev()" x-show="step > 1" :disabled="submitting">{{ icon('chevron-right', 14, 'icon-rotate-180') }} Précédent</button>
+      <button type="button" class="btn btn-sm" @click="next()" x-show="step < 3">{{ icon('rotate-ccw', 14) }} Suivant</button>
+      <button type="submit" class="btn btn-sm" x-show="step === 3" :disabled="submitting" x-text="submitting ? 'Installation…' : 'Installer'">{{ icon('plus', 14) }} Installer</button>
+    </div>
     <div x-show="error" class="error-box mt-1" x-text="error" role="alert"></div>
     <div x-show="success" class="success-box mt-1" x-text="success" role="status"></div>
   </form>
@@ -83,6 +127,7 @@
 <script>
 function installForm() {
   return {
+    step: 1, step1Touched: false,
     templates: [], template: '', instance: '',
     accessMode: 'subdomain', subdomain: '', domain: '', domains: [], host: '',
     hostPort: '', port: '', noAuth: false,
@@ -107,7 +152,23 @@ function installForm() {
       return this.templates.find(t => t.name === this.template) || null;
     },
 
+    accessLabel() {
+      if (this.accessMode === 'local') return 'Local seulement';
+      if (this.accessMode === 'host') return this.host || 'host non renseigné';
+      return (this.subdomain || this.templateInfo?.default_host || '?') + '.' + (this.domain || '?');
+    },
+
+    next() {
+      if (this.step === 1) {
+        this.step1Touched = true;
+        if (!this.template) { Alpine.store('toasts').warning('Sélectionnez un template.'); return; }
+      }
+      if (this.step < 3) this.step++;
+    },
+    prev() { if (this.step > 1) this.step--; },
+
     async submit() {
+      if (!this.template) { this.step = 1; this.step1Touched = true; return; }
       this.submitting = true;
       this.error = ''; this.success = '';
       try {

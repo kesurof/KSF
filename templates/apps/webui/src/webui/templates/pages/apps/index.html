@@ -1,30 +1,32 @@
 {% extends "base.html" %}
-{% from "_components.html" import page_header, icon, breadcrumb, empty_state, status_badge %}
+{% from "_components.html" import page_header, icon, breadcrumb, empty_state, status_badge, chip, skeleton_cards %}
 {% block title %}Applications installées — KSF{% endblock %}
-{% block breadcrumb %}{{ breadcrumb([('Applications', None), ('Apps installées', None)]) }}{% endblock %}
+{% block topbar_breadcrumb %}{{ breadcrumb([('Applications', None), ('Apps installées', None)]) }}{% endblock %}
 {% block content %}
 <div x-data="appsPage()" x-init="load()">
-  {% call page_header('Applications installées') %}
+  {% call page_header('Applications installées', section='apps') %}
   <a href="/apps/install" class="btn btn-sm">{{ icon('plus', 14) }} Installer</a>
   <button class="btn btn-sm btn-ghost" @click="load()" :disabled="loading">{{ icon('refresh', 14) }} Rafraîchir</button>
   {% endcall %}
   <template x-if="error"><p class="error-box" x-text="error" role="alert"></p></template>
-  <div class="card" x-show="loading" role="status" aria-live="polite"><span class="spinner" aria-label="Chargement"></span> Chargement…</div>
-  <template x-if="!loading && !apps.length">{{ empty_state('Aucune app installée.') }}</template>
+  <template x-if="loading">{{ skeleton_cards(4) }}</template>
+  <template x-if="!loading && !apps.length">{{ empty_state('Aucune app installée.', action='<a href="/apps/install" class="btn btn-sm">Installer une app</a>', icon_name='package') }}</template>
   <div class="card" x-show="apps.length">
     <div class="table-scroll">
-      <table>
+      <table class="responsive-table">
         <caption class="sr-only">Applications installées</caption>
         <thead><tr>
-          <th scope="col">Instance</th><th scope="col">État</th><th scope="col">Accès</th><th scope="col">Actions</th>
+          <th scope="col">Instance</th><th scope="col">État</th><th scope="col" class="col-secondary">Accès</th><th scope="col">Actions</th>
         </tr></thead>
         <tbody>
           <template x-for="app in apps" :key="app.instance">
             <tr>
-              <td><a :href="'/apps/' + app.instance" x-text="app.display_name"></a></td>
-              <td :class="app.state === 'running' ? 'status-ok' : 'status-warn'" x-text="app.state + ' (' + app.running + '/' + app.total + ')'"></td>
-              <td class="text-sm text-muted" x-text="app.access_label"></td>
-              <td class="flex gap-1">
+              <td data-label="Instance"><a :href="'/apps/' + app.instance" x-text="app.display_name"></a></td>
+              <td data-label="État">
+                <span :class="app.state === 'running' ? 'chip chip-ok' : 'chip chip-warn'" x-text="app.state + ' (' + app.running + '/' + app.total + ')'"></span>
+              </td>
+              <td data-label="Accès" class="text-sm text-muted col-secondary" x-text="app.access_label"></td>
+              <td data-label="Actions" class="flex gap-1">
                 <button class="btn btn-xs btn-ghost" @click="action(app.instance, 'start')" :title="'Démarrer ' + app.instance" aria-label="Démarrer">{{ icon('play', 14) }}</button>
                 <button class="btn btn-xs btn-ghost" @click="action(app.instance, 'stop')" :title="'Arrêter ' + app.instance" aria-label="Arrêter">{{ icon('square', 14) }}</button>
                 <button class="btn btn-xs btn-ghost" @click="action(app.instance, 'restart')" :title="'Redémarrer ' + app.instance" aria-label="Redémarrer">{{ icon('rotate-ccw', 14) }}</button>

@@ -1,13 +1,7 @@
 {% extends "base.html" %}
-{% from "_components.html" import page_header, icon, breadcrumb %}
+{% from "_components.html" import page_header, icon, breadcrumb, empty_state %}
 {% block title %}Page introuvable — KSF{% endblock %}
 {% block content %}
 {% call page_header('Page introuvable', subtitle='La page demandée n\'existe pas ou n\'est plus disponible.') %}{% endcall %}
-<div class="card empty-state">
-  <p class="text-muted">Vérifiez l'URL ou revenez à une section connue depuis la navigation.</p>
-  <div class="mt-1 flex gap-1" style="justify-content:center">
-    <a href="/" class="btn btn-sm">{{ icon('layout-dashboard', 14) }} Tableau de bord</a>
-    {% if installed %}<a href="/apps" class="btn btn-sm btn-ghost">{{ icon('package', 14) }} Applications</a>{% endif %}
-  </div>
-</div>
+{{ empty_state('Vérifiez l\'URL ou revenez à une section connue depuis la navigation.', action='<a href="/" class="btn btn-sm">' ~ icon('layout-dashboard', 14) ~ ' Tableau de bord</a>', icon_name='route') }}
 {% endblock %}
