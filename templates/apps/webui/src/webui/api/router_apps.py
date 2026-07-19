@@ -100,6 +100,10 @@ def _write_app_env(app: AppRecord) -> None:
     }
     env_file.write_text("".join(f"{key}={value}\n" for key, value in lines.items()))
     env_file.chmod(0o600)
+    puid = app.puid or os.environ.get("APP_PUID", "")
+    pgid = app.pgid or os.environ.get("APP_PGID", "")
+    if puid and pgid:
+        shutil.chown(env_file, user=int(puid), group=int(pgid))
 
 
 def _app_with_disabled(app: AppRecord, disabled: bool) -> AppRecord:

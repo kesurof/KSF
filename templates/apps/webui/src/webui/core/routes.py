@@ -33,7 +33,6 @@ def render_app_route(instance: str, host: str, port: str,
         - websecure
       service: {route_id}
 {middleware_block}      tls:
-      tls:
         certResolver: letsencrypt
   services:
     {route_id}:

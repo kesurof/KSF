@@ -4,6 +4,9 @@ services:
       context: ${BASE_DIR}/apps/${APP_INSTANCE}
       dockerfile: Dockerfile
     container_name: ${APP_INSTANCE}
+    user: "${APP_PUID}:${APP_PGID}"
+    group_add:
+      - "${DOCKER_GID}"
     restart: unless-stopped
     networks:
       - proxy

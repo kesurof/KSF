@@ -329,5 +329,14 @@ templates/apps/webui/
     static/app.css         # CSS dark theme
 ```
 
+### Conteneur webui
+
+Le conteneur webui doit impérativement :
+
+- **Tourner avec l'UID/GID de l'utilisateur hôte** via `user: "${APP_PUID}:${APP_PGID}"` — sans cela, tous les fichiers écrits dans `BASE_DIR` (compose, routes, env) appartiendront à `root` et seront illisibles par le CLI Bash.
+- **Ajouter le groupe Docker** via `group_add: ["${DOCKER_GID}"]` — sans cela, le processus ne peut pas accéder au socket Docker `/var/run/docker.sock` malgré le montage.
+- **Rétablir l'ownership hôte** après écriture des fichiers sensibles : `_write_app_env()` dans `router_apps.py` combine `chmod(0o600)` + `shutil.chown(user=int(puid), group=int(pgid))` pour garantir qu'un fichier `.env` créé reste accessible au CLI.
+- **Générer des routes YAML valides** — `render_app_route()` dans `core/routes.py` ne doit pas produire de clés dupliquées (bug `tls:` répété déjà corrigé). Une route invalide empêche Traefik de charger le fichier et bloque l'obtention du certificat Let's Encrypt.
+
 ### deploy.sh --with-webui
 Le flag `--with-webui` lance `app.sh install webui` automatiquement après le déploiement de l'infrastructure. Nécessite `--with-traefik` et un domaine configuré.
