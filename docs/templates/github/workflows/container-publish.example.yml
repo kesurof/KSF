@@ -1,0 +1,3 @@
+# Modele a adapter uniquement si KSF publie une image autonome et versionnee.
+# Le webui actuel est construit par instance et embarque le runtime KSF : ce
+# workflow ne doit pas etre active sans une decision d'architecture specifique.

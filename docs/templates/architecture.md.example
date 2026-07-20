@@ -1,0 +1,17 @@
+# Architecture
+
+## Contexte et decision
+
+## Couches KSF concernees
+
+- Scripts et bibliotheques :
+- Templates :
+- Runtime `${BASE_DIR}` :
+- Routes et reseau :
+- Applications ou webui :
+
+## Flux critiques
+
+## Configuration, secrets et permissions
+
+## Validation et restauration

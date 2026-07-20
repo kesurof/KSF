@@ -22,6 +22,9 @@ htmlcov/
 *.egg-info/
 build/
 dist/
+
+# Node / Tailwind
+node_modules/
 # Cython / compiled extensions (jamais versionner)
 *.pyx
 *.pxd

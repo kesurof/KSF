@@ -1,0 +1,25 @@
+name: CI KSF
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: bash -n bootstrap.sh deploy.sh app.sh ksf.sh lib/*.sh
+      - run: cd templates/apps/webui && uv sync --locked --all-groups && uv run pytest
+      - run: cd templates/apps/webui && npm ci && npm run css:build
+      - run: cd templates/apps/webui && docker build -t ksf-webui:ci .
+
+# Ajouter les validations de rendu Compose sans deployer de stack reelle.

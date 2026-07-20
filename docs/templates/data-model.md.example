@@ -1,0 +1,12 @@
+# Modele De Donnees Webui
+
+Utiliser ce modele seulement lorsqu'une evolution webui ajoute ou modifie des
+donnees persistantes.
+
+## Entites, champs et relations
+
+## Contraintes et index
+
+## Compatibilite, migration et sauvegarde
+
+## Tests de persistance et restauration

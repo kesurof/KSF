@@ -1,0 +1,8 @@
+# Plan De Test
+
+| Risque | Comportement a prouver | Niveau de test | Commande ou preuve |
+| --- | --- | --- | --- |
+| | | | |
+
+Inclure les validations Bash, rendu, Compose, dry-run, securite et webui selon
+le perimetre.

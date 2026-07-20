@@ -1,0 +1,19 @@
+name: Securite KSF
+
+on:
+  pull_request:
+  schedule:
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  dependencies-and-filesystem:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: cd templates/apps/webui && uv sync --locked --all-groups && uv run pip-audit
+
+# Ajouter un scan de secrets et epingler les actions a des SHA avant activation.
