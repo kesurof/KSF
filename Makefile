@@ -1,6 +1,6 @@
 .PHONY: validate check-prerequisites check-bash check-shellcheck check-shfmt \
 	test-bash test-validators test-dry-run test-install-cli test-app-configure-local-only test-routes-dns-lifecycle test-app-install-rollback \
-	test-compose-matrix check-release check-compose test-docker check-webui
+	test-compose-matrix check-release check-compose test-docker
 
 # Controle par defaut: aucun acces reseau ni daemon Docker n'est necessaire.
 validate: check-prerequisites check-bash check-shellcheck check-shfmt test-bash test-compose-matrix
@@ -63,5 +63,3 @@ test-docker:
 	bash tests/docker/test_integration.sh
 	bash tests/bash/test_compose_templates.sh
 
-check-webui:
-	$(MAKE) -C templates/apps/webui verify

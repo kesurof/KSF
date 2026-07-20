@@ -53,7 +53,7 @@ TRAEFIK_START_STATUS="inactif"
 OAUTH2_START_STATUS="inactif"
 CROWDSEC_START_STATUS="inactif"
 WEBUI_INSTALL_STATUS="non demandé"
-DEPLOYMENT_PARTIAL=false
+
 CONFIG_LOADED=false
 NETWORK_NAME_SET=false
 TZ_VALUE_SET=false
@@ -83,7 +83,6 @@ OAUTH2_CLIENT_SECRET_SET=false
 OAUTH2_ALLOWED_EMAILS_SET=false
 OAUTH2_GITHUB_USER_SET=false
 OAUTH2_COOKIE_SECRET_SET=false
-WITH_WEBUI=false
 TRAEFIK_ONLY_CLI=false
 
 usage() {
@@ -114,7 +113,6 @@ Options:
   --oauth-github-user USER  Utilisateur GitHub autorisé (mode avancé)
   --oauth-host HOST       Hostname OAuth2 (défaut: oauth2.<DOMAIN>)
   --oauth-cookie-secret SEC  Secret cookie OAuth2 Proxy, 16/24/32 caractères
-  --with-webui              Installer le Web UI protégé (requiert Traefik, domaine et OAuth2)
   --dry-run             Affiche les actions sans modifier les fichiers
   --force               Force la réinstallation (attention: écrase les fichiers existants)
   -y, --yes               Répondre oui automatiquement
@@ -148,7 +146,6 @@ while [[ $# -gt 0 ]]; do
     --oauth-github-user)  ksf_require_option_value "$1" "$#" || exit 1; OAUTH2_GITHUB_USER="$2"; OAUTH2_GITHUB_USER_SET=true; OAUTH2_ENABLED=true; OAUTH2_ENABLED_SET=true; shift 2 ;;
     --oauth-host)         ksf_require_option_value "$1" "$#" || exit 1; OAUTH2_HOST="$2"; OAUTH2_HOST_SET=true; shift 2 ;;
     --oauth-cookie-secret) ksf_require_option_value "$1" "$#" || exit 1; OAUTH2_COOKIE_SECRET="$2"; OAUTH2_COOKIE_SECRET_SET=true; OAUTH2_ENABLED=true; OAUTH2_ENABLED_SET=true; shift 2 ;;
-    --with-webui)     WITH_WEBUI=true;   shift ;;
     --dry-run)        DRY_RUN=true;      shift ;;
     --force)          FORCE=true;        shift ;;
     -y|--yes)         AUTO_YES=true;     shift ;;
@@ -752,7 +749,6 @@ show_deploy_plan() {
   fi
   echo "OAuth2 Proxy         : $(display_bool "${OAUTH2_ENABLED}")"
   echo "Host OAuth2 Proxy    : $(display_value "${OAUTH2_HOST}")"
-  echo "Web UI               : $(display_bool "${WITH_WEBUI}")"
   echo "OAuth2 client ID     : $(display_presence "${OAUTH2_CLIENT_ID}")"
   echo "OAuth2 secret        : $(display_secret "${OAUTH2_CLIENT_SECRET}")"
   if [ "$OAUTH2_AUTH_MODE" = "email" ]; then
@@ -856,21 +852,6 @@ generate_crowdsec_bouncer_key() {
 }
 
 validate_deploy_config() {
-  if [ "$WITH_WEBUI" = true ]; then
-    if [ "$WITH_TRAEFIK" = false ]; then
-      err "--with-webui nécessite --with-traefik."
-      return 1
-    fi
-    if [ -z "$DOMAIN" ]; then
-      err "--with-webui nécessite --domain."
-      return 1
-    fi
-    if [ "$OAUTH2_ENABLED" = false ]; then
-      err "--with-webui nécessite OAuth2 Proxy. Configure --oauth-client-id, --oauth-client-secret et --oauth-allowed-email ou --oauth-github-user."
-      return 1
-    fi
-  fi
-
   if [ -z "$DOMAIN" ]; then
     err "Le domaine principal est requis."
     return 1
@@ -1038,7 +1019,6 @@ if [ "$DRY_RUN" = false ]; then
   ksf_env_write_var "${KSF_ENV}" OAUTH2_EMAIL_DOMAINS "${OAUTH2_EMAIL_DOMAINS}"
   ksf_env_write_var "${KSF_ENV}" OAUTH2_AUTHENTICATED_EMAILS_FILE "${OAUTH2_AUTHENTICATED_EMAILS_FILE}"
   ksf_env_write_var "${KSF_ENV}" OAUTH2_COOKIE_SECRET "${OAUTH2_COOKIE_SECRET}"
-  ksf_env_write_var "${KSF_ENV}" WITH_WEBUI "${WITH_WEBUI}"
   chmod 600 "${KSF_ENV}"
   ok "Configuration sauvegardée dans ${KSF_ENV}"
 else
@@ -1075,33 +1055,10 @@ step_crowdsec
 step_oauth2
 step_start_infrastructure
 
-# Installation du Web UI si demandée
-if [ "$WITH_WEBUI" = true ]; then
-  if [ "$DRY_RUN" = true ]; then
-    warn "[DRY-RUN] Installation du Web UI : ./app.sh install webui --base-dir ${BASE_DIR} --subdomain webui --auth -y"
-    WEBUI_INSTALL_STATUS="simulé"
-  else
-    info "Installation du Web UI..."
-    if AUTO_YES=true bash "${SCRIPT_DIR}/app.sh" install webui \
-      --base-dir "${BASE_DIR}" \
-      --subdomain webui \
-      --auth \
-      -y; then
-      WEBUI_INSTALL_STATUS="installé"
-    else
-      WEBUI_INSTALL_STATUS="échec"
-      DEPLOYMENT_PARTIAL=true
-      err "Déploiement plateforme partiel : l'infrastructure est démarrée, mais l'installation déléguée du Web UI a échoué."
-    fi
-  fi
-fi
-
 echo ""
 echo "============================================================"
 if [ "$DRY_RUN" = true ]; then
   echo " Simulation terminée : aucune modification appliquée."
-elif [ "$DEPLOYMENT_PARTIAL" = true ]; then
-  echo " Déploiement plateforme partiel : le Web UI n'est pas installé"
 else
   echo " Déploiement terminé"
 fi
@@ -1157,6 +1114,3 @@ echo "Prérequis : les DNS des hostnames doivent pointer vers ce serveur."
 echo "Pour Let's Encrypt DNS-01, la clé API Cloudflare doit pouvoir éditer la zone DNS du domaine."
 echo ""
 
-if [ "$DEPLOYMENT_PARTIAL" = true ]; then
-  exit 1
-fi

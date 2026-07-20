@@ -1,7 +1,0 @@
-{% extends "base.html" %}
-{% from "_components.html" import page_header, icon, breadcrumb, empty_state %}
-{% block title %}Page introuvable — KSF{% endblock %}
-{% block content %}
-{% call page_header('Page introuvable', subtitle='La page demandée n\'existe pas ou n\'est plus disponible.') %}{% endcall %}
-{{ empty_state('Vérifiez l\'URL ou revenez à une section connue depuis la navigation.', action='<a href="/" class="btn btn-sm">' ~ icon('layout-dashboard', 14) ~ ' Tableau de bord</a>', icon_name='route') }}
-{% endblock %}
