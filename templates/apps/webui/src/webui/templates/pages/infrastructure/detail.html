@@ -121,7 +121,7 @@ function serviceDetail(name) {
     async load() {
       this.loading = true; this.error = '';
       try {
-        this.svc = await ksfFetch('/api/services/' + encodeURIComponent(this.name));
+        this.svc = await ksfFetch('/api/services/' + encodeURIComponent(this.name) + '/status');
         await this.$nextTick();
         if (this.active === 2) await this.loadLogs();
       } catch (error) {
