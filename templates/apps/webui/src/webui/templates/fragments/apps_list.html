@@ -1,0 +1,26 @@
+{% from "_components.html" import icon, empty_state, page_header, chip %}
+{% call page_header('Applications installées', section='apps') %}
+<a href="/apps/install" class="btn btn-sm" hx-get="/ui/apps/install" hx-target="#content" hx-push-url="true">{{ icon('plus', 14) }} Installer</a>
+<button class="btn btn-sm btn-ghost" hx-get="/ui/apps" hx-target="#fragment-content" hx-swap="outerHTML">{{ icon('refresh', 14) }} Actualiser</button>
+{% endcall %}
+{% if apps %}
+<div class="vstack gap-1">
+  {% for app, state in apps %}
+  <article class="app-card app-card--{{ state.state }}">
+    <div class="app-card-body">
+      <div class="app-card-title">
+        <a class="app-card-name" href="/apps/{{ app.instance }}" hx-get="/ui/apps/{{ app.instance }}" hx-target="#content" hx-push-url="true">{{ app.display_name }}</a>
+        <div class="flex gap-1">
+          <button class="btn btn-xs btn-ghost" data-ksf-confirm data-url="/api/apps/{{ app.instance }}/start" data-method="POST" data-confirm-message="Démarrer {{ app.instance }} ?">{{ icon('play', 12) }}</button>
+          <button class="btn btn-xs btn-ghost" data-ksf-confirm data-url="/api/apps/{{ app.instance }}/stop" data-method="POST" data-confirm-message="Arrêter {{ app.instance }} ?">{{ icon('square', 12) }}</button>
+          <button class="btn btn-xs btn-ghost" data-ksf-confirm data-url="/api/apps/{{ app.instance }}/restart" data-method="POST" data-confirm-message="Redémarrer {{ app.instance }} ?">{{ icon('refresh', 12) }}</button>
+        </div>
+      </div>
+      <div class="app-card-meta">{{ app.access_label }} · {{ state.running }}/{{ state.total }} services</div>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+{{ empty_state('Aucune app installée.', action='<a href="/apps/install" class="btn btn-sm">Installer une app</a>', icon_name='package') }}
+{% endif %}

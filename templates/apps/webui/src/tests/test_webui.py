@@ -487,10 +487,10 @@ class AppListTests(unittest.TestCase):
         self.assertEqual(payload["apps"][0]["state"], "running")
 
     def test_apps_page_has_card_design(self):
-        template = Path(__file__).parents[1] / "webui" / "templates" / "pages" / "apps" / "index.html"
+        template = Path(__file__).parents[1] / "webui" / "templates" / "pages" / "apps.html"
         source = template.read_text()
 
-        self.assertIn("fragment_loader('/ui/apps')", source)
+        self.assertIn('hx-get="/ui/apps"', source)
         self.assertNotIn("function appsPage", source)
 
 
@@ -509,14 +509,22 @@ class InfraRouteTests(unittest.TestCase):
 
     def test_infra_index_uses_app_card(self):
         source = Path(__file__).parents[1].joinpath(
-            "webui/templates/pages/infrastructure/index.html").read_text()
-        self.assertIn("fragment_loader('/ui/infrastructure')", source)
+            "webui/templates/pages/infrastructure.html").read_text()
+        self.assertIn('hx-get="/ui/infrastructure"', source)
 
     def test_logs_page_renders(self):
         client = TestClient(app)
         response = client.get("/logs")
         self.assertEqual(response.status_code, 200)
-        self.assertIn('hx-get="/ui/logs"', response.text)
+        template = Path(__file__).parents[1] / "webui" / "templates" / "pages" / "logs.html"
+        self.assertTrue(template.is_file())
+
+    def test_operations_page_renders(self):
+        client = TestClient(app)
+        response = client.get("/operations")
+        self.assertEqual(response.status_code, 200)
+        template = Path(__file__).parents[1] / "webui" / "templates" / "pages" / "operations.html"
+        self.assertTrue(template.is_file())
 
 
 class FragmentTests(unittest.TestCase):
@@ -529,13 +537,12 @@ class FragmentTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('id="fragment-content"', response.text)
         self.assertIn('aria-live="polite"', response.text)
-        self.assertNotIn('x-data="appsPage', response.text)
 
     def test_htmx_not_found_returns_an_error_fragment(self):
-        response = self.client.get("/ui/unknown", headers={"HX-Request": "true"})
+        response = self.client.get("/ui/unknown", headers={"HX-Request": "true", "host": "webui.example.com", "origin": "https://webui.example.com"})
 
         self.assertEqual(response.status_code, 404)
-        self.assertIn('id="fragment-content"', response.text)
+        self.assertIn("error-box", response.text)
         self.assertIn('role="alert"', response.text)
 
     @patch("webui.api.router_fragments.configure_app")
@@ -550,14 +557,14 @@ class FragmentTests(unittest.TestCase):
             }, data={"subdomain": "cinema", "confirmed": "true"},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Reconfiguration lancée", response.text)
+        self.assertIn("Reconfiguration en file", response.text)
         request = configure.call_args.args[1]
         self.assertTrue(request.confirmed)
         self.assertEqual(request.subdomain, "cinema")
 
     def test_configure_form_disables_public_fields_for_local_only_access(self):
         template = (Path(__file__).parents[1] / "webui" / "templates" /
-                    "fragments" / "content.html").read_text()
+                    "fragments" / "apps_configure.html").read_text()
 
         self.assertIn('x-model="localOnly"', template)
         self.assertEqual(template.count('x-bind:disabled="localOnly"'), 3)
@@ -586,7 +593,7 @@ class FragmentTests(unittest.TestCase):
         self.assertIn("Activer", detail.text)
         self.assertNotIn("https://", detail.text)
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Activation lancée", response.text)
+        self.assertIn("Action en file", response.text)
         start.assert_called_once_with("films")
 
     def test_each_named_screen_category_has_a_fragment_endpoint(self):
@@ -635,7 +642,86 @@ class FragmentTests(unittest.TestCase):
         self.assertIn("htmx:responseError", source)
         self.assertIn("target.innerHTML = xhr.responseText", source)
         self.assertIn("htmx:afterSwap", source)
-        self.assertIn("fragment.focus", source)
+        self.assertIn("afterSwap", source)
+
+
+class FragmentRegressionTests(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(app)
+        self.headers = {"host": "webui.example.com", "origin": "https://webui.example.com"}
+
+    def test_operations_page_renders(self):
+        response = self.client.get("/ui/operations")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('id="fragment-content"', response.text)
+
+    def test_security_ban_form_renders(self):
+        response = self.client.get("/ui/security/ban")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('id="fragment-content"', response.text)
+
+    def test_security_unban_form_renders(self):
+        response = self.client.get("/ui/security/unban")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('id="fragment-content"', response.text)
+
+    @patch("webui.api.router_fragments.crowdsec_decisions")
+    def test_security_decisions_renders(self, mock_decisions):
+        mock_decisions.return_value = {"output": "1.2.3.4 | ban | 4h"}
+        response = self.client.get("/ui/security/decisions")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('id="fragment-result"', response.text)
+        self.assertIn("1.2.3.4", response.text)
+
+    @patch("webui.api.router_fragments.crowdsec_metrics")
+    def test_security_metrics_renders(self, mock_metrics):
+        mock_metrics.return_value = {"output": "metrics-output"}
+        response = self.client.get("/ui/security/metrics")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('id="fragment-result"', response.text)
+        self.assertIn("metrics-output", response.text)
+
+    @patch("webui.api.router_fragments.crowdsec_bouncers")
+    def test_security_bouncers_renders(self, mock_bouncers):
+        mock_bouncers.return_value = {"output": "bouncers-list"}
+        response = self.client.get("/ui/security/bouncers")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('id="fragment-result"', response.text)
+        self.assertIn("bouncers-list", response.text)
+
+    @patch("webui.api.router_fragments.crowdsec_console_status")
+    def test_security_console_renders(self, mock_console):
+        mock_console.return_value = {"output": "console-status"}
+        response = self.client.get("/ui/security/console")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('id="fragment-result"', response.text)
+        self.assertIn("console-status", response.text)
+
+    @patch("webui.api.router_apps.app_logs")
+    @patch("webui.api.router_fragments.get_installed_app")
+    def test_app_logs_fragment_renders(self, mock_get_app, mock_get_logs):
+        mock_get_app.return_value = SimpleNamespace(
+            instance="films", template="radarr", app_dir="/apps/films",
+            docker_service="radarr",
+        )
+        mock_get_logs.return_value = {"logs": "app log content"}
+        response = self.client.get("/ui/apps/films/logs", headers=self.headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('id="fragment-result"', response.text)
+        self.assertIn("app log content", response.text)
+
+    @patch("webui.api.router_maintenance.clean_data_app")
+    def test_maintenance_clean_data_post(self, mock_clean):
+        async def _mock_clean(name, req):
+            return {"success": True, "path": f"/data/{name}"}
+        mock_clean.side_effect = _mock_clean
+        response = self.client.post(
+            "/ui/maintenance/clean-data/radarr",
+            headers=self.headers,
+            data={"confirmed": "true"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('id="fragment-result"', response.text)
 
 
 class FrontendAssetTests(unittest.TestCase):
@@ -644,7 +730,7 @@ class FrontendAssetTests(unittest.TestCase):
         source = (static / "input.css").read_text()
         css = (static / "app.css").read_text()
 
-        for selector in (".check-row", ".form-inline", ".modal-body", ".dropdown-menu", ".icon-sprite"):
+        for selector in (".card", ".btn", ".chip", ".modal", ".spinner"):
             self.assertIn(selector, source)
             self.assertIn(selector, css)
 

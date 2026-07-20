@@ -1,31 +1,22 @@
 {% from "_components.html" import chip %}
-<div class="card-grid">
-  <div class="card stat">
-    <span class="stat-value {% if installed %}status-ok{% else %}status-warn{% endif %}">
-      {{ 'Oui' if installed else 'Non' }}
-    </span>
-    <span class="stat-label">Installation</span>
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+  <div class="bg-ksf-surface border border-ksf-border rounded-xl p-4">
+    <div class="text-3xl font-bold tabular-nums text-ksf-text">{{ apps_total }}</div>
+    <div class="text-sm text-ksf-muted mt-1">Applications</div>
   </div>
-  <div class="card stat">
-    <span class="stat-value {% if docker_available %}status-ok{% else %}status-err{% endif %}">
-      {{ 'OK' if docker_available else 'Indisponible' }}
-    </span>
-    <span class="stat-label">Docker</span>
+  <div class="bg-ksf-surface border border-ksf-border rounded-xl p-4">
+    <div class="text-3xl font-bold tabular-nums text-ksf-success">{{ apps_running }}</div>
+    <div class="text-sm text-ksf-muted mt-1">En fonctionnement</div>
   </div>
-  <div class="card stat">
-    <span class="stat-value">{{ apps_total }}</span>
-    <span class="stat-label">Apps installées</span>
+  <div class="bg-ksf-surface border border-ksf-border rounded-xl p-4">
+    <div class="flex items-center gap-2">
+      <span class="inline-block w-3 h-3 rounded-full {{ 'bg-ksf-success' if docker_available else 'bg-ksf-danger' }}"></span>
+      <span class="text-sm font-medium">{{ 'Disponible' if docker_available else 'Indisponible' }}</span>
+    </div>
+    <div class="text-sm text-ksf-muted mt-1">Docker</div>
   </div>
-  <div class="card stat">
-    <span class="stat-value status-ok">{{ apps_running }}</span>
-    <span class="stat-label">Apps actives</span>
-  </div>
-  <div class="card stat">
-    <span class="stat-value">{{ apps_total - apps_running }}</span>
-    <span class="stat-label">Apps inactives</span>
-  </div>
-  <div class="card stat">
-    <span class="stat-value">{{ config.domain or '—' }}</span>
-    <span class="stat-label">Domaine</span>
+  <div class="bg-ksf-surface border border-ksf-border rounded-xl p-4">
+    <div class="text-sm font-medium truncate">{{ domain or 'Non configuré' }}</div>
+    <div class="text-sm text-ksf-muted mt-1">Domaine</div>
   </div>
 </div>

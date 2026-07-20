@@ -1,0 +1,19 @@
+{% from "_components.html" import icon, empty_state, page_header, chip %}
+{% call page_header(service_name, section='infra') %}
+<a class="btn btn-sm btn-ghost" href="/infrastructure" hx-get="/ui/infrastructure" hx-target="#content" hx-push-url="true">Retour</a>
+{% endcall %}
+<div class="card">
+  <div class="flex gap-1 mb-1">
+    <button class="btn btn-sm" data-ksf-confirm data-url="/api/services/{{ service_name }}/restart" data-method="POST" data-confirm-message="Redémarrer {{ service_name }} ?" data-hx-target="#fragment-content">{{ icon('refresh', 14) }} Redémarrer</button>
+    <button class="btn btn-sm" data-ksf-confirm data-url="/api/services/{{ service_name }}/update" data-method="POST" data-confirm-message="Mettre à jour {{ service_name }} ?" data-hx-target="#fragment-content">{{ icon('refresh', 14) }} Mettre à jour</button>
+  </div>
+  <details class="card mt-1">
+    <summary class="cursor-pointer">Logs</summary>
+    <form hx-get="/api/services/{{ service_name }}/logs" hx-target="#service-log-output" hx-indicator="#service-log-spinner">
+      <div class="form-group"><label for="service-log-tail">Lignes</label><input id="service-log-tail" name="tail" type="number" min="1" max="5000" value="200"></div>
+      <button class="btn btn-sm" type="submit">{{ icon('scroll-text', 14) }} Charger</button>
+      <span id="service-log-spinner" class="htmx-indicator spinner"></span>
+    </form>
+    <div id="service-log-output" aria-live="polite"></div>
+  </details>
+</div>

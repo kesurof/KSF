@@ -1,0 +1,14 @@
+{% from "_components.html" import icon, empty_state, page_header, chip %}
+{% call page_header('Débannir une IP', section='security') %}
+<button class="btn btn-sm btn-ghost" hx-get="/ui/security" hx-target="#content" hx-push-url="true">Retour</button>
+{% endcall %}
+<div class="card">
+  <form hx-post="/api/crowdsec/unban" hx-target="#fragment-content" hx-swap="outerHTML">
+    <div class="form-group">
+      <label for="unban-ip">Adresse IP</label>
+      <input id="unban-ip" name="ip" type="text" placeholder="192.168.1.100" required>
+    </div>
+    <input name="confirmed" type="hidden" value="true">
+    <button class="btn btn-sm" type="submit">{{ icon('refresh', 14) }} Débannir</button>
+  </form>
+</div>

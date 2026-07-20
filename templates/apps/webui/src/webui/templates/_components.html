@@ -1,8 +1,9 @@
 {# Composants Jinja partagés KSF Web UI.
    Usage :
-     {% from "_components.html" import icon, page_header, stat_card, status_badge,
-        confirm_button, empty_state, breadcrumb, nav_item %}
-   Sprite SVG (Lot 3) déclaré en bas de fichier ; l'inclure une fois via {% include "_components.html" %} avec `render_sprite=True`.
+     {% from "_components.html" import icon, page_header, chip, empty_state,
+        confirm_button, breadcrumb, nav_item %}
+   Sprite SVG déclaré en bas de fichier ; l'inclure une fois via
+   {% include "_components.html" %} avec `render_sprite=True`.
 #}
 
 {# Icône Lucide inline. name = id du symbol dans le sprite. #}
@@ -11,9 +12,9 @@
 <svg class="icon{{ class_attr }}" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#icon-{{ name }}"/></svg>
 {% endmacro %}
 
-{# En-tête de page : titre + sous-titre + actions à droite. section = 'apps'|'infra'|'security'|'maintenance'|'general'.
+{# En-tête de page : titre + sous-titre + actions à droite.
    Usage :
-     {% call page_header('Titre', subtitle='Optionnel', section='apps') %}
+     {% call page_header('Titre', subtitle='Optionnel') %}
        <button class="btn btn-sm">...</button>
      {% endcall %}
 #}
@@ -25,112 +26,18 @@
 {% if subtitle %}<p class="text-muted text-sm mb-1">{{ subtitle }}</p>{% endif %}
 {% endmacro %}
 
-{# Card statistique. tone: 'ok' | 'warn' | 'err' | None #}
-{% macro stat_card(value, label, tone=None) %}
-<div class="card stat">
-  <span class="stat-value{% if tone %} status-{{ tone }}{% endif %}">{{ value }}</span>
-  <span class="stat-label">{{ label }}</span>
-</div>
-{% endmacro %}
-
-{# Badge d'état coloré en background. state: 'ok' | 'warn' | 'err'. #}
-{% macro status_badge(state, label=None) %}
-{% set label = label or state %}
-{% if state == 'ok' %}{% set cls = 'badge-ok' %}
-{% elif state == 'warn' %}{% set cls = 'badge-warn' %}
-{% elif state == 'err' %}{% set cls = 'badge-err' %}
-{% else %}{% set cls = 'badge-neutral' %}{% endif %}
-<span class="badge {{ cls }}">{{ label }}</span>
-{% endmacro %}
-
-{# Chip de statut "dot + label". state: 'ok' | 'warn' | 'err' | 'neutral' (Lot C) #}
+{# Chip de statut "dot + label". state: 'ok' | 'warn' | 'err' | 'neutral' #}
 {% macro chip(state, label=None) %}
 <span class="chip chip-{{ state or 'neutral' }}">{{ label or state }}</span>
 {% endmacro %}
 
-{# Skeleton loader (Lot C) #}
-{% macro skeleton(variant='line') %}
-<span class="skeleton skeleton-{{ variant }}" role="status" aria-label="Chargement…"></span>
+{# Bouton d'action avec confirmation modale. Se branche sur Alpine.store('modal').
+   label, url, method, danger, message, icon_name, target, extra_class #}
+{% macro confirm_button(label, url, method='POST', danger=False, message=None, icon_name=None, target='#main-content', extra_class='') %}
+<button class="btn btn-sm btn-danger {{ extra_class }}" data-ksf-confirm data-url="{{ url }}" data-method="{{ method }}" data-confirm-message="{{ message }}" data-confirm-danger="{{ 'true' if danger else 'false' }}" data-hx-target="{{ target }}">{{ icon(icon_name, 14) if icon_name }}{{ label }}</button>
 {% endmacro %}
 
-{# Skeletons pour card-grid (Lot C) #}
-{% macro skeleton_cards(n=4) %}
-<div class="card-grid">
-  {% for _ in range(n) %}
-  <div class="card stat"><span class="skeleton skeleton-card"></span></div>
-  {% endfor %}
-</div>
-{% endmacro %}
-
-{# Skeletons pour table rows (Lot C) #}
-{% macro skeleton_rows(n=5, cols=4) %}
-<div class="card">
-  {% for _ in range(n) %}<div class="skeleton skeleton-row"></div>{% endfor %}
-</div>
-{% endmacro %}
-
-{# Tabs Alpine. Chaque item doit déclarer un panel_id qui identifie son panel.
-   Utilisation :
-     {% call tabs([{label:'Tab1'},{label:'Tab2'}]) %}{% raw %}<template x-if="active===0">...</template>...{% endraw %}{% endcall %}
-   Variantes :
-   - tabs(active_var, items): active_var est l'expression Alpine (index) à comparer
-   Plus simple : rend les boutons + appelle caller() qui contient les <template> #}
-{% macro tabs(items, active_var='active') %}
-<div class="tabs" x-data="ksfTabs({{ items|length }})">
-  <div class="tabs-nav" role="tablist" aria-label="Sections" @keydown="onKeydown($event)">
-    {% for item in items %}
-    <button type="button" role="tab"
-              id="tab-{{ item.panel_id }}"
-              :class="{ 'active': {{ active_var }} === {{ loop.index0 }} }"
-              @click="select({{ loop.index0 }})"
-              :tabindex="{{ active_var }} === {{ loop.index0 }} ? 0 : -1"
-              :aria-selected="{{ active_var }} === {{ loop.index0 }} ? 'true' : 'false'"
-              aria-controls="{{ item.panel_id }}">
-      {% if item.icon %}{{ icon(item.icon, 16) }}{% endif %}<span>{{ item.label }}</span>
-    </button>
-    {% endfor %}
-  </div>
-  {% if caller %}<div class="tab-panel" role="tabpanel">{{ caller() }}</div>{% endif %}
-</div>
-{% endmacro %}
-
-{# Menu d'actions local. Le caller fournit les boutons ou liens du menu. #}
-{% macro dropdown(label='Actions') %}
-<div class="dropdown" x-data="ksfDropdown()" @click.outside="close(false)" @keydown="onKeydown($event)">
-  <button type="button" class="btn btn-sm btn-ghost btn-icon" x-ref="trigger" @click="toggle()"
-          :aria-expanded="open ? 'true' : 'false'" aria-haspopup="menu" aria-label="{{ label }}">{{ icon('more-horizontal', 18) }}</button>
-  <div class="dropdown-menu" x-ref="menu" x-show="open" x-cloak role="menu" @click="close(false)">{{ caller() }}</div>
-</div>
-{% endmacro %}
-
-{# Combobox filtrable local. items est une liste de {value, label}. #}
-{% macro combobox(input_id, items, label) %}
-<div class="combobox" x-data="ksfCombobox()" @keydown="onKeydown($event)" @click.outside="close()">
-  <label for="{{ input_id }}">{{ label }}</label>
-  <input id="{{ input_id }}" type="text" role="combobox" autocomplete="off" aria-autocomplete="list"
-         x-ref="input" x-model="query" @focus="openList()" @input="openList()"
-         :aria-expanded="open ? 'true' : 'false'" aria-controls="{{ input_id }}-options">
-  <ul id="{{ input_id }}-options" x-ref="list" x-show="open" x-cloak role="listbox" class="combobox-options">
-    {% for item in items %}<li id="{{ input_id }}-option-{{ loop.index0 }}" role="option" data-value="{{ item.value }}" @click="choose($el)" :class="{ 'is-active': active === {{ loop.index0 }} }">{{ item.label }}</li>{% endfor %}
-  </ul>
-</div>
-{% endmacro %}
-
-{# Bouton d'action avec confirmation modale. Se branche sur Alpine.store('modal') (Lot 5).
-   label, url, method, danger, message, extra_class #}
-{% macro confirm_button(label, url, method='POST', danger=False, message=None, extra_class='', disabled=False) %}
-<button type="button"
-        class="btn btn-sm {{ 'btn-danger' if danger else 'btn-ghost' }} {{ extra_class }}"
-        {% if disabled %}disabled{% endif %}
-        data-ksf-confirm
-        data-url="{{ url }}"
-        data-method="{{ method }}"
-        {% if message %}data-confirm-message="{{ message }}"{% endif %}
-        {% if danger %}data-confirm-danger="true"{% endif %}
->{{ label }}</button>
-{% endmacro %}
-
-{# État vide illustré. message + action + icône optionnelle (Lot C) #}
+{# État vide illustré. message + action + icône optionnelle #}
 {% macro empty_state(message, action=None, icon_name='package') %}
 <div class="empty-state">
   <div class="empty-icon">{{ icon(icon_name, 24) }}</div>
@@ -139,16 +46,7 @@
 </div>
 {% endmacro %}
 
-{# Sticky footer pour primary action (Lot C/E) #}
-{% macro sticky_footer_start() %}
-<div class="sticky-footer">
-{% endmacro %}
-{% macro sticky_footer_end() %}
-</div>
-{% endmacro %}
-
-{# Fil d'ariane. items = liste de (label, href|None).
-   Utile dans la topbar : `{% block topbar_breadcrumb %}{{ breadcrumb([...]) }}{% endblock %}` #}
+{# Fil d'ariane. items = liste de (label, href|None). #}
 {% macro breadcrumb(items) %}
 <nav class="breadcrumb" aria-label="Fil d'Ariane">
   <ol>
@@ -162,53 +60,63 @@
 </nav>
 {% endmacro %}
 
-{# Item de navigation avec aria-current automatique + couleur accent optionnelle.
-   nav_item(label, href, icon, request_path, section=None) #}
-{% macro nav_item(label, href, icon_name, request_path, section=None) %}
-<a href="{{ href }}" class="nav-link{% if section %} nav-{{ section }}{% endif %}{% if request_path == href %} active section-{{ section or 'general' }}{% endif %}"
-   aria-label="{{ label }}" title="{{ label }}"{% if request_path == href %} aria-current="page"{% endif %}>
+{# Item de navigation avec aria-current automatique.
+   nav_item(label, href, icon_name, request_path)
+   La détection d'actif compare request_path au href.
+   Pour un sous-chemin actif (ex: /apps/radarr quand href=/apps), utiliser
+   request_path.startswith(href.rstrip('/')) si href n'est pas la racine. #}
+{% macro nav_item(label, href, icon_name, request_path) %}
+{% set is_active = request_path == href or (href != '/' and request_path.startswith(href.rstrip('/') + '/')) %}
+<a href="{{ href }}" class="nav-link{% if is_active %} active{% endif %}"
+   aria-label="{{ label }}" title="{{ label }}"{% if is_active %} aria-current="page"{% endif %}>
   {{ icon(icon_name, 18) }}<span class="nav-label">{{ label }}</span>
 </a>
 {% endmacro %}
 
-{# Sprite SVG Lucide. À inclure une seule fois dans base.html via {% include "_components.html" with context %}.
+{# Sprite SVG Lucide. À inclure une seule fois dans base.html.
    Usage : {% from "_components.html" import icon_sprite %}{{ icon_sprite() }} #}
 {% macro icon_sprite() %}
 <svg xmlns="http://www.w3.org/2000/svg" class="icon-sprite" aria-hidden="true">
-  <symbol id="icon-layout-dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></symbol>
-  <symbol id="icon-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
-  <symbol id="icon-route" viewBox="0 0 24 24"><circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M6 16v-4a4 4 0 0 1 4-4h4a4 4 0 0 0 4-4"/></symbol>
-  <symbol id="icon-stethoscope" viewBox="0 0 24 24"><path d="M4 2v6a4 4 0 0 0 8 0V2"/><path d="M8 12v2a5 5 0 0 0 10 0v-2"/><circle cx="18" cy="14" r="2"/><path d="M8 18a6 6 0 0 0 12 0"/></symbol>
-  <symbol id="icon-settings" viewBox="0 0 24 24"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
-  <symbol id="icon-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
-  <symbol id="icon-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
-  <symbol id="icon-package" viewBox="0 0 24 24"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M12 22V12"/><path d="M21 7l-9 5-9-5"/></symbol>
-  <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></symbol>
-  <symbol id="icon-server" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 6h.01"/><path d="M6 18h.01"/></symbol>
-  <symbol id="icon-scroll-text" viewBox="0 0 24 24"><path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17v5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h10l6 6z"/></symbol>
-  <symbol id="icon-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
-  <symbol id="icon-shield-alert" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/></symbol>
-  <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
-  <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 6.7 3L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-6.7-3L3 16"/><path d="M3 21v-5h5"/></symbol>
-  <symbol id="icon-play" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></symbol>
-  <symbol id="icon-square" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
-  <symbol id="icon-rotate-ccw" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-7.94L3 8"/><path d="M3 3v5h5"/></symbol>
-  <symbol id="icon-power" viewBox="0 0 24 24"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 0-12.8 0"/></symbol>
-  <symbol id="icon-pencil" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
-  <symbol id="icon-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></symbol>
-  <symbol id="icon-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></symbol>
+  <symbol id="icon-activity" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></symbol>
   <symbol id="icon-alert-triangle" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
-  <symbol id="icon-x-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6"/><path d="M9 9l6 6"/></symbol>
-  <symbol id="icon-loader" viewBox="0 0 24 24"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/></symbol>
-  <symbol id="icon-menu" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/></symbol>
-  <symbol id="icon-x" viewBox="0 0 24 24"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></symbol>
-  <symbol id="icon-chevron-right" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
-  <symbol id="icon-more-horizontal" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></symbol>
-  <symbol id="icon-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l3-3 3 3 5-5"/></symbol>
-  <symbol id="icon-users" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
-  <symbol id="icon-gavel" viewBox="0 0 24 24"><path d="M14 14l-7.5 7.5"/><path d="M2 22l7.5-7.5"/><path d="M6 18l-4-4L8 8l4 4-4 4z"/><path d="M16 8l4 4"/><path d="M14 6l4 4"/><path d="M20 2L8 14"/></symbol>
-  <symbol id="icon-external-link" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/></symbol>
   <symbol id="icon-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M4.93 4.93l14.14 14.14"/></symbol>
   <symbol id="icon-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></symbol>
+  <symbol id="icon-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l3-3 3 3 5-5"/></symbol>
+  <symbol id="icon-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></symbol>
+  <symbol id="icon-chevron-right" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
+  <symbol id="icon-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+  <symbol id="icon-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></symbol>
+  <symbol id="icon-external-link" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/></symbol>
+  <symbol id="icon-eye-off" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></symbol>
+  <symbol id="icon-gavel" viewBox="0 0 24 24"><path d="M14 14l-7.5 7.5"/><path d="M2 22l7.5-7.5"/><path d="M6 18l-4-4L8 8l4 4-4 4z"/><path d="M16 8l4 4"/><path d="M14 6l4 4"/><path d="M20 2L8 14"/></symbol>
+  <symbol id="icon-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+  <symbol id="icon-hammer" viewBox="0 0 24 24"><path d="m15 12-8.373 8.373a1 1 0 1 1-3-3L12 9"/><path d="m18 15 4-4"/><path d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172V7l-2.26-2.26a6 6 0 0 0-4.202-1.756L9 2.96l.92.82A6.18 6.18 0 0 1 12 8.4V10l2 2h2.172a2 2 0 0 1 1.414.586L21.5 14.5a2 2 0 0 1-2.828 2.828l-2.38-2.38"/></symbol>
+  <symbol id="icon-layout-dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></symbol>
+  <symbol id="icon-loader" viewBox="0 0 24 24"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/></symbol>
+  <symbol id="icon-menu" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/></symbol>
+  <symbol id="icon-more-horizontal" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></symbol>
+  <symbol id="icon-package" viewBox="0 0 24 24"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M12 22V12"/><path d="M21 7l-9 5-9-5"/></symbol>
+  <symbol id="icon-pencil" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
+  <symbol id="icon-play" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></symbol>
+  <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></symbol>
+  <symbol id="icon-power" viewBox="0 0 24 24"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 0-12.8 0"/></symbol>
+  <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 6.7 3L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-6.7-3L3 16"/><path d="M3 21v-5h5"/></symbol>
+  <symbol id="icon-refresh-cw" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
+  <symbol id="icon-rotate-ccw" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-7.94L3 8"/><path d="M3 3v5h5"/></symbol>
+  <symbol id="icon-route" viewBox="0 0 24 24"><circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M6 16v-4a4 4 0 0 1 4-4h4a4 4 0 0 0 4-4"/></symbol>
+  <symbol id="icon-scroll-text" viewBox="0 0 24 24"><path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17v5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h10l6 6z"/></symbol>
+  <symbol id="icon-server" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 6h.01"/><path d="M6 18h.01"/></symbol>
+  <symbol id="icon-settings" viewBox="0 0 24 24"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+  <symbol id="icon-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+  <symbol id="icon-shield-alert" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/></symbol>
+  <symbol id="icon-square" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
+  <symbol id="icon-stethoscope" viewBox="0 0 24 24"><path d="M4 2v6a4 4 0 0 0 8 0V2"/><path d="M8 12v2a5 5 0 0 0 10 0v-2"/><circle cx="18" cy="14" r="2"/><path d="M8 18a6 6 0 0 0 12 0"/></symbol>
+  <symbol id="icon-terminal" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></symbol>
+  <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+  <symbol id="icon-users" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="icon-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+  <symbol id="icon-x" viewBox="0 0 24 24"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></symbol>
+  <symbol id="icon-x-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6"/><path d="M9 9l6 6"/></symbol>
+  <symbol id="icon-zap" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></symbol>
 </svg>
 {% endmacro %}

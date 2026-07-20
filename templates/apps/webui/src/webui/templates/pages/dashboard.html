@@ -1,4 +1,12 @@
 {% extends "base.html" %}
-{% from "_fragment_loader.html" import fragment_loader %}
-{% block title %}Tableau de bord — KSF{% endblock %}
-{% block content %}{{ fragment_loader('/ui/dashboard') }}{% endblock %}
+{% block title %}Tableau de bord | KSF Web UI{% endblock %}
+{% block topbar_title %}Tableau de bord{% endblock %}
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+  <div hx-get="/api/status/dashboard" hx-trigger="load" hx-swap="innerHTML">
+    <div class="flex items-center gap-2 text-ksf-muted"><span class="spinner"></span> Chargement...</div>
+  </div>
+  <div id="dashboard-tabs" class="space-y-4">
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,40 @@
+{% from "_components.html" import icon, empty_state, page_header, chip %}
+{% call page_header(app.display_name, section='apps') %}
+<a class="btn btn-sm btn-ghost" href="/apps" hx-get="/ui/apps" hx-target="#content" hx-push-url="true">Retour</a>
+<button class="btn btn-sm btn-ghost" hx-get="/ui/apps/{{ app.instance }}" hx-target="#fragment-content" hx-swap="outerHTML">{{ icon('refresh', 14) }} Actualiser</button>
+{% endcall %}
+<div class="metric-grid">
+  <div class="metric-card"><div class="metric-body"><span class="metric-value">{{ state.state }}</span><span class="metric-label">État</span></div></div>
+  <div class="metric-card"><div class="metric-body"><span class="metric-value">{{ state.running }}/{{ state.total }}</span><span class="metric-label">Services</span></div></div>
+</div>
+<div class="card">
+  <strong>Accès</strong>
+  <p>{{ app.access_label }}</p>
+  <a href="/apps/{{ app.instance }}/configure" hx-get="/ui/apps/{{ app.instance }}/configure" hx-target="#content" hx-push-url="true">Configurer l'accès</a>
+</div>
+<div class="flex gap-1 mt-1 flex-wrap">
+  <form hx-post="/ui/apps/{{ app.instance }}/start" hx-target="#fragment-content" hx-swap="outerHTML">
+    <button class="btn btn-sm" type="submit"{% if state.state == 'running' and not app.disabled %} disabled{% endif %}>{{ icon('play', 14) }} {{ 'Activer' if app.disabled else 'Démarrer' }}</button>
+  </form>
+  <button class="btn btn-sm" data-ksf-confirm data-url="/api/apps/{{ app.instance }}/stop" data-method="POST" data-confirm-message="Arrêter {{ app.instance }} ?" data-hx-target="#fragment-content">{{ icon('square', 14) }} Stop</button>
+  <button class="btn btn-sm" data-ksf-confirm data-url="/api/apps/{{ app.instance }}/restart" data-method="POST" data-confirm-message="Redémarrer {{ app.instance }} ?" data-hx-target="#fragment-content">{{ icon('refresh-cw', 14) }} Redémarrer</button>
+  <button class="btn btn-sm" data-ksf-confirm data-url="/api/apps/{{ app.instance }}/update" data-method="POST" data-confirm-message="Mettre à jour {{ app.instance }} ?" data-hx-target="#fragment-content">{{ icon('refresh', 14) }} Mettre à jour</button>
+  <button class="btn btn-sm" data-ksf-confirm data-url="/api/apps/{{ app.instance }}/rebuild" data-method="POST" data-confirm-message="Reconstruire {{ app.instance }} ?" data-hx-target="#fragment-content">{{ icon('hammer', 14) }} Rebuild</button>
+  <button class="btn btn-sm" data-ksf-confirm data-url="/api/apps/{{ app.instance }}/disable" data-method="POST" data-confirm-message="Désactiver {{ app.instance }} ?" data-hx-target="#fragment-content">{{ icon('eye-off', 14) }} Désactiver</button>
+</div>
+{% if lifecycle_error %}<p class="error-box mt-1" role="alert">{{ lifecycle_error }}</p>{% endif %}
+{% if lifecycle_success %}<p class="success-box mt-1" role="status">{{ lifecycle_success }}</p>{% endif %}
+<form class="mt-2" hx-post="/ui/apps/{{ app.instance }}/remove" hx-target="#fragment-content" hx-swap="outerHTML">
+  <label class="form-check"><input name="remove_data" type="checkbox" value="true"> Supprimer aussi les données persistantes</label>
+  <label class="form-check"><input name="confirmed" type="checkbox" value="true" required> Je confirme la suppression de {{ app.instance }}</label>
+  <button class="btn btn-sm btn-danger mt-1" type="submit">{{ icon('trash', 14) }} Supprimer</button>
+</form>
+<details class="card mt-1">
+  <summary class="cursor-pointer">Logs</summary>
+  <form hx-get="/ui/apps/{{ app.instance }}/logs" hx-target="#app-log-output" hx-indicator="#app-log-spinner">
+    <div class="form-group"><label for="log-tail">Lignes</label><input id="log-tail" name="tail" type="number" min="1" max="5000" value="200"></div>
+    <button class="btn btn-sm" type="submit">{{ icon('scroll-text', 14) }} Charger</button>
+    <span id="app-log-spinner" class="htmx-indicator spinner"></span>
+  </form>
+  <div id="app-log-output" aria-live="polite"></div>
+</details>

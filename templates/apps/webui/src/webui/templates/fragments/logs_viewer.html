@@ -1,0 +1,22 @@
+{% from "_components.html" import icon, empty_state, page_header, chip %}
+{% call page_header('Logs', subtitle='Consultez les derniers logs d\'un service ou d\'une instance.', section='infra') %}{% endcall %}
+<div class="card">
+  <form hx-get="/ui/logs/traefik" hx-target="#log-output" hx-indicator="#logs-loading" x-data="{ target: 'traefik' }">
+    <div class="form-group">
+      <label for="log-target">Service ou instance</label>
+      <select id="log-target" name="target" x-model="target" @change="$el.closest('form').setAttribute('hx-get', '/ui/logs/' + target)">
+        <option value="traefik">Traefik</option>
+        <option value="oauth2">OAuth2 Proxy</option>
+        <option value="crowdsec">CrowdSec</option>
+        {% for app, state in apps %}<option value="{{ app.instance }}">{{ app.display_name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="tail">Lignes</label>
+      <input id="tail" name="tail" type="number" min="1" max="5000" value="200">
+    </div>
+    <button class="btn" type="submit">{{ icon('scroll-text', 14) }} Charger</button>
+    <span id="logs-loading" class="htmx-indicator spinner"></span>
+  </form>
+  <div id="log-output" aria-live="polite"></div>
+</div>

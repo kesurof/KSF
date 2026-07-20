@@ -36,7 +36,7 @@ def _same_origin(value: str, host: str) -> bool:
 
 
 async def enforce_webui_csrf(request: Request, call_next):
-    if request.url.path in HEALTH_PATHS or request.url.path.startswith("/static/"):
+    if request.url.path in HEALTH_PATHS or request.url.path.startswith("/static/") or request.url.path == "/favicon.svg":
         return await call_next(request)
 
     if request.method not in SAFE_METHODS:
@@ -47,14 +47,27 @@ async def enforce_webui_csrf(request: Request, call_next):
         # A browser mutation must prove it originated from the exact Host served
         # by Traefik. Substring matching would accept attacker.example.com.
         if not host or "," in host or " " in host:
-            return JSONResponse({"error": "Hote de la requête invalide."}, status_code=400)
+            return _csrf_error(request, "Hôte de la requête invalide.")
         if origin:
             if not _same_origin(origin, host):
-                return JSONResponse({"error": "Origine de la requête invalide."}, status_code=400)
+                return _csrf_error(request, "Origine de la requête invalide.")
         elif referer:
             if not _same_origin(referer, host):
-                return JSONResponse({"error": "Référent de la requête invalide."}, status_code=400)
+                return _csrf_error(request, "Référent de la requête invalide.")
         else:
-            return JSONResponse({"error": "Une origine ou un référent valide est requis."}, status_code=400)
+            return _csrf_error(request, "Une origine ou un référent valide est requis.")
 
     return await call_next(request)
+
+
+def _csrf_error(request: Request, message: str):
+    is_htmx = request.headers.get("HX-Request") == "true"
+    if is_htmx:
+        from fastapi.responses import HTMLResponse
+
+        return HTMLResponse(
+            f'<div class="error-box" role="alert" tabindex="-1">{message}</div>',
+            status_code=400,
+            headers={"HX-Retarget": "#fragment-content"},
+        )
+    return JSONResponse({"error": message}, status_code=400)

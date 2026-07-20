@@ -64,6 +64,10 @@ class KsfConfig:
         return self.get_bool("CROWDSEC_APPSEC_ENABLED", False)
 
     @property
+    def version(self) -> str:
+        return self.get("VERSION", "")
+
+    @property
     def domain(self) -> str:
         return self.get("DOMAIN", "")
 

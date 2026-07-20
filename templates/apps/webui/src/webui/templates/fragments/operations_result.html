@@ -1,0 +1,5 @@
+{% from "_components.html" import icon, empty_state, page_header, chip %}
+<section id="fragment-result" tabindex="-1" aria-live="polite">
+  <h2>{{ title }}</h2>
+  {% if error %}<p class="error-box" role="alert" tabindex="-1">{{ error }}</p>{% elif output %}<pre class="fragment-output" tabindex="0" aria-label="{{ title }}">{{ output }}</pre>{% else %}<p class="text-muted">Aucune donnée.</p>{% endif %}
+</section>

@@ -1,0 +1,31 @@
+{% from "_components.html" import icon, empty_state, page_header, chip %}
+{% call page_header('Configuration de ' ~ app.display_name, section='apps') %}
+<a class="btn btn-sm btn-ghost" href="/apps/{{ app.instance }}" hx-get="/ui/apps/{{ app.instance }}" hx-target="#content" hx-push-url="true">Retour</a>
+{% endcall %}
+<div class="card">
+  <p class="text-muted">Accès actuel : {{ app.access_label }}</p>
+  <form x-data="{ localOnly: {{ 'true' if app.local_only else 'false' }} }" hx-post="/ui/apps/{{ app.instance }}/configure" hx-target="#fragment-content" hx-swap="outerHTML">
+    <div class="form-group">
+      <label for="subdomain">Sous-domaine</label>
+      <input id="subdomain" name="subdomain" value="{{ app.subdomain }}"{% if not app.public %} disabled{% else %} x-bind:disabled="localOnly"{% endif %}>
+    </div>
+    <div class="form-group">
+      <label for="domain">Domaine</label>
+      <input id="domain" name="domain" value="{{ app.domain }}"{% if not app.public %} disabled{% else %} x-bind:disabled="localOnly"{% endif %}>
+    </div>
+    <div class="form-group">
+      <label for="host">Hostname complet</label>
+      <input id="host" name="host" placeholder="Optionnel, remplace domaine et sous-domaine"{% if not app.public %} disabled{% else %} x-bind:disabled="localOnly"{% endif %}>
+    </div>
+    <div class="form-group">
+      <label for="host_port">Port local</label>
+      <input id="host_port" name="host_port" type="number" min="1" max="65535" value="{{ app.host_port }}" placeholder="127.0.0.1 uniquement">
+    </div>
+    <label class="form-check"><input name="no_host_port" type="checkbox" value="true"> Supprimer le port local</label>
+    <label class="form-check"><input name="local_only" type="checkbox" value="true" x-model="localOnly"> Accès local uniquement</label>
+    <label class="form-check"><input name="confirmed" type="checkbox" value="true" required> Je confirme la reconfiguration de l'accès</label>
+    <button class="btn mt-1" type="submit">Enregistrer</button>
+  </form>
+  {% if form_error %}<p class="error-box mt-1" role="alert">{{ form_error }}</p>{% endif %}
+  {% if form_success %}<p class="success-box mt-1" role="status">{{ form_success }}</p>{% endif %}
+</div>

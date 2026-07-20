@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Installer une application | KSF Web UI{% endblock %}
+{% block topbar_title %}Installer une application{% endblock %}
+{% block content %}
+<div class="max-w-4xl mx-auto">
+  <div hx-get="/ui/apps/install" hx-trigger="load" hx-swap="innerHTML">
+    <div class="flex items-center gap-2 text-ksf-muted text-sm"><span class="spinner"></span> Chargement...</div>
+  </div>
+</div>
+{% endblock %}

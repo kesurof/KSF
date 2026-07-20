@@ -76,7 +76,7 @@ async def index(request: Request):
 @app.get("/apps/install", response_class=HTMLResponse)
 async def app_install_page(request: Request):
     cfg = get_config()
-    return templates.TemplateResponse(request, "pages/apps/install.html", {
+    return templates.TemplateResponse(request, "pages/install.html", {
         "config": cfg,
         "installed": cfg.loaded,
     })
@@ -85,7 +85,7 @@ async def app_install_page(request: Request):
 @app.get("/apps/{instance}/configure", response_class=HTMLResponse)
 async def app_configure_page(request: Request, instance: str):
     cfg = get_config()
-    return templates.TemplateResponse(request, "pages/apps/configure.html", {
+    return templates.TemplateResponse(request, "pages/configure.html", {
         "config": cfg,
         "installed": cfg.loaded,
         "instance": instance,
@@ -95,7 +95,7 @@ async def app_configure_page(request: Request, instance: str):
 @app.get("/apps/{instance}", response_class=HTMLResponse)
 async def app_detail_page(request: Request, instance: str):
     cfg = get_config()
-    return templates.TemplateResponse(request, "pages/apps/detail.html", {
+    return templates.TemplateResponse(request, "pages/app_detail.html", {
         "config": cfg,
         "installed": cfg.loaded,
         "instance": instance,
@@ -107,43 +107,37 @@ async def infra_detail_page(request: Request, name: str):
     if name not in ("traefik", "oauth2", "crowdsec"):
         return _render_error(request, 404, "Service inconnu.")
     cfg = get_config()
-    return templates.TemplateResponse(request, "pages/infrastructure/detail.html", {
+    return templates.TemplateResponse(request, "pages/service.html", {
         "config": cfg,
         "installed": cfg.loaded,
         "service_name": name,
     })
 
 
+PAGES = {
+    "apps": "pages/apps.html",
+    "infrastructure": "pages/infrastructure.html",
+    "logs": "pages/logs.html",
+    "security": "pages/security.html",
+    "maintenance": "pages/maintenance.html",
+    "operations": "pages/operations.html",
+}
+
+
 @app.get("/{path:path}", response_class=HTMLResponse)
 async def catch_all(request: Request, path: str):
-    page_map = {
-        "general": "pages/general/index.html",
-        "overview": "pages/general/index.html",
-        "config": "pages/general/index.html",
-        "routes": "pages/general/index.html",
-        "doctor": "pages/general/index.html",
-        "operations": "pages/general/index.html",
-        "jobs": "pages/general/index.html",
-        "apps": "pages/apps/index.html",
-        "apps/install": "pages/apps/install.html",
-        "infrastructure": "pages/infrastructure/index.html",
-        "security": "pages/security/index.html",
-        "security/alerts": "pages/security/index.html",
-        "security/metrics": "pages/security/index.html",
-        "security/bouncers": "pages/security/index.html",
-        "security/decisions": "pages/security/index.html",
-        "security/appsec": "pages/security/index.html",
-        "logs": "pages/logs/index.html",
-        "maintenance": "pages/maintenance/index.html",
-    }
-    template_name = page_map.get(path)
-    if not template_name:
-        if request.headers.get("HX-Request") == "true":
-            return templates.TemplateResponse(request, "fragments/content.html", {
-                "view": "error", "message": "Ressource introuvable.",
-            }, status_code=404)
-        return _render_error(request, 404, None)
-    return _render_with_context(request, template_name)
+    if path in PAGES:
+        cfg = get_config()
+        template = PAGES[path]
+        return templates.TemplateResponse(request, template, {"config": cfg, "installed": cfg.loaded})
+
+    if path.startswith("infrastructure/"):
+        service_name = path[len("infrastructure/"):]
+        if service_name in ("traefik", "oauth2", "crowdsec"):
+            cfg = get_config()
+            return templates.TemplateResponse(request, "pages/service.html", {"config": cfg, "installed": cfg.loaded, "service_name": service_name})
+
+    return _render_error(request, 404, "Page introuvable.")
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -172,6 +166,10 @@ async def ksf_unhandled_exception_handler(request: Request, exc: Exception):
 
 def _render_error(request: Request, status: int, detail) -> HTMLResponse:
     cfg = get_config()
+    if request.headers.get("HX-Request") == "true":
+        return templates.TemplateResponse(request, "fragments/error.html", {
+            "message": str(detail or "Ressource introuvable."),
+        }, status_code=status)
     template = {404: "pages/error/404.html"}.get(status, "pages/error/500.html")
     return templates.TemplateResponse(request, template, {
         "config": cfg,

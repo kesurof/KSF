@@ -1,0 +1,15 @@
+{% from "_components.html" import icon, empty_state, page_header, chip %}
+{% call page_header('Logs de l\'application', section='apps') %}
+<button class="btn btn-sm btn-ghost" hx-get="/ui/logs" hx-target="#content" hx-push-url="true">Retour</button>
+{% endcall %}
+<div class="card">
+  <form hx-get="/ui/apps/{{ instance }}/logs" hx-target="#log-output" hx-indicator="#app-log-loading">
+    <div class="form-group">
+      <label for="app-log-tail">Lignes</label>
+      <input id="app-log-tail" name="tail" type="number" min="1" max="5000" value="200">
+    </div>
+    <button class="btn" type="submit">{{ icon('scroll-text', 14) }} Charger</button>
+    <span id="app-log-loading" class="htmx-indicator" role="status">Chargement...</span>
+  </form>
+  <div id="log-output" aria-live="polite"></div>
+</div>
