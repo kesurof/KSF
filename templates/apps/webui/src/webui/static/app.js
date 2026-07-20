@@ -7,8 +7,7 @@
    - ksfModal                   : état de la modal de confirmation
    - Alpine.data('ksfList')     : boilerplate read-only réutilisable (HTMX ou fetch)
    Notes :
-   * HTMX est chargé en synchrone (avant Alpine) dans base.html.
-   * SRI sur les CDN resté à activer lors d'une passe de build (cf. REFACTOR-DESIGN.md Lot 6).
+    * HTMX et Alpine sont des assets locaux versionnés via package-lock.json.
 */
 
 async function ksfFetch(path, options = {}) {
@@ -97,23 +96,94 @@ document.addEventListener('alpine:init', () => {
     message: '',
     danger: false,
     _resolve: null,
+    _opener: null,
     init() {
       window.__ksfModal = window.__ksfModal || {};
-      window.__ksfModal.confirm = (message, danger = false) => {
+      window.__ksfModal.confirm = (message, danger = false, opener = document.activeElement) => {
         this.message = message;
         this.danger = !!danger;
+        this._opener = opener instanceof HTMLElement ? opener : null;
         this.open = true;
         this._resolve?.(false);
+        this.$nextTick(() => this.$refs.cancelButton.focus());
         return new Promise(resolve => { this._resolve = resolve; });
       };
     },
     confirm() {
       this._resolve?.(true);
-      this.open = false;
+      this.close();
     },
     cancel() {
       this._resolve?.(false);
+      this.close();
+    },
+    close() {
       this.open = false;
+      const opener = this._opener;
+      this._opener = null;
+      if (opener?.isConnected) this.$nextTick(() => opener.focus());
+    },
+    trapFocus(event) {
+      const focusable = [...this.$refs.body.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')];
+      if (!focusable.length || event.key !== 'Tab') return;
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    },
+  }));
+
+  Alpine.data('ksfTabs', (count) => ({
+    active: 0,
+    select(index) { this.active = index; this.$nextTick(() => this.$el.querySelectorAll('[role="tab"]')[index].focus()); },
+    onKeydown(event) {
+      const keys = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+      if (!(event.key in keys) && !['Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? count - 1 : (this.active + keys[event.key] + count) % count;
+      this.select(next);
+    },
+  }));
+
+  Alpine.data('ksfDropdown', () => ({
+    open: false,
+    toggle() { this.open = !this.open; if (this.open) this.$nextTick(() => this.$refs.menu.querySelector('button:not([disabled]), a[href]')?.focus()); },
+    close(restoreFocus = true) { if (!this.open) return; this.open = false; if (restoreFocus) this.$nextTick(() => this.$refs.trigger.focus()); },
+    onKeydown(event) {
+      if (event.key === 'Escape') { event.preventDefault(); this.close(); }
+      if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
+      event.preventDefault();
+      const items = [...this.$refs.menu.querySelectorAll('button:not([disabled]), a[href]')];
+      const index = items.indexOf(document.activeElement);
+      items[(index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
+    },
+  }));
+
+  Alpine.data('ksfCombobox', () => ({
+    open: false,
+    query: '',
+    active: -1,
+    openList() { this.open = true; this.active = -1; },
+    close() { this.open = false; this.active = -1; },
+    options() { return [...this.$refs.list.querySelectorAll('[role="option"]')]; },
+    choose(option) { this.query = option.textContent.trim(); this.close(); this.$refs.input.focus(); },
+    onKeydown(event) {
+      const options = this.options();
+      if (event.key === 'Escape') { this.close(); this.$refs.input.focus(); return; }
+      if (event.key === 'Enter' && this.open && this.active >= 0) {
+        event.preventDefault(); this.choose(options[this.active]); return;
+      }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || !options.length) return;
+      event.preventDefault(); this.open = true;
+      if (event.key === 'Home') this.active = 0;
+      else if (event.key === 'End') this.active = options.length - 1;
+      else this.active = (this.active + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
+      this.$refs.input.setAttribute('aria-activedescendant', options[this.active].id);
     },
   }));
 });
@@ -151,6 +221,24 @@ async function ksfAction(url, { method = 'POST', message = null, danger = false,
              data-confirm-message="..." data-confirm-danger="true">Supprimer</button>
    Le bouton se transforme en appel modal -> fetch -> toast. */
 document.addEventListener('DOMContentLoaded', () => {
+  document.body.addEventListener('htmx:afterSwap', (event) => {
+    const fragment = event.detail.target.matches?.('#fragment-content, #general-output, #security-output, #maintenance-output, #fragment-result')
+      ? event.detail.target
+      : event.detail.target.querySelector('#fragment-content, #general-output, #security-output, #maintenance-output, #fragment-result');
+    if (fragment) fragment.focus({ preventScroll: true });
+  });
+
+  document.body.addEventListener('htmx:responseError', (event) => {
+    const { xhr, target } = event.detail;
+    if (xhr.getResponseHeader('content-type')?.includes('text/html') && xhr.responseText) {
+      event.preventDefault();
+      target.innerHTML = xhr.responseText;
+      target.querySelector('[role="alert"]')?.focus?.({ preventScroll: true });
+      return;
+    }
+    Alpine.store('toasts').error('La requête a échoué.');
+  });
+
   document.addEventListener('click', (ev) => {
     const btn = ev.target.closest('[data-ksf-confirm]');
     if (!btn) return;

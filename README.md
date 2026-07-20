@@ -74,9 +74,13 @@ Menu interactif :
 ./ksf.sh menu
 ```
 
-Le menu KSF affiche un tableau de bord dynamique du runtime, des services plateforme et des apps installees, puis propose des actions contextuelles pour l'infrastructure, la securite, les logs et les applications.
+Le menu KSF affiche un tableau de bord dynamique du runtime, des services plateforme et des apps installees. Ses entrees sont `Vue d'ensemble`, `Applications`, `Infrastructure`, `Securite`, `Logs` et `Maintenance`.
 
-Le parcours `Applications -> Installer une app` resolve maintenant les valeurs par defaut directement dans le menu, affiche un resume final unique, puis lance l'installation sans reposer les memes questions une seconde fois.
+Dans `Applications`, le catalogue, l'installation, la gestion d'une instance et sa suppression sont distincts. Le detail d'une instance donne acces a son statut, demarrage/arret, redemarrage, logs, mise a jour, reconfiguration de l'acces, rebuild et desactivation. Les actions destructives demandent confirmation.
+
+Le parcours `Applications -> Installer une app` resout les valeurs par defaut dans le menu, affiche un resume final unique, puis lance `app.sh install --yes` sans reposer les memes questions. Il propose un sous-domaine sur le domaine par defaut, un autre domaine autorise seulement si plusieurs domaines sont configures, un host complet ou `local-only`.
+
+Pour une exposition Traefik, le menu demande ensuite la protection OAuth2 Proxy et propose facultativement un port local. En `local-only`, un port lie a `127.0.0.1` est requis. Le menu refuse un domaine absent de `DOMAINS` et ne propose pas d'exposition publique lorsque Traefik ou le template ne le permettent pas.
 
 Diagnostic :
 
@@ -286,6 +290,23 @@ L'app `webui` expose les opérations d'administration KSF dans le navigateur. El
 
 Les opérations longues sont lancées comme jobs avec leur sortie affichée dans l'interface. Elles réutilisent les scripts KSF embarqués dans le conteneur Web UI, avec les mêmes mécanismes de rendu et de validation que le CLI. Les actions sensibles demandent une confirmation explicite. Les secrets Cloudflare et OAuth2 ne sont jamais renvoyés au navigateur.
 
+Le webui est une frontiere d'administration: son montage runtime inscriptible et
+le socket Docker lui donnent les privileges necessaires pour gerer KSF. Il reste
+derriere Traefik et OAuth2 Proxy. Un port direct optionnel est strictement lie a
+`127.0.0.1`, reserve a un administrateur connecte au serveur, et ne remplace pas
+l'authentification. Les mutations navigateur exigent un `Origin` ou `Referer`
+valide correspondant exactement au `Host`. En production, la specification
+OpenAPI et les interfaces Swagger/ReDoc sont desactivees. Le webui ne se
+reconstruit pas lui-meme: executez `./app.sh rebuild webui` depuis le serveur.
+
+Le Web UI est l'unique exception a la regle interdisant les flags
+`--with-<app>` de `deploy.sh` : `--with-webui` le delegue a `app.sh` une fois
+l'infrastructure prete. Cette option requiert `--with-traefik`, `--domain` et
+OAuth2 Proxy configure avec ses identifiants et une regle d'autorisation. Si
+l'installation deleguee echoue, `deploy.sh` retourne un code non nul et indique
+un deploiement plateforme partiel; les autres applications s'installent
+uniquement via `app.sh`.
+
 ### Ports
 
 KSF adopte le modèle suivant pour les apps :
@@ -384,11 +405,13 @@ Après installation, tu peux modifier uniquement l'accès d'une app sans la réi
 ./app.sh configure blog --domain example.net
 ./app.sh configure blog --domain example.net --subdomain blog
 ./app.sh configure blog --host blog.example.net
+./app.sh configure blog --host-port 18080
+./app.sh configure blog --no-host-port
 ```
 
 `configure` met à jour les fichiers d'instance, la route Traefik et, si le DNS auto est actif, l'enregistrement DNS associé.
 
-Si `./app.sh install <template>` cible une instance déjà présente, KSF n'échoue plus sèchement en mode interactif : il propose explicitement de forcer la réinstallation de cette instance ou d'annuler. En non-interactif, l'installation sur une instance existante reste refusée.
+Si `./app.sh install <template>` cible une instance déjà présente, KSF n'échoue plus sèchement en mode interactif : il propose explicitement de forcer la réinstallation de cette instance ou d'annuler. En non-interactif, utilisez `--force` uniquement pour réinstaller volontairement une instance du même template.
 
 ### Hooks pre/post install
 
@@ -472,10 +495,51 @@ Utilisez ce mode pour vérifier le plan avant une installation réelle.
 - Bash.
 - Docker.
 - Plugin Docker Compose.
+- Node.js et npm (validation et build du Web UI).
+- Python 3.12 et `uv` (validation et dependances du Web UI).
 - Accès réseau.
 - Domaine DNS si exposition publique.
 - Compte Cloudflare pour Traefik avec DNS-01 ou DNS automatique.
 - OAuth App GitHub si OAuth2 Proxy est activé.
+
+## Contribution
+
+Les conventions de developpement sont documentees dans `docs/`. Les agents,
+commandes et skills OpenCode du depot sont dans `.opencode/` : `/preflight`
+confronte un plan significatif et `/check-project` execute une revue de
+coherence avant livraison.
+
+La validation locale par defaut ne demande ni reseau ni daemon Docker : executez
+`make validate` depuis la racine. Elle couvre la syntaxe Bash, les validateurs,
+les dry-runs, `install-cli`, les routes, le DNS Cloudflare simule, le lifecycle
+applicatif simule et la matrice de rendu statique. ShellCheck et shfmt sont
+executes s'ils sont presents, sinon la sortie indique clairement comment les
+installer. `make check-release` ajoute la coherence entre `VERSION` et
+`CHANGELOG.md`. Les controles Docker, Compose et Web UI restent opt-in ; leurs
+prerequis et leur perimetre sont documentes dans
+`docs/contribution/local-validation.md`. La politique de versions des dependances et images est dans
+`docs/contribution/dependency-policy.md`.
+
+Le Web UI utilise `uv` pour les dependances Python et npm/Node pour compiler
+Tailwind CSS. Depuis `templates/apps/webui/`, les commandes utiles sont :
+
+```bash
+uv sync --locked --all-groups
+npm ci
+make verify
+make ui-install-browser
+make test-ui
+```
+
+`make verify` execute le lock check, Ruff, Pytest et le build CSS. Les audits
+(`make audit-python`, `make audit-npm`), la construction d'image (`make build`)
+et la suite navigateur (`make test-ui`) sont explicites et peuvent demander des
+outils ou un acces reseau supplementaires.
+
+Les details d'architecture, de securite, d'UX et de validation webui sont dans
+`docs/webui/`. Les mises a jour de `uv.lock` et `package-lock.json`, les audits
+et les versions de l'image webui sont documentes dans
+`docs/contribution/dependency-policy.md`.
 
 ## Notes de sécurité
 

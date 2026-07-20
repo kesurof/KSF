@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from ..core.config import TRAEFIK_DIR, OAUTH2_DIR, CROWDSEC_DIR
 from ..core.docker import get_docker
+from ..core.security import redact_secrets
 
 router = APIRouter()
 
@@ -21,11 +22,11 @@ def get_logs(target: str, tail: int = 200):
             return JSONResponse({"error": "Stack directory not found"}, status_code=404)
         docker = get_docker()
         logs = docker.compose_logs(stack_dir, tail=tail)
-        return {"logs": logs}
+        return {"logs": redact_secrets(logs)}
     from ..core.state import get_installed_app
     app = get_installed_app(target)
     if not app:
         return JSONResponse({"error": f"Unknown target '{target}'"}, status_code=404)
     docker = get_docker()
     logs = docker.compose_logs(app.app_dir, tail=tail)
-    return {"logs": logs}
+    return {"logs": redact_secrets(logs)}

@@ -64,7 +64,9 @@ def update_all_apps(req: OperationRequest):
             if app.disabled:
                 output.append(f"{app.instance}: ignoree (desactivee)")
                 continue
-            code, stdout, stderr = run_app("update", app.instance, dry_run=req.dry_run)
+            code, stdout, stderr = run_app(
+                "update", app.instance, dry_run=req.dry_run, confirmed=True
+            )
             output.append(f"=== {app.instance} ===\n{stdout}{stderr}".strip())
             failed = failed or code != 0
         doctor_code, doctor_stdout, doctor_stderr = run_ksf("doctor", timeout=180, dry_run=req.dry_run)

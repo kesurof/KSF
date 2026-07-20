@@ -19,9 +19,16 @@ from .api.router_templates import router as templates_router
 from .api.router_jobs import router as jobs_router
 from .api.router_maintenance import router as maintenance_router
 from .api.router_operations import router as operations_router
+from .api.router_fragments import router as fragments_router
 from .core.security import enforce_webui_csrf
 
-app = FastAPI(title="KSF Web UI")
+production = os.environ.get("KSF_ENV", "production").lower() == "production"
+app = FastAPI(
+    title="KSF Web UI",
+    docs_url=None if production else "/docs",
+    redoc_url=None if production else "/redoc",
+    openapi_url=None if production else "/openapi.json",
+)
 app.add_middleware(BaseHTTPMiddleware, dispatch=enforce_webui_csrf)
 
 static_dir = Path(__file__).parent / "static"
@@ -38,6 +45,7 @@ app.include_router(templates_router, prefix="/api/templates", tags=["templates"]
 app.include_router(jobs_router, prefix="/api/jobs", tags=["jobs"])
 app.include_router(maintenance_router, prefix="/api", tags=["maintenance"])
 app.include_router(operations_router, prefix="/api/operations", tags=["operations"])
+app.include_router(fragments_router, prefix="/ui", tags=["fragments"])
 
 
 def _render_with_context(request: Request, template_name: str) -> HTMLResponse:
@@ -71,6 +79,16 @@ async def app_install_page(request: Request):
     return templates.TemplateResponse(request, "pages/apps/install.html", {
         "config": cfg,
         "installed": cfg.loaded,
+    })
+
+
+@app.get("/apps/{instance}/configure", response_class=HTMLResponse)
+async def app_configure_page(request: Request, instance: str):
+    cfg = get_config()
+    return templates.TemplateResponse(request, "pages/apps/configure.html", {
+        "config": cfg,
+        "installed": cfg.loaded,
+        "instance": instance,
     })
 
 
@@ -120,12 +138,20 @@ async def catch_all(request: Request, path: str):
     }
     template_name = page_map.get(path)
     if not template_name:
+        if request.headers.get("HX-Request") == "true":
+            return templates.TemplateResponse(request, "fragments/content.html", {
+                "view": "error", "message": "Ressource introuvable.",
+            }, status_code=404)
         return _render_error(request, 404, None)
     return _render_with_context(request, template_name)
 
 
 @app.exception_handler(StarletteHTTPException)
 async def ksf_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    if request.headers.get("HX-Request") == "true":
+        return templates.TemplateResponse(request, "fragments/content.html", {
+            "view": "error", "message": str(exc.detail or "Ressource introuvable."),
+        }, status_code=exc.status_code)
     # Pages d'erreur statiques rendues dans le layout de base.
     if exc.status_code == 404:
         return _render_error(request, 404, None)
@@ -137,6 +163,10 @@ async def ksf_http_exception_handler(request: Request, exc: StarletteHTTPExcepti
 async def ksf_unhandled_exception_handler(request: Request, exc: Exception):
     import traceback
     traceback.print_exc()  # journalisé côté serveur stdout (Docker logs)
+    if request.headers.get("HX-Request") == "true":
+        return templates.TemplateResponse(request, "fragments/content.html", {
+            "view": "error", "message": "Une erreur inattendue est survenue.",
+        }, status_code=500)
     return _render_error(request, 500, None)
 
 

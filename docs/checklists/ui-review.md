@@ -9,3 +9,7 @@
 - HTMX conserve l'etat serveur ; Alpine ne conserve que l'etat local.
 - Les swaps HTMX preservent ou annoncent le focus lorsque necessaire.
 - Les animations respectent `prefers-reduced-motion`.
+- Les modales restaurent le focus et retiennent Tabulation entre leurs controles.
+- Les composants partages d'onglets, menus et combobox sont testables au clavier.
+- Le CSS est compile depuis `input.css`; aucun import ou fichier de
+  compatibilite obsolete ne reste reference.

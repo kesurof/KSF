@@ -186,6 +186,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --base-dir)
+      ksf_require_option_value "$1" "$#" || exit 1
       BASE_DIR="$2"
       shift 2
       ;;
@@ -368,11 +369,15 @@ _manage_cli_ensure_path_block() {
       run touch "$profile"
     fi
     info "Ajout du bloc PATH dans ${profile}..."
+    if [ "${DRY_RUN:-false}" = true ]; then
+      warn "[DRY-RUN] Ajout du bloc PATH dans ${profile}"
+    else
     {
       echo ""
       echo "# KSF CLI"
       echo "export PATH=\"\$HOME/.local/bin:\$PATH\""
     } >> "$profile"
+    fi
     ok "Bloc ajouté dans ${profile}."
   fi
 
@@ -384,11 +389,15 @@ _manage_cli_ensure_path_block() {
       run touch "$bashrc"
     fi
     info "Ajout du bloc PATH dans ${bashrc}..."
+    if [ "${DRY_RUN:-false}" = true ]; then
+      warn "[DRY-RUN] Ajout du bloc PATH dans ${bashrc}"
+    else
     {
       echo ""
       echo "# KSF CLI"
       echo "export PATH=\"\$HOME/.local/bin:\$PATH\""
     } >> "$bashrc"
+    fi
     ok "Bloc ajouté dans ${bashrc}."
   fi
 }

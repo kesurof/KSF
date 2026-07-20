@@ -7,8 +7,8 @@
 #   DRY_RUN, AUTO_YES
 #
 # Fichiers produits :
-#   ${APP_DIR}/.env                 : DB_PASSWORD, DB_ROOT_PASSWORD, AUTH_KEY/SALT
-#                                     (consomme par docker compose via ${WORDPRESS_*})
+#   ${APP_DIR}/.env                 : secrets DB et WordPress, monte par
+#                                     Compose comme env_file pour cette instance
 #   ${APP_DATA}/config/php.ini      : config PHP montee read-only dans le conteneur
 #   ${APP_DATA}/config/opcache.ini  : config OPcache montee read-only
 #
@@ -21,8 +21,10 @@ ENV_FILE="${APP_DIR}/.env"
 CONFIG_DIR="${APP_DATA}/config"
 
 # ---------- Generation du .env (idempotente) ----------
-# Si le .env existe deja (cas update/rebuild), on le preserve tel quel.
-# Sinon on genere des secrets frais.
+# Ce fichier est consomme par les services wp et db avec env_file. Le Compose
+# rendu ne depend donc d'aucun placeholder WordPress resolu apres le rendu.
+# Si le .env existe deja (cas update/rebuild), ses secrets sont preserves.
+umask 077
 if [ ! -f "${ENV_FILE}" ]; then
   if [ "${DRY_RUN:-false}" = true ]; then
     info "[DRY-RUN] Generation de ${ENV_FILE} (DB + salts aleatoires)"
@@ -50,6 +52,9 @@ WORDPRESS_DB_NAME=${WORDPRESS_DB_NAME}
 WORDPRESS_DB_USER=${WORDPRESS_DB_USER}
 WORDPRESS_DB_PASSWORD=${WORDPRESS_DB_PASSWORD}
 WORDPRESS_TABLE_PREFIX=wp_
+MARIADB_DATABASE=${WORDPRESS_DB_NAME}
+MARIADB_USER=${WORDPRESS_DB_USER}
+MARIADB_PASSWORD=${WORDPRESS_DB_PASSWORD}
 
 # Cache key prefix (genere aleatoirement pour eviter les collisions si plusieurs
 # WP partagent la meme instance Redis — pas le cas ici mais bonne pratique).
@@ -65,11 +70,18 @@ WORDPRESS_SECURE_AUTH_SALT=${WORDPRESS_SECURE_AUTH_SALT}
 WORDPRESS_LOGGED_IN_SALT=${WORDPRESS_LOGGED_IN_SALT}
 WORDPRESS_NONCE_SALT=${WORDPRESS_NONCE_SALT}
 EOF
-    chmod 600 "${ENV_FILE}"
     ok "Secrets WordPress generes dans ${ENV_FILE}"
   fi
 else
   info "Secrets WordPress existants preserves (${ENV_FILE})"
+fi
+
+# Les secrets d'une instance ne doivent jamais etre lisibles par d'autres
+# utilisateurs, y compris lorsqu'ils proviennent d'une installation anterieure.
+if [ "${DRY_RUN:-false}" = true ]; then
+  info "[DRY-RUN] chmod 600 ${ENV_FILE}"
+else
+  chmod 600 "${ENV_FILE}"
 fi
 
 # ---------- Generation des configs PHP (a chaque update) ----------

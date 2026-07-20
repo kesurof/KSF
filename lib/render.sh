@@ -110,7 +110,7 @@ prepare_render_context() {
   : "${DOCKER_GROUP_ADD_BLOCK:=}"
 
   if [ -n "${DOCKER_GID:-}" ] && [ -z "${DOCKER_GROUP_ADD_BLOCK}" ]; then
-    DOCKER_GROUP_ADD_BLOCK="group_add:
+    DOCKER_GROUP_ADD_BLOCK="    group_add:
       - \"${DOCKER_GID}\""
   fi
 
@@ -174,7 +174,7 @@ render_template() {
 
   if [ ! -f "$template" ]; then
     err "Template introuvable : ${template}"
-    exit 1
+    return 1
   fi
 
   content="$(<"$template")"
@@ -247,6 +247,7 @@ render_normalize_app_vars() {
   if [ -z "${APP_PROTECTED:-}" ]; then
     APP_PROTECTED="${APP_AUTH:-true}"
   fi
+  : "${APP_DOCKER_SERVICE:=${APP_NAME}}"
   APP_AUTH="${APP_PROTECTED}"
 }
 
@@ -267,22 +268,22 @@ render_app_route_from_env() {
 
   if [ -z "${APP_NAME:-}" ]; then
     err "APP_NAME manquant pour la génération de route applicative."
-    exit 1
+    return 1
   fi
   if [ -z "${APP_HOST:-}" ]; then
     err "APP_HOST manquant pour la génération de route applicative : ${APP_NAME}"
-    exit 1
+    return 1
   fi
   if [ -z "${APP_PORT:-}" ]; then
     err "APP_PORT manquant pour la génération de route applicative : ${APP_NAME}"
-    exit 1
+    return 1
   fi
 
   case "$protected" in
     true)
       if [ "${OAUTH2_ENABLED:-false}" != true ]; then
         err "OAuth2 Proxy n'est pas configuré pour protéger ${APP_NAME}."
-        exit 1
+        return 1
       fi
       middlewares_block="      middlewares:
         - oauth2-chain"
@@ -292,7 +293,7 @@ render_app_route_from_env() {
       ;;
     *)
       err "APP_PROTECTED doit valoir true ou false pour ${APP_NAME}."
-      exit 1
+      return 1
       ;;
   esac
 

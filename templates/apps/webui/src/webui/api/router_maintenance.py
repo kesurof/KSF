@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from ..core.config import INSTALLED_DIR, DATA_DIR
+from ..core.schemas import ConfirmRequest
 
 router = APIRouter()
 
@@ -25,7 +26,9 @@ async def list_clean_data():
 
 
 @router.delete("/clean-data/{app_name}")
-async def clean_data_app(app_name: str):
+async def clean_data_app(app_name: str, req: ConfirmRequest):
+    if not req.confirmed:
+        return JSONResponse({"error": "Confirmation explicite requise."}, status_code=422)
     if ".." in app_name or "/" in app_name:
         return JSONResponse({"error": "Invalid app name"}, status_code=400)
     target = DATA_DIR / app_name

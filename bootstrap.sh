@@ -34,6 +34,7 @@ Options:
   --create-user USER  Crée un utilisateur système et l'ajoute au groupe sudo
   --ssh-key KEY       Clé publique SSH à installer (avec --create-user)
   --ssh-hardening     Désactive l'authentification SSH par mot de passe
+  --dry-run           Affiche les actions sans modifier le système ou le runtime
   -y, --yes           Répondre oui automatiquement
   -h, --help          Affiche cette aide
 EOF
@@ -42,13 +43,14 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --base-dir)    BASE_DIR="$2"; BASE_DIR_SET=true; shift 2 ;;
-    --tz)          TZ_VALUE="$2";     shift 2 ;;
+    --base-dir)    ksf_require_option_value "$1" "$#" || exit 1; BASE_DIR="$2"; BASE_DIR_SET=true; shift 2 ;;
+    --tz)          ksf_require_option_value "$1" "$#" || exit 1; TZ_VALUE="$2";     shift 2 ;;
     --skip-system) SKIP_SYSTEM=true;  shift ;;
     --skip-docker) SKIP_DOCKER=true;  shift ;;
-    --create-user) CREATE_USER="$2";  shift 2 ;;
-    --ssh-key)     SSH_KEY="$2";      shift 2 ;;
+    --create-user) ksf_require_option_value "$1" "$#" || exit 1; CREATE_USER="$2";  shift 2 ;;
+    --ssh-key)     ksf_require_option_value "$1" "$#" || exit 1; SSH_KEY="$2";      shift 2 ;;
     --ssh-hardening) SSH_HARDENING=true; shift ;;
+    --dry-run)      DRY_RUN=true;       shift ;;
     -y|--yes)      AUTO_YES=true;     shift ;;
     -h|--help)     usage ;;
     *)             echo "Option inconnue: $1"; usage ;;
@@ -72,7 +74,7 @@ fi
 PKG_MGR=$(detect_pkg_mgr)
 
 # ---------- Dry-run ----------
-if [ "$AUTO_YES" = false ]; then
+if [ "$AUTO_YES" = false ] && [ "$DRY_RUN" = false ]; then
   echo ""
   echo -n "Activer le mode dry-run (aucune modification) ? (oui/non) [non] : "
   read -r DRY_RUN_CONFIRM
@@ -128,7 +130,7 @@ if [ -n "$CREATE_USER" ] && [ "$BASE_DIR_SET" = false ]; then
 fi
 
 # ---------- Journalisation ----------
-if [ "$CREATE_RUNTIME_DIRS" = false ]; then
+if [ "$CREATE_RUNTIME_DIRS" = false ] || [ "$DRY_RUN" = true ]; then
   LOG_FILE="/tmp/ksf-bootstrap-$(date +%Y%m%d-%H%M%S).log"
 else
   LOG_FILE="${BASE_DIR}/logs/bootstrap-$(date +%Y%m%d-%H%M%S).log"

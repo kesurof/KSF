@@ -17,6 +17,16 @@ run() {
   "$@"
 }
 
+ksf_require_option_value() {
+  local option="$1"
+  local argument_count="$2"
+
+  if [ "$argument_count" -lt 2 ]; then
+    err "L'option ${option} nécessite une valeur."
+    return 1
+  fi
+}
+
 # ---------- Sérialisation ksf.env ----------
 ksf_env_quote_value() {
   local value="${1-}"
@@ -398,4 +408,43 @@ ksf_port_is_valid() {
 
   [[ "$port" =~ ^[0-9]+$ ]] || return 1
   [ "$port" -ge 1 ] && [ "$port" -le 65535 ]
+}
+
+ksf_instance_is_valid() {
+  local instance="${1:-}"
+
+  [[ "$instance" =~ ^[a-z0-9][a-z0-9_-]{0,62}$ ]]
+}
+
+ksf_domain_is_valid() {
+  local domain="${1:-}"
+
+  [ "${#domain}" -le 253 ] || return 1
+  [[ "$domain" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$ ]]
+}
+
+ksf_subdomain_is_valid() {
+  local subdomain="${1:-}"
+
+  [ "${#subdomain}" -le 63 ] || return 1
+  [[ "$subdomain" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]]
+}
+
+ksf_host_is_valid() {
+  local host="${1:-}"
+
+  ksf_domain_is_valid "$host"
+}
+
+ksf_path_is_safe() {
+  local path="${1:-}"
+
+  [ -n "$path" ] && [[ "$path" = /* ]] && [[ "$path" != *"//"* ]] && [[ "$path" != *"/../"* ]] && [[ "$path" != ../* ]] && [[ "$path" != */.. ]] && [[ "$path" != *"/./"* ]]
+}
+
+ksf_derived_path_is_valid() {
+  local base_dir="$1"
+  local path="$2"
+
+  ksf_path_is_safe "$base_dir" && ksf_path_is_safe "$path" && [[ "$path" = "${base_dir%/}/"* ]]
 }

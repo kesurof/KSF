@@ -2,6 +2,8 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from ..core.config import get_config, TRAEFIK_DIR, OAUTH2_DIR, CROWDSEC_DIR
 from ..core.docker import get_docker
+from ..core.schemas import ConfirmRequest
+from ..core.security import redact_secrets
 
 router = APIRouter()
 
@@ -89,11 +91,13 @@ def service_logs(name: str, tail: int = 200):
         return JSONResponse({"error": "Stack directory not found"}, status_code=404)
     docker = get_docker()
     logs = docker.compose_logs(stack_dir, tail=tail)
-    return {"logs": logs}
+    return {"logs": redact_secrets(logs)}
 
 
 @router.post("/{name}/restart")
-def service_restart(name: str):
+def service_restart(name: str, req: ConfirmRequest):
+    if not req.confirmed:
+        return JSONResponse({"error": "Confirmation explicite requise."}, status_code=422)
     dir_map = {
         "traefik": str(TRAEFIK_DIR),
         "oauth2": str(OAUTH2_DIR),
@@ -113,7 +117,9 @@ def service_restart(name: str):
 
 
 @router.post("/{name}/update")
-def service_update(name: str):
+def service_update(name: str, req: ConfirmRequest):
+    if not req.confirmed:
+        return JSONResponse({"error": "Confirmation explicite requise."}, status_code=422)
     dir_map = {
         "traefik": str(TRAEFIK_DIR),
         "oauth2": str(OAUTH2_DIR),

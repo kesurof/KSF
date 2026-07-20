@@ -2,22 +2,25 @@ import json
 import asyncio
 import os
 import subprocess
+import sqlite3
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from fastapi.testclient import TestClient
+from fastapi.responses import JSONResponse
 
-from webui.main import app
 from webui.api import router_apps
+from webui.api import router_logs
 from webui.api import router_operations
 from webui.api import router_status
 from webui.core import ksf_cli
 from webui.core import jobs
-from webui.core.schemas import InstallRequest, OperationRequest
-from webui.core.state import AppRecord
+from webui.core.schemas import ConfigureRequest, ConfirmRequest, InstallRequest, OperationRequest
+from webui.core.state import AppRecord, parse_env_file
 from webui.core.validation import validate_host, validate_instance, validate_port
 from webui.main import app
 
@@ -46,6 +49,38 @@ class OperationTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 422)
         self.assertIn("Confirmation", response.body.decode())
+
+
+class HttpSecurityTests(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(app)
+        self.headers = {"host": "webui.example.com", "origin": "https://webui.example.com"}
+
+    def test_mutation_without_origin_or_referer_is_rejected(self):
+        response = self.client.post("/api/operations/render", json={"confirmed": True})
+        self.assertEqual(response.status_code, 400)
+
+    def test_mutation_rejects_origin_that_only_contains_host(self):
+        response = self.client.post(
+            "/api/operations/render", headers={"host": "webui.example.com", "origin": "https://webui.example.com.attacker.test"},
+            json={"confirmed": True},
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_mutation_with_valid_origin_still_requires_server_confirmation(self):
+        response = self.client.post("/api/operations/render", headers=self.headers, json={})
+        self.assertEqual(response.status_code, 422)
+
+    def test_openapi_is_disabled_in_production(self):
+        response = self.client.get("/openapi.json")
+        self.assertEqual(response.status_code, 404)
+
+    @patch("webui.api.router_apps.get_installed_app")
+    def test_webui_rebuild_is_refused(self, get_installed_app):
+        get_installed_app.return_value = SimpleNamespace(disabled=False)
+        response = self.client.post("/api/apps/webui/rebuild", headers=self.headers, json={"confirmed": True})
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("ne peut pas se reconstruire", response.json()["error"])
 
     @patch("webui.api.router_operations.start_job", return_value=(42, ""))
     def test_confirmed_operation_creates_job(self, start_job):
@@ -82,6 +117,152 @@ class KsfCliTests(unittest.TestCase):
                 ksf_cli.run_ksf("render", dry_run=True)
             command = run.call_args.args[0]
             self.assertEqual(command[-2:], ["--dry-run", "--yes"])
+
+    def test_app_yes_requires_server_confirmation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = Path(tmp) / "app.sh"
+            script.touch()
+            result = SimpleNamespace(returncode=0, stdout="", stderr="")
+            with patch.object(ksf_cli, "CLI_DIR", Path(tmp)), patch("subprocess.run", return_value=result) as run:
+                ksf_cli.run_app("disable", "films")
+                self.assertNotIn("--yes", run.call_args.args[0])
+                ksf_cli.run_app("remove", "films", confirmed=True, remove_data=True)
+            command = run.call_args.args[0]
+            self.assertEqual(command[-1], "--yes")
+            self.assertEqual(run.call_args.kwargs["env"]["APP_REMOVE_DELETE_DATA"], "true")
+
+
+class AppMutationParityTests(unittest.TestCase):
+    def _config(self):
+        return SimpleNamespace(domains=["example.com"], has_oauth2=lambda: True)
+
+    def _start_job(self, action, target, runner):
+        runner()
+        return 42, ""
+
+    def test_each_template_install_is_delegated_to_the_cli(self):
+        templates_dir = Path(__file__).parents[3]
+        for template in ("dockge", "radarr", "webui", "wordpress"):
+            with self.subTest(template=template):
+                values = parse_env_file(templates_dir / template / "app.env")
+                self.assertTrue(values["APP_DOCKER_SERVICE"])
+                request = InstallRequest(
+                    template=template,
+                    instance=f"{template}-test",
+                    host=f"{template}.example.com",
+                    no_auth=True,
+                )
+                with patch("webui.api.router_apps.get_config", return_value=self._config()), \
+                     patch("webui.api.router_apps.get_template", return_value={"name": template}), \
+                     patch("webui.api.router_apps.get_installed_app", return_value=None), \
+                     patch("webui.api.router_apps.start_job", side_effect=self._start_job), \
+                     patch("webui.api.router_apps.run_app", return_value=(0, "", "")) as run_app:
+                    response = router_apps.install_app(request)
+                self.assertEqual(response.status_code, 202)
+                self.assertEqual(run_app.call_args.args[:4], ("install", template, "--instance", f"{template}-test"))
+                self.assertIn("--host", run_app.call_args.args)
+                self.assertTrue(run_app.call_args.kwargs["confirmed"])
+
+    def test_disabled_enable_reinstalls_through_the_cli_fallback(self):
+        app = AppRecord(
+            instance="films", template="radarr", port="7878", host="films.example.com",
+            protected=True, disabled=True,
+        )
+        with patch("webui.api.router_apps.get_installed_app", return_value=app), \
+             patch("webui.api.router_apps.start_job", side_effect=self._start_job), \
+             patch("webui.api.router_apps.run_app", return_value=(0, "", "")) as run_app:
+            response = router_apps.enable_app("films")
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(
+            run_app.call_args.args,
+            ("install", "radarr", "--instance", "films", "--port", "7878",
+             "--host", "films.example.com", "--auth", "--force"),
+        )
+        self.assertTrue(run_app.call_args.kwargs["confirmed"])
+
+    def test_disabled_start_reinstalls_through_the_cli_fallback(self):
+        app = AppRecord(
+            instance="films", template="radarr", port="7878", host="films.example.com",
+            protected=True, disabled=True,
+        )
+        with patch("webui.api.router_apps.get_installed_app", return_value=app), \
+             patch("webui.api.router_apps.start_job", side_effect=self._start_job), \
+             patch("webui.api.router_apps.run_app", return_value=(0, "", "")) as run_app:
+            response = router_apps.start_app("films")
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(
+            run_app.call_args.args,
+            ("install", "radarr", "--instance", "films", "--port", "7878",
+             "--host", "films.example.com", "--auth", "--force"),
+        )
+
+    def test_configure_requires_server_confirmation_and_delegates_to_cli(self):
+        app = AppRecord(instance="films", template="radarr", domain="example.com",
+                        subdomain="films", host="films.example.com")
+        with patch("webui.api.router_apps.get_installed_app", return_value=app), \
+             patch("webui.api.router_apps.get_config", return_value=self._config()), \
+             patch("webui.api.router_apps.start_job", side_effect=self._start_job), \
+             patch("webui.api.router_apps.run_app", return_value=(0, "", "")) as run_app:
+            refused = router_apps.configure_app("films", ConfigureRequest(subdomain="cinema"))
+            response = router_apps.configure_app(
+                "films", ConfigureRequest(subdomain="cinema", confirmed=True)
+            )
+        self.assertEqual(refused.status_code, 422)
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(run_app.call_args.args, ("configure", "films", "--subdomain", "cinema"))
+        self.assertTrue(run_app.call_args.kwargs["confirmed"])
+
+    def test_local_only_configuration_omits_public_access_overrides(self):
+        app = AppRecord(instance="films", template="radarr", domain="example.com",
+                        subdomain="films", host="films.example.com", host_port="17878")
+        with patch("webui.api.router_apps.get_installed_app", return_value=app), \
+             patch("webui.api.router_apps.get_config", return_value=self._config()), \
+             patch("webui.api.router_apps.start_job", side_effect=self._start_job), \
+             patch("webui.api.router_apps.run_app", return_value=(0, "", "")) as run_app:
+            response = router_apps.configure_app(
+                "films", ConfigureRequest(domain="example.com", subdomain="films",
+                                          host="films.example.com", host_port="17878",
+                                          local_only=True, confirmed=True)
+            )
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(
+            run_app.call_args.args,
+            ("configure", "films", "--host-port", "17878", "--local-only"),
+        )
+
+    def test_update_all_passes_server_confirmation_to_each_app(self):
+        apps = [AppRecord(instance="films", template="radarr")]
+        captured = []
+
+        def runner_job(_action, _target, runner, **_kwargs):
+            runner()
+            return 42, ""
+
+        with patch("webui.api.router_operations.list_installed_apps", return_value=apps), \
+             patch("webui.api.router_operations.start_job", side_effect=runner_job), \
+             patch("webui.api.router_operations.run_app", return_value=(0, "", "")) as run_app, \
+             patch("webui.api.router_operations.run_ksf", return_value=(0, "", "")):
+            response = router_operations.update_all_apps(OperationRequest(confirmed=True))
+            captured.append(run_app.call_args)
+        self.assertEqual(response.status_code, 202)
+        self.assertTrue(captured[0].kwargs["confirmed"])
+
+    def test_update_is_not_queued_without_server_confirmation(self):
+        app = AppRecord(instance="films", template="radarr")
+        with patch("webui.api.router_apps.get_installed_app", return_value=app), \
+             patch("webui.api.router_apps.start_job") as start_job:
+            response = router_apps.update_app("films", ConfirmRequest(confirmed=False))
+        self.assertEqual(response.status_code, 422)
+        start_job.assert_not_called()
+
+    def test_router_has_no_direct_application_mutation_primitives(self):
+        source = Path(router_apps.__file__).read_text()
+        for primitive in (
+            "render_app_route", "remove_route", "run_dns", "compose_up",
+            "compose_down", "compose_build", "compose_pull", "compose_restart",
+            "write_text", "mkdir", "rmtree", "unlink", "subprocess",
+        ):
+            self.assertNotIn(primitive, source)
 
 
 class DoctorTests(unittest.TestCase):
@@ -151,6 +332,10 @@ class DoctorTests(unittest.TestCase):
 
 
 class JobTests(unittest.TestCase):
+    def _with_database(self):
+        tmp = tempfile.TemporaryDirectory()
+        return tmp, patch.dict(os.environ, {"KSF_WEBUI_DB_PATH": str(Path(tmp.name) / "jobs.db")})
+
     def test_dry_run_job_is_marked_and_redacts_token(self):
         done = threading.Event()
         updates = []
@@ -165,10 +350,120 @@ class JobTests(unittest.TestCase):
         self.assertTrue(any("******" in str(update) for update in updates))
         self.assertTrue(any(update[2] == "Simulation terminee" for update in updates if len(update) > 2))
 
+    def test_empty_database_is_initialized_with_secure_permissions(self):
+        tmp, environment = self._with_database()
+        with tmp, environment:
+            job_id = asyncio.run(jobs.create_job("render", "platform"))
+            path = jobs.get_db_path()
+            self.assertEqual(job_id, 1)
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(path.parent.stat().st_mode & 0o777, 0o700)
+            with sqlite3.connect(path) as db:
+                versions = [row[0] for row in db.execute("SELECT version FROM schema_migrations")]
+            self.assertEqual(versions, [1, 2, 3])
+
+    def test_populated_legacy_database_is_upgraded_and_backed_up(self):
+        tmp, environment = self._with_database()
+        with tmp, environment:
+            path = jobs.get_db_path()
+            with sqlite3.connect(path) as db:
+                db.execute("""CREATE TABLE jobs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT NOT NULL,
+                    target TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+                    message TEXT DEFAULT '', result TEXT DEFAULT '', created_at REAL NOT NULL,
+                    finished_at REAL)""")
+                db.execute("INSERT INTO jobs (action, target, status, created_at) VALUES ('a', 'same', 'running', 1)")
+                db.execute("INSERT INTO jobs (action, target, status, created_at) VALUES ('b', 'same', 'pending', 2)")
+            asyncio.run(jobs.list_recent_jobs())
+            backups = list(path.parent.glob("jobs.db.v3.pre-migration-*.bak"))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual(backups[0].stat().st_mode & 0o777, 0o600)
+            with sqlite3.connect(backups[0]) as backup:
+                backed_up_active = backup.execute(
+                    "SELECT COUNT(*) FROM jobs WHERE status IN ('pending', 'running')"
+                ).fetchone()[0]
+            with sqlite3.connect(path) as db:
+                active = db.execute("SELECT action FROM jobs WHERE status IN ('pending', 'running')").fetchall()
+                dry_run = [row[1] for row in db.execute("PRAGMA table_info(jobs)")]
+            self.assertEqual(active, [("b",)])
+            self.assertIn("dry_run", dry_run)
+            self.assertEqual(backed_up_active, 2)
+
+    def test_failed_migration_rolls_back_its_schema_version(self):
+        tmp, environment = self._with_database()
+
+        async def broken_migration(_db):
+            raise RuntimeError("migration failed")
+
+        with tmp, environment, patch.object(jobs, "MIGRATIONS", [(1, False, broken_migration)]):
+            with self.assertRaisesRegex(RuntimeError, "migration failed"):
+                asyncio.run(jobs.create_job("render", "platform"))
+            with sqlite3.connect(jobs.get_db_path()) as db:
+                applied = db.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0]
+            self.assertEqual(applied, 0)
+
+    def test_sqlite_lock_blocks_concurrent_jobs_for_the_same_target(self):
+        tmp, environment = self._with_database()
+        with tmp, environment:
+            async def create_twice():
+                # Initialize migrations before exercising only the job-level lock.
+                await jobs.create_job("seed", "seed-target")
+                return await asyncio.gather(
+                    jobs.create_job("render", "platform"),
+                    jobs.create_job("render", "platform"),
+                    return_exceptions=True,
+                )
+
+            results = asyncio.run(create_twice())
+            self.assertEqual(sum(isinstance(item, int) for item in results), 1)
+            self.assertEqual(sum(isinstance(item, sqlite3.IntegrityError) for item in results), 1)
+
+    def test_retention_removes_only_old_finished_jobs(self):
+        tmp, environment = self._with_database()
+        with tmp, environment, patch.dict(os.environ, {"KSF_WEBUI_JOB_RETENTION_DAYS": "1"}):
+            first = asyncio.run(jobs.create_job("old", "old-target"))
+            asyncio.run(jobs.update_job(first, "completed"))
+            with sqlite3.connect(jobs.get_db_path()) as db:
+                db.execute("UPDATE jobs SET finished_at = ? WHERE id = ?", (time.time() - 172800, first))
+            asyncio.run(jobs.create_job("new", "new-target"))
+            self.assertIsNone(asyncio.run(jobs.get_job(first)))
+
+    def test_job_redaction_covers_configured_and_named_secrets(self):
+        with patch("webui.core.config.get_config", return_value=SimpleNamespace(env={"CF_API_KEY": "known-secret"})):
+            self.assertNotIn("known-secret", jobs.redact_secrets("CF_API_KEY=known-secret"))
+            self.assertNotIn("other-secret", jobs.redact_secrets("OAUTH2_CLIENT_SECRET=other-secret"))
+
+
+class ContainerSecurityTests(unittest.TestCase):
+    def test_webui_socket_and_runtime_are_explicit_administrative_mounts(self):
+        compose = Path(__file__).parents[2] / "compose.yml"
+        source = compose.read_text()
+        self.assertIn("user: \"${APP_PUID}:${APP_PGID}\"", source)
+        self.assertIn("/var/run/docker.sock:/var/run/docker.sock:rw", source)
+        self.assertIn("${BASE_DIR}:${BASE_DIR}:rw", source)
+
+
+class LogRedactionTests(unittest.TestCase):
+    @patch("webui.api.router_logs.get_docker")
+    @patch("pathlib.Path.exists", return_value=True)
+    @patch("webui.core.config.get_config", return_value=SimpleNamespace(env={"CF_API_KEY": "known-secret"}))
+    def test_logs_do_not_return_configured_secrets(self, _config, _exists, get_docker):
+        get_docker.return_value.compose_logs.return_value = "CF_API_KEY=known-secret"
+
+        response = router_logs.get_logs("traefik")
+
+        self.assertNotIn("known-secret", response["logs"])
+        self.assertIn("******", response["logs"])
+
 
 class RouteTests(unittest.TestCase):
     def test_platform_operation_routes_are_registered(self):
-        paths = set(app.openapi()["paths"])
+        paths = {route.path for route in app.routes if hasattr(route, "path")}
+        for route in app.routes:
+            if not hasattr(route, "original_router"):
+                continue
+            prefix = route.include_context.prefix
+            paths.update(prefix + child.path for child in route.original_router.routes)
         self.assertIn("/api/operations/render", paths)
         self.assertIn("/api/operations/apps/update-all", paths)
         self.assertIn("/apps/install", paths)
@@ -195,10 +490,8 @@ class AppListTests(unittest.TestCase):
         template = Path(__file__).parents[1] / "webui" / "templates" / "pages" / "apps" / "index.html"
         source = template.read_text()
 
-        self.assertIn('class="app-card"', source)
-        self.assertIn('class="app-card-body"', source)
-        self.assertIn('class="dropdown-menu"', source)
-        self.assertNotIn('<td data-label="Actions" class="flex', source)
+        self.assertIn("fragment_loader('/ui/apps')", source)
+        self.assertNotIn("function appsPage", source)
 
 
 class InfraRouteTests(unittest.TestCase):
@@ -217,8 +510,157 @@ class InfraRouteTests(unittest.TestCase):
     def test_infra_index_uses_app_card(self):
         source = Path(__file__).parents[1].joinpath(
             "webui/templates/pages/infrastructure/index.html").read_text()
-        self.assertIn('class="app-card"', source)
-        self.assertIn('class="app-card-body"', source)
+        self.assertIn("fragment_loader('/ui/infrastructure')", source)
+
+    def test_logs_page_renders(self):
+        client = TestClient(app)
+        response = client.get("/logs")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('hx-get="/ui/logs"', response.text)
+
+
+class FragmentTests(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(app)
+
+    def test_fragment_has_live_region_and_no_page_alpine_controller(self):
+        response = self.client.get("/ui/apps")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('id="fragment-content"', response.text)
+        self.assertIn('aria-live="polite"', response.text)
+        self.assertNotIn('x-data="appsPage', response.text)
+
+    def test_htmx_not_found_returns_an_error_fragment(self):
+        response = self.client.get("/ui/unknown", headers={"HX-Request": "true"})
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('id="fragment-content"', response.text)
+        self.assertIn('role="alert"', response.text)
+
+    @patch("webui.api.router_fragments.configure_app")
+    @patch("webui.api.router_fragments.get_installed_app")
+    def test_configure_form_delegates_to_confirmed_configuration_job(self, get_app, configure):
+        get_app.return_value = AppRecord(instance="films", template="radarr",
+                                         domain="example.com", subdomain="films")
+        configure.return_value = JSONResponse({"job_id": 42}, status_code=202)
+        response = self.client.post(
+            "/ui/apps/films/configure", headers={
+                "host": "webui.example.com", "origin": "https://webui.example.com",
+            }, data={"subdomain": "cinema", "confirmed": "true"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Reconfiguration lancée", response.text)
+        request = configure.call_args.args[1]
+        self.assertTrue(request.confirmed)
+        self.assertEqual(request.subdomain, "cinema")
+
+    def test_configure_form_disables_public_fields_for_local_only_access(self):
+        template = (Path(__file__).parents[1] / "webui" / "templates" /
+                    "fragments" / "content.html").read_text()
+
+        self.assertIn('x-model="localOnly"', template)
+        self.assertEqual(template.count('x-bind:disabled="localOnly"'), 3)
+
+    @patch("webui.api.router_fragments.start_app")
+    @patch("webui.api.router_fragments.get_docker")
+    @patch("webui.api.router_fragments.get_installed_app")
+    def test_app_detail_renders_enable_control_and_delegates_to_lifecycle_job(
+        self, get_app, get_docker, start
+    ):
+        get_app.return_value = AppRecord(instance="films", template="radarr",
+                                         local_only=True, host_port="17878", disabled=True)
+        get_docker.return_value.stack_state.return_value = {
+            "state": "disabled", "running": 0, "total": 1, "services": []
+        }
+        start.return_value = JSONResponse({"job_id": 42}, status_code=202)
+
+        detail = self.client.get("/ui/apps/films")
+        response = self.client.post(
+            "/ui/apps/films/start",
+            headers={"host": "webui.example.com", "origin": "https://webui.example.com"},
+        )
+
+        self.assertEqual(detail.status_code, 200)
+        self.assertIn('hx-post="/ui/apps/films/start"', detail.text)
+        self.assertIn("Activer", detail.text)
+        self.assertNotIn("https://", detail.text)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Activation lancée", response.text)
+        start.assert_called_once_with("films")
+
+    def test_each_named_screen_category_has_a_fragment_endpoint(self):
+        paths = {route.path for route in app.routes if hasattr(route, "path")}
+        for route in app.routes:
+            if hasattr(route, "original_router"):
+                paths.update(route.include_context.prefix + child.path
+                             for child in route.original_router.routes)
+
+        expected = {
+            "/ui/dashboard", "/ui/apps", "/ui/apps/install",
+            "/ui/apps/{instance}", "/ui/apps/{instance}/start",
+            "/ui/apps/{instance}/configure",
+            "/ui/infrastructure", "/ui/infrastructure/{name}", "/ui/logs",
+            "/ui/logs/{target}", "/ui/general", "/ui/general/{surface}",
+            "/ui/security", "/ui/security/{surface}", "/ui/maintenance",
+            "/ui/maintenance/operations",
+        }
+        self.assertTrue(expected.issubset(paths))
+
+    @patch("webui.api.router_fragments.get_logs")
+    def test_log_errors_are_rendered_as_html_fragments(self, get_logs):
+        from fastapi.responses import JSONResponse
+
+        get_logs.return_value = JSONResponse({"error": "Logs indisponibles"}, status_code=503)
+        response = self.client.get("/ui/logs/traefik", headers={"HX-Request": "true"})
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn('role="alert"', response.text)
+        self.assertIn("Logs indisponibles", response.text)
+
+    def test_fragment_result_covers_empty_success_and_long_output(self):
+        template = (Path(__file__).parents[1] / "webui" / "templates" /
+                    "fragments" / "result.html").read_text()
+        css = (Path(__file__).parents[1] / "webui" / "static" / "input.css").read_text()
+
+        self.assertIn("Aucune donnée à afficher.", template)
+        self.assertIn('role="status"', template)
+        self.assertIn('role="alert"', template)
+        self.assertIn('tabindex="-1"', template)
+        self.assertIn(".fragment-output", css)
+
+    def test_htmx_error_and_swap_keep_html_and_focus(self):
+        source = (Path(__file__).parents[1] / "webui" / "static" / "app.js").read_text()
+
+        self.assertIn("htmx:responseError", source)
+        self.assertIn("target.innerHTML = xhr.responseText", source)
+        self.assertIn("htmx:afterSwap", source)
+        self.assertIn("fragment.focus", source)
+
+
+class FrontendAssetTests(unittest.TestCase):
+    def test_compiled_css_keeps_shared_component_selectors(self):
+        static = Path(__file__).parents[1] / "webui" / "static"
+        source = (static / "input.css").read_text()
+        css = (static / "app.css").read_text()
+
+        for selector in (".check-row", ".form-inline", ".modal-body", ".dropdown-menu", ".icon-sprite"):
+            self.assertIn(selector, source)
+            self.assertIn(selector, css)
+
+        self.assertFalse(list(static.glob("*legacy*")))
+
+    def test_local_vendor_assets_are_locked_and_referenced(self):
+        root = Path(__file__).parents[2]
+        base = (root / "src" / "webui" / "templates" / "base.html").read_text()
+        package = (root / "package.json").read_text()
+
+        self.assertIn('/static/vendor/htmx-2.0.8.min.js', base)
+        self.assertIn('/static/vendor/alpine-3.15.3.min.js', base)
+        self.assertIn('"htmx.org": "2.0.8"', package)
+        self.assertIn('"alpinejs": "3.15.3"', package)
+        self.assertTrue((root / "src" / "webui" / "static" / "vendor" / "htmx-2.0.8.min.js").is_file())
+        self.assertTrue((root / "src" / "webui" / "static" / "vendor" / "alpine-3.15.3.min.js").is_file())
 
 
 if __name__ == "__main__":

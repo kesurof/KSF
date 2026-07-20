@@ -16,4 +16,6 @@ skills, and documentation.
 - Check user-facing flags and commands against CLI help and README.
 - For webui work, check Python dependencies, templates, API behavior, UI states,
   and host ownership requirements.
-- Report only commands actually run and residual risks.
+- For a release metadata change, run `make check-release` when feasible.
+- Report only commands actually run, `SKIP` outputs, unexecuted opt-in controls
+  and residual risks in `docs/checklists/release.md`.

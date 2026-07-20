@@ -117,9 +117,15 @@ Autorisé :
 
 Interdit :
 
-- Installer des apps métier via des flags `--with-<app>`.
+- Installer des apps métier via des flags `--with-<app>`, sauf `--with-webui`.
 - Gérer le cycle de vie de Radarr, Dockge, WordPress ou autres apps applicatives.
 - Modifier l'utilisateur système, SSH ou l'installation Docker.
+
+`--with-webui` est l'exception explicite : il installe l'interface
+d'administration de la plateforme apres son infrastructure, en deleguant son
+cycle de vie a `app.sh`. Il exige Traefik, un domaine et OAuth2 Proxy configure;
+si cette installation deleguee echoue, `deploy.sh` doit signaler un deploiement
+plateforme partiel et retourner un code non nul.
 
 ### `app.sh`
 
@@ -234,6 +240,17 @@ Obligatoire :
 
 ## Validation obligatoire
 
+Le socle hors ligne est `make validate`; il execute la syntaxe Bash, les tests
+Bash (validateurs, dry-run, lifecycle, rollback) et la matrice de rendu statique
+sans daemon Docker ni dependance Web UI.
+`make check-release` ajoute la verification SemVer de `VERSION` et de son entree
+dans `CHANGELOG.md`. ShellCheck et shfmt sont executes seulement s'ils sont
+installes et peuvent afficher `SKIP`.
+
+Les controles `make check-compose`, `make test-docker` et `make check-webui`
+sont opt-in. Ne jamais les declarer executes sans les avoir lances; consigner
+les controles omis et les risques residuels dans `docs/checklists/release.md`.
+
 Après modification de scripts Bash :
 
 ```bash
@@ -288,6 +305,12 @@ docker compose -f /tmp/ksf-test/apps/radarr/docker-compose.yml config >/dev/null
 - Toute nouvelle commande utilisateur ou tout nouveau flag notable doit être reflété dans le README et l'aide CLI concernée.
 - `AGENTS.md` doit rester aligné avec l'architecture réelle du repo, pas avec une architecture supposée.
 - Si une convention apparaît à la fois dans le code, le README et `AGENTS.md`, éviter les contradictions ; mettre à jour les trois quand nécessaire.
+- Les guides de contribution sont dans `docs/`; les checklists sont dans
+  `docs/checklists/` et les modeles a copier dans `docs/templates/`.
+- Les agents, commandes et skills OpenCode sont dans `.opencode/`. Utiliser
+  `/preflight` avant les changements significatifs et `/check-project` avant
+  leur livraison. Ces revues doivent citer les controles executes, les `SKIP`,
+  les controles non executes et les risques residuels.
 
 ## Git et fichiers générés
 
@@ -312,10 +335,11 @@ Le Web UI KSF (`templates/apps/webui/`) est une application FastAPI + Jinja2 + H
 templates/apps/webui/
   app.env                  # APP_PORT=8000, APP_PROTECTED=true
   compose.yml              # Build Dockerfile + volumes
-  Dockerfile               # python:3.12-slim
+  Dockerfile               # Build Node + uv + Python
   pre_install.sh           # Copie les sources dans APP_DIR
   ksf/                     # Runtime KSF copié par le hook pour les opérations plateforme
-  requirements.txt
+  pyproject.toml           # Dependances Python verrouillees par uv.lock
+  package.json             # Tailwind CSS verrouille par package-lock.json
   src/webui/
     main.py                # App FastAPI
     core/config.py         # Lecture ksf.env
@@ -326,7 +350,8 @@ templates/apps/webui/
     core/schemas.py        # Pydantic
     api/                   # Routes REST (apps, status, infra, crowdsec, logs, etc.)
     templates/             # Jinja2 (base.html + pages)
-    static/app.css         # CSS dark theme
+    static/input.css       # Source Tailwind et design tokens
+    static/app.css         # CSS Tailwind compilee
 ```
 
 ### Conteneur webui
@@ -339,4 +364,4 @@ Le conteneur webui doit impérativement :
 - **Générer des routes YAML valides** — `render_app_route()` dans `core/routes.py` ne doit pas produire de clés dupliquées (bug `tls:` répété déjà corrigé). Une route invalide empêche Traefik de charger le fichier et bloque l'obtention du certificat Let's Encrypt.
 
 ### deploy.sh --with-webui
-Le flag `--with-webui` lance `app.sh install webui` automatiquement après le déploiement de l'infrastructure. Nécessite `--with-traefik` et un domaine configuré.
+Le flag `--with-webui` lance `app.sh install webui` automatiquement après le déploiement de l'infrastructure. Il nécessite `--with-traefik`, un domaine configuré et OAuth2 Proxy configuré. Si `app.sh` échoue, l'infrastructure reste déployée mais `deploy.sh` retourne un code non nul et loggue un déploiement plateforme partiel.

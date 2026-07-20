@@ -14,146 +14,150 @@ validation des criteres de sortie et mise a jour de la documentation concernee.
 
 ## 1. Bash Et Dry-Run
 
-- [ ] Ajouter des validateurs partages pour instance, domaine, sous-domaine,
+- [x] Ajouter des validateurs partages pour instance, domaine, sous-domaine,
   host, port et chemins derives.
-- [ ] Valider les arguments avant toute ecriture, route, appel DNS ou Compose.
-- [ ] Corriger `ksf.sh install-cli --dry-run` afin qu'il ne modifie jamais les
+- [x] Valider les arguments avant toute ecriture, route, appel DNS ou Compose.
+- [x] Corriger `ksf.sh install-cli --dry-run` afin qu'il ne modifie jamais les
   profils shell.
-- [ ] Ajouter ou clarifier le support `bootstrap.sh --dry-run`.
-- [ ] Garantir que les logs bootstrap dry-run restent hors de `${BASE_DIR}`.
-- [ ] Ajouter des tests zero-ecriture pour bootstrap, deploy, app install et
+- [x] Ajouter ou clarifier le support `bootstrap.sh --dry-run`.
+- [x] Garantir que les logs bootstrap dry-run restent hors de `${BASE_DIR}`.
+- [x] Ajouter des tests zero-ecriture pour bootstrap, deploy, app install et
   install-cli.
 
 ## 2. Cycle De Vie Des Apps
 
-- [ ] Faire de `app.sh` la source unique des mutations applicatives.
-- [ ] Faire deleguer les mutations webui a `app.sh` via des jobs.
-- [ ] Corriger le rendu webui de `DOCKER_GROUP_ADD_BLOCK`.
-- [ ] Aligner le fallback `APP_DOCKER_SERVICE` avec le CLI Bash.
-- [ ] Declarer `APP_DOCKER_SERVICE` dans chaque template fourni.
-- [ ] Ajouter des tests de parite CLI/Web UI pour chaque template.
-- [ ] Ajouter un rollback pour les erreurs de rendu, DNS, hook et Compose.
-- [ ] Ne jamais supprimer les donnees existantes pendant un rollback.
+- [x] Faire de `app.sh` la source unique des mutations applicatives.
+- [x] Faire deleguer les mutations webui a `app.sh` via des jobs.
+- [x] Corriger le rendu webui de `DOCKER_GROUP_ADD_BLOCK`.
+- [x] Aligner le fallback `APP_DOCKER_SERVICE` avec le CLI Bash.
+- [x] Declarer `APP_DOCKER_SERVICE` dans chaque template fourni.
+- [x] Ajouter des tests de parite CLI/Web UI pour chaque template.
+- [x] Ajouter un rollback pour les erreurs de rendu, DNS, hook et Compose.
+- [x] Ne jamais supprimer les donnees existantes pendant un rollback.
 
 ## 3. Deploy Avec Webui
 
-- [ ] Valider que `--with-webui` requiert Traefik, domaine et OAuth2 Proxy.
-- [ ] Faire echouer `deploy.sh` si l'installation webui deleguee echoue.
-- [ ] Distinguer explicitement deployment plateforme et deployment partiel dans
+- [x] Valider que `--with-webui` requiert Traefik, domaine et OAuth2 Proxy.
+- [x] Faire echouer `deploy.sh` si l'installation webui deleguee echoue.
+- [x] Distinguer explicitement deployment plateforme et deployment partiel dans
   les logs et le code retour.
-- [ ] Aligner aide CLI, README et AGENTS.md.
+- [x] Aligner aide CLI, README et AGENTS.md.
 
 ## 4. Rendu WordPress Et Secrets
 
-- [ ] Identifier tous les placeholders WordPress et Compose differes.
-- [ ] Generer les secrets par instance dans des fichiers runtime `600`.
-- [ ] Rendre les Compose sans placeholder KSF residuel.
-- [ ] Tester deux instances WordPress avec secrets et donnees distincts.
-- [ ] Verifier les permissions des fichiers generes.
-- [ ] Epingler et verifier le telechargement WP-CLI, ou le supprimer.
+- [x] Identifier tous les placeholders WordPress et Compose differes.
+- [x] Generer les secrets par instance dans des fichiers runtime `600`.
+- [x] Rendre les Compose sans placeholder KSF residuel.
+- [x] Tester deux instances WordPress avec secrets et donnees distincts.
+- [x] Verifier les permissions des fichiers generes.
+- [x] Epingler et verifier le telechargement WP-CLI, ou le supprimer.
 
 ## 5. Securite Webui
 
-- [ ] Conserver les ports directs webui sur `127.0.0.1` uniquement.
-- [ ] Documenter localhost comme frontiere de confiance acceptee.
-- [ ] Normaliser la verification stricte Origin/Referer/Host.
-- [ ] Refuser les mutations navigateur sans Origin ni Referer valide.
-- [ ] Desactiver OpenAPI et Swagger en production.
-- [ ] Exiger une confirmation serveur pour les actions sensibles et destructives.
-- [ ] Ajouter des tests HTTP directs pour les confirmations et CSRF.
-- [ ] Supprimer le self-rebuild root/non deterministe du webui.
-- [ ] Conserver le rebuild webui via CLI jusqu'a un mecanisme sur execute avec
+- [x] Conserver les ports directs webui sur `127.0.0.1` uniquement.
+- [x] Documenter localhost comme frontiere de confiance acceptee.
+- [x] Normaliser la verification stricte Origin/Referer/Host.
+- [x] Refuser les mutations navigateur sans Origin ni Referer valide.
+- [x] Desactiver OpenAPI et Swagger en production.
+- [x] Exiger une confirmation serveur pour les actions sensibles et destructives.
+- [x] Ajouter des tests HTTP directs pour les confirmations et CSRF.
+- [x] Supprimer le self-rebuild root/non deterministe du webui.
+- [x] Conserver le rebuild webui via CLI jusqu'a un mecanisme sur execute avec
   UID/GID hote.
-- [ ] Documenter et tester le socket Docker comme frontiere administrative.
-- [ ] Renforcer la redaction des secrets dans les jobs, logs et SQLite.
+- [x] Documenter et tester le socket Docker comme frontiere administrative.
+- [x] Renforcer la redaction des secrets dans les jobs, logs et SQLite.
 
 ## 6. Base De Donnees Webui
 
-- [ ] Rendre le chemin SQLite configurable et testable.
-- [ ] Creer repertoire et base avec permissions et ownership hote corrects.
-- [ ] Ajouter une table `schema_migrations` et des migrations transactionnelles.
-- [ ] Retirer les `except Exception: pass` de migration.
-- [ ] Sauvegarder avant toute migration destructive.
-- [ ] Configurer et documenter WAL, busy timeout et integrity check.
-- [ ] Ajouter une retention des jobs.
-- [ ] Empecher les jobs concurrents au niveau SQLite.
-- [ ] Tester base vide, base peuplee, upgrade, erreur, permissions, concurrence,
+- [x] Rendre le chemin SQLite configurable et testable.
+- [x] Creer repertoire et base avec permissions et ownership hote corrects.
+- [x] Ajouter une table `schema_migrations` et des migrations transactionnelles.
+- [x] Retirer les `except Exception: pass` de migration.
+- [x] Sauvegarder avant toute migration destructive.
+- [x] Configurer et documenter WAL, busy timeout et integrity check.
+- [x] Ajouter une retention des jobs.
+- [x] Empecher les jobs concurrents au niveau SQLite.
+- [x] Tester base vide, base peuplee, upgrade, erreur, permissions, concurrence,
   redaction et restauration.
 
 ## 7. Migration HTMX
 
-- [ ] Migrer dashboard et statuts vers des fragments serveur.
-- [ ] Migrer liste et detail des applications.
-- [ ] Migrer installation et configuration d'app.
-- [ ] Migrer infrastructure et logs.
-- [ ] Migrer general, routes, config et doctor.
-- [ ] Migrer CrowdSec, AppSec et securite.
-- [ ] Migrer maintenance et operations longues.
-- [ ] Limiter Alpine au drawer, modales, menus et etat visuel local.
-- [ ] Ajouter chargement, vide, erreur, succes et donnees longues a chaque flux.
-- [ ] Gerer focus et annonces apres swaps HTMX.
-- [ ] Ajouter des tests de fragments et erreurs HTTP.
+- [x] Migrer dashboard et statuts vers des fragments serveur. Evidence : `/ui/dashboard` et les fragments de statut restent rendus par FastAPI.
+- [x] Migrer liste et detail des applications. Evidence : `/ui/apps` et `/ui/apps/{instance}`.
+- [x] Migrer installation et configuration d'app. Evidence : `/ui/apps/install` et `/ui/apps/{instance}/configure`.
+- [x] Migrer infrastructure et logs. Evidence : `/ui/infrastructure`, `/ui/infrastructure/{name}` et `/ui/logs/{target}` rendent du HTML.
+- [x] Migrer general, routes, config et doctor. Evidence : `/ui/general/{doctor,routes,config}`.
+- [x] Migrer CrowdSec, AppSec et securite. Evidence : `/ui/security/{crowdsec,appsec,alerts}`.
+- [x] Migrer maintenance et operations longues. Evidence : `/ui/maintenance` et `/ui/maintenance/operations`.
+- [x] Limiter Alpine au drawer, modales, menus et etat visuel local. Evidence : `app.js` ne charge aucun etat metier.
+- [x] Ajouter chargement, vide, erreur, succes et donnees longues a chaque flux. Evidence : loaders HTMX, `fragments/result.html` et `fragment-output`.
+- [x] Gerer focus et annonces apres swaps HTMX. Evidence : `htmx:afterSwap`, regions `aria-live` et focus des erreurs HTML.
+- [x] Ajouter des tests de fragments et erreurs HTTP. Evidence : `FragmentTests` couvre la matrice des fragments et les erreurs HTML.
 
 ## 8. Tailwind Et Accessibilite
 
-- [ ] Conserver `legacy.css` charge tant que ses classes sont utilisees.
-- [ ] Verifier que `app.css` compile conserve les selecteurs legacy requis.
-- [ ] Inventorier les styles legacy par ecran.
-- [ ] Migrer les composants partages vers tokens et utilitaires Tailwind.
-- [ ] Retirer les styles inline.
-- [ ] Implementer modal accessible avec focus trap et restauration du focus.
-- [ ] Implementer tabs, dropdowns et combobox accessibles au clavier.
-- [ ] Ajouter les icones SVG manquantes.
-- [ ] Preserver dark mode, contraste, focus visible et reduced motion.
-- [ ] Servir HTMX et Alpine localement depuis des dependances npm verrouillees.
-- [ ] Supprimer `legacy.css` seulement lorsqu'il est vide et non reference.
+- [x] Conserver la feuille de compatibilite chargee tant que ses classes sont utilisees.
+- [x] Verifier que `app.css` compile conserve les selecteurs partages requis.
+- [x] Inventorier les composants par ecran.
+- [x] Migrer les composants partages vers tokens et utilitaires Tailwind.
+- [x] Retirer les styles inline.
+- [x] Implementer modal accessible avec focus trap et restauration du focus.
+- [x] Implementer tabs, dropdowns et combobox accessibles au clavier.
+- [x] Ajouter les icones SVG manquantes.
+- [x] Preserver dark mode, contraste, focus visible et reduced motion.
+- [x] Servir HTMX et Alpine localement depuis des dependances npm verrouillees.
+- [x] Migrer les selecteurs restants dans `input.css`, supprimer la feuille de
+  compatibilite et verifier son absence de reference.
 
 ## 9. Validation UI
 
-- [ ] Installer et configurer Playwright.
-- [ ] Remplacer `make test-ui` par une suite executable.
-- [ ] Tester les parcours critiques a 390 x 844 et 1440 x 900.
-- [ ] Tester navigation, drawer, modales, formulaires, jobs, logs et maintenance.
-- [ ] Tester dark mode, reduced motion, etats vide/erreur/chargement/succes et
+- [x] Installer et configurer Playwright : `uv` 0.7.13, Playwright 1.61.0 et
+  Chromium 149.0.7827.55 ont ete installes le 2026-07-20.
+- [x] Executer `make test-ui` : 12 scenarios Playwright verts le 2026-07-20.
+- [x] Tester les parcours critiques a 390 x 844 et 1440 x 900.
+- [x] Tester navigation, drawer, modales, formulaires, jobs, logs et maintenance.
+- [x] Tester dark mode, reduced motion, etats vide/erreur/chargement/succes et
   textes longs.
-- [ ] Ajouter des controles d'accessibilite, focus et clavier.
+- [x] Ajouter des controles d'accessibilite, focus et clavier.
 
 ## 10. Dependances Et Images
 
-- [ ] Supprimer `templates/apps/webui/requirements.txt`.
-- [ ] Utiliser `pyproject.toml`/`uv.lock` comme source Python unique.
-- [ ] Utiliser `package.json`/`package-lock.json` comme source Node unique.
-- [ ] Ajouter les cibles locales audit Python, audit npm, lock check et build
+- [x] Supprimer `templates/apps/webui/requirements.txt`.
+- [x] Utiliser `pyproject.toml`/`uv.lock` comme source Python unique.
+- [x] Utiliser `package.json`/`package-lock.json` comme source Node unique.
+- [x] Ajouter les cibles locales audit Python, audit npm, lock check et build
   image.
-- [ ] Documenter la mise a jour des fichiers lock.
-- [ ] Remplacer toutes les images `latest` par des tags versionnes revus.
-- [ ] Epingler les tags Node, Python et uv du Dockerfile.
-- [ ] Documenter les versions Docker CLI et Compose de l'image webui.
-- [ ] Nettoyer les caches, bytecode et fichiers temporaires des templates.
-- [ ] Reduire les copies larges de `pre_install.sh` a une liste explicite.
+- [x] Documenter la mise a jour des fichiers lock.
+- [x] Remplacer toutes les images `latest` par des tags versionnes revus.
+- [x] Epingler les tags Node, Python et uv du Dockerfile.
+- [x] Documenter les versions Docker CLI et Compose de l'image webui.
+- [x] Nettoyer les caches, bytecode et fichiers temporaires des templates.
+- [x] Reduire les copies larges de `pre_install.sh` a une liste explicite.
 
 ## 11. Suite De Validation Locale
 
-- [ ] Ajouter des tests Bash pour validateurs, dry-run, routes, DNS et lifecycle.
-- [ ] Ajouter une matrice de rendu Compose plateforme et applications.
-- [ ] Executer `docker compose config --quiet` sur chaque Compose rendu.
-- [ ] Echec si un placeholder KSF reste dans un fichier genere.
-- [ ] Valider routes Traefik et references de middlewares.
-- [ ] Ajouter des tests Cloudflare mockes.
-- [ ] Ajouter des tests Docker d'integration opt-in.
-- [ ] Ajouter ShellCheck et shfmt aux controles locaux.
-- [ ] Executer Ruff, Pytest, pip-audit et npm audit pour le webui.
-- [ ] Verifier la coherence VERSION/CHANGELOG avant une release.
+- [x] Ajouter un harnais Bash hors ligne pour les validateurs, les dry-runs et
+  `install-cli`.
+- [x] Ajouter des tests Bash pour validateurs, dry-run, routes, DNS et lifecycle.
+- [x] Ajouter une matrice de rendu Compose plateforme et applications.
+- [x] Executer `docker compose config --quiet` sur chaque Compose rendu.
+- [x] Echec si un placeholder KSF reste dans un fichier genere.
+- [x] Valider routes Traefik et references de middlewares.
+- [x] Ajouter des tests Cloudflare mockes.
+- [x] Ajouter des tests Docker d'integration opt-in.
+- [x] Ajouter ShellCheck et shfmt aux controles locaux.
+- [x] Executer Ruff, Pytest, pip-audit et npm audit pour le webui.
+- [x] Verifier la coherence VERSION/CHANGELOG avant une release.
 
 ## 12. Documentation Et Livraison
 
-- [ ] Aligner README sur le vrai parcours d'acces applicatif.
-- [ ] Implementer le menu d'acces documente ou corriger la documentation.
-- [ ] Mettre a jour AGENTS.md et les skills apres chaque lot.
-- [ ] Documenter le modele localhost du webui.
-- [ ] Documenter migrations SQLite, sauvegarde et restauration.
-- [ ] Documenter la politique de versions d'images et dependances.
-- [ ] Mettre a jour VERSION et CHANGELOG a chaque jalon.
-- [ ] Executer `/preflight` avant un lot significatif.
-- [ ] Executer `/check-project` avant livraison.
-- [ ] Declarer les controles non executes et les risques residuels.
+- [x] Aligner README sur le vrai parcours d'acces applicatif.
+- [x] Implementer le menu d'acces documente ou corriger la documentation.
+- [x] Mettre a jour AGENTS.md et les skills apres chaque lot.
+- [x] Documenter le modele localhost du webui.
+- [x] Documenter migrations SQLite, sauvegarde et restauration.
+- [x] Documenter la politique de versions d'images et dependances.
+- [x] Mettre a jour VERSION et CHANGELOG a chaque jalon.
+- [x] Executer `/preflight` avant un lot significatif.
+- [x] Executer `/check-project` avant livraison.
+- [x] Declarer les controles non executes et les risques residuels.

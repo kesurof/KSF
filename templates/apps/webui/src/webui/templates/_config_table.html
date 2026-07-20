@@ -6,7 +6,7 @@
     {% for key, value in section["items"] %}
     <div class="config-item">
       <span class="config-key" title="{{ key }}">{{ key }}</span>
-      <span class="config-value">{% if value == "******" %}<span class="chip chip-neutral">masqué</span>{% elif value in ("true", "false", "yes", "no", "1", "0") %}<span class="chip {{ 'chip-ok' if value in ('true','yes','1') else 'chip-neutral' }}">{{ "✓" if value in ('true','yes','1') else "✕" }} {{ value }}</span>{% elif key.endswith("_URL") or key.endswith("_HOST") or "@" in value %}<code class="config-code">{{ value }}</code>{% else %}<code class="config-code">{{ value }}</code>{% endif %}</span>
+      <span class="config-value">{% if value == "******" %}<span class="chip chip-neutral">masqué</span>{% elif value in ("true", "false", "yes", "no", "1", "0") %}<span class="chip {{ 'chip-ok' if value in ('true','yes','1') else 'chip-neutral' }}">{{ icon('check-circle' if value in ('true','yes','1') else 'x-circle', 14) }} {{ value }}</span>{% elif key.endswith("_URL") or key.endswith("_HOST") or "@" in value %}<code class="config-code">{{ value }}</code>{% else %}<code class="config-code">{{ value }}</code>{% endif %}</span>
     </div>
     {% endfor %}
   </div>

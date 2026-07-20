@@ -52,6 +52,8 @@ CROWDSEC_APPSEC_COLLECTIONS="crowdsecurity/appsec-virtual-patching crowdsecurity
 TRAEFIK_START_STATUS="inactif"
 OAUTH2_START_STATUS="inactif"
 CROWDSEC_START_STATUS="inactif"
+WEBUI_INSTALL_STATUS="non demandé"
+DEPLOYMENT_PARTIAL=false
 CONFIG_LOADED=false
 NETWORK_NAME_SET=false
 TZ_VALUE_SET=false
@@ -112,7 +114,7 @@ Options:
   --oauth-github-user USER  Utilisateur GitHub autorisé (mode avancé)
   --oauth-host HOST       Hostname OAuth2 (défaut: oauth2.<DOMAIN>)
   --oauth-cookie-secret SEC  Secret cookie OAuth2 Proxy, 16/24/32 caractères
-  --with-webui              Installer le Web UI (webui.<DOMAIN>)
+  --with-webui              Installer le Web UI protégé (requiert Traefik, domaine et OAuth2)
   --dry-run             Affiche les actions sans modifier les fichiers
   --force               Force la réinstallation (attention: écrase les fichiers existants)
   -y, --yes               Répondre oui automatiquement
@@ -123,29 +125,29 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --base-dir)       BASE_DIR="$2";     shift 2 ;;
-    --network)        NETWORK_NAME="$2"; NETWORK_NAME_SET=true; shift 2 ;;
-    --tz)             TZ_VALUE="$2"; TZ_VALUE_SET=true; shift 2 ;;
-    --acme-email)     ACME_EMAIL="$2"; ACME_EMAIL_SET=true; shift 2 ;;
-    --domain)         DOMAIN="$2"; DOMAIN_SET=true; shift 2 ;;
-    --cf-api-email)   CF_API_EMAIL="$2"; CF_API_EMAIL_SET=true; shift 2 ;;
-    --cf-api-key)     CF_API_KEY="$2"; CF_API_KEY_SET=true; shift 2 ;;
-    --server-public-ip) SERVER_PUBLIC_IP="$2"; SERVER_PUBLIC_IP_SET=true; shift 2 ;;
+    --base-dir)       ksf_require_option_value "$1" "$#" || exit 1; BASE_DIR="$2";     shift 2 ;;
+    --network)        ksf_require_option_value "$1" "$#" || exit 1; NETWORK_NAME="$2"; NETWORK_NAME_SET=true; shift 2 ;;
+    --tz)             ksf_require_option_value "$1" "$#" || exit 1; TZ_VALUE="$2"; TZ_VALUE_SET=true; shift 2 ;;
+    --acme-email)     ksf_require_option_value "$1" "$#" || exit 1; ACME_EMAIL="$2"; ACME_EMAIL_SET=true; shift 2 ;;
+    --domain)         ksf_require_option_value "$1" "$#" || exit 1; DOMAIN="$2"; DOMAIN_SET=true; shift 2 ;;
+    --cf-api-email)   ksf_require_option_value "$1" "$#" || exit 1; CF_API_EMAIL="$2"; CF_API_EMAIL_SET=true; shift 2 ;;
+    --cf-api-key)     ksf_require_option_value "$1" "$#" || exit 1; CF_API_KEY="$2"; CF_API_KEY_SET=true; shift 2 ;;
+    --server-public-ip) ksf_require_option_value "$1" "$#" || exit 1; SERVER_PUBLIC_IP="$2"; SERVER_PUBLIC_IP_SET=true; shift 2 ;;
     --dns-auto-create) DNS_AUTO_CREATE=true; DNS_AUTO_CREATE_SET=true; shift ;;
     --no-dns-auto-create) DNS_AUTO_CREATE=false; DNS_AUTO_CREATE_SET=true; shift ;;
-    --dns-provider)    DNS_PROVIDER="$2"; DNS_PROVIDER_SET=true; shift 2 ;;
-    --traefik-host)   TRAEFIK_HOST="$2"; TRAEFIK_HOST_SET=true; shift 2 ;;
-    --traefik-trusted-ips) TRAEFIK_TRUSTED_IPS="$2"; TRAEFIK_TRUSTED_IPS_SET=true; shift 2 ;;
+    --dns-provider)    ksf_require_option_value "$1" "$#" || exit 1; DNS_PROVIDER="$2"; DNS_PROVIDER_SET=true; shift 2 ;;
+    --traefik-host)   ksf_require_option_value "$1" "$#" || exit 1; TRAEFIK_HOST="$2"; TRAEFIK_HOST_SET=true; shift 2 ;;
+    --traefik-trusted-ips) ksf_require_option_value "$1" "$#" || exit 1; TRAEFIK_TRUSTED_IPS="$2"; TRAEFIK_TRUSTED_IPS_SET=true; shift 2 ;;
     --with-traefik)   WITH_TRAEFIK=true; WITH_TRAEFIK_SET=true; shift ;;
     --with-crowdsec)  WITH_CROWDSEC=true; WITH_CROWDSEC_SET=true; WITH_TRAEFIK=true; WITH_TRAEFIK_SET=true; shift ;;
     --with-appsec)    CROWDSEC_APPSEC_ENABLED=true; CROWDSEC_APPSEC_ENABLED_SET=true; WITH_CROWDSEC=true; WITH_CROWDSEC_SET=true; WITH_TRAEFIK=true; WITH_TRAEFIK_SET=true; shift ;;
-    --crowdsec-bouncer-key) CROWDSEC_BOUNCER_KEY="$2"; CROWDSEC_BOUNCER_KEY_SET=true; WITH_CROWDSEC=true; WITH_CROWDSEC_SET=true; WITH_TRAEFIK=true; WITH_TRAEFIK_SET=true; shift 2 ;;
-    --oauth-client-id)    OAUTH2_CLIENT_ID="$2"; OAUTH2_CLIENT_ID_SET=true; OAUTH2_ENABLED=true; OAUTH2_ENABLED_SET=true; shift 2 ;;
-    --oauth-client-secret) OAUTH2_CLIENT_SECRET="$2"; OAUTH2_CLIENT_SECRET_SET=true; OAUTH2_ENABLED=true; OAUTH2_ENABLED_SET=true; shift 2 ;;
-    --oauth-allowed-email) OAUTH2_ALLOWED_EMAILS="${OAUTH2_ALLOWED_EMAILS:+${OAUTH2_ALLOWED_EMAILS},}$2"; OAUTH2_ALLOWED_EMAILS_SET=true; OAUTH2_ENABLED=true; OAUTH2_ENABLED_SET=true; shift 2 ;;
-    --oauth-github-user)  OAUTH2_GITHUB_USER="$2"; OAUTH2_GITHUB_USER_SET=true; OAUTH2_ENABLED=true; OAUTH2_ENABLED_SET=true; shift 2 ;;
-    --oauth-host)         OAUTH2_HOST="$2"; OAUTH2_HOST_SET=true; shift 2 ;;
-    --oauth-cookie-secret) OAUTH2_COOKIE_SECRET="$2"; OAUTH2_COOKIE_SECRET_SET=true; OAUTH2_ENABLED=true; OAUTH2_ENABLED_SET=true; shift 2 ;;
+    --crowdsec-bouncer-key) ksf_require_option_value "$1" "$#" || exit 1; CROWDSEC_BOUNCER_KEY="$2"; CROWDSEC_BOUNCER_KEY_SET=true; WITH_CROWDSEC=true; WITH_CROWDSEC_SET=true; WITH_TRAEFIK=true; WITH_TRAEFIK_SET=true; shift 2 ;;
+    --oauth-client-id)    ksf_require_option_value "$1" "$#" || exit 1; OAUTH2_CLIENT_ID="$2"; OAUTH2_CLIENT_ID_SET=true; OAUTH2_ENABLED=true; OAUTH2_ENABLED_SET=true; shift 2 ;;
+    --oauth-client-secret) ksf_require_option_value "$1" "$#" || exit 1; OAUTH2_CLIENT_SECRET="$2"; OAUTH2_CLIENT_SECRET_SET=true; OAUTH2_ENABLED=true; OAUTH2_ENABLED_SET=true; shift 2 ;;
+    --oauth-allowed-email) ksf_require_option_value "$1" "$#" || exit 1; OAUTH2_ALLOWED_EMAILS="${OAUTH2_ALLOWED_EMAILS:+${OAUTH2_ALLOWED_EMAILS},}$2"; OAUTH2_ALLOWED_EMAILS_SET=true; OAUTH2_ENABLED=true; OAUTH2_ENABLED_SET=true; shift 2 ;;
+    --oauth-github-user)  ksf_require_option_value "$1" "$#" || exit 1; OAUTH2_GITHUB_USER="$2"; OAUTH2_GITHUB_USER_SET=true; OAUTH2_ENABLED=true; OAUTH2_ENABLED_SET=true; shift 2 ;;
+    --oauth-host)         ksf_require_option_value "$1" "$#" || exit 1; OAUTH2_HOST="$2"; OAUTH2_HOST_SET=true; shift 2 ;;
+    --oauth-cookie-secret) ksf_require_option_value "$1" "$#" || exit 1; OAUTH2_COOKIE_SECRET="$2"; OAUTH2_COOKIE_SECRET_SET=true; OAUTH2_ENABLED=true; OAUTH2_ENABLED_SET=true; shift 2 ;;
     --with-webui)     WITH_WEBUI=true;   shift ;;
     --dry-run)        DRY_RUN=true;      shift ;;
     --force)          FORCE=true;        shift ;;
@@ -854,6 +856,21 @@ generate_crowdsec_bouncer_key() {
 }
 
 validate_deploy_config() {
+  if [ "$WITH_WEBUI" = true ]; then
+    if [ "$WITH_TRAEFIK" = false ]; then
+      err "--with-webui nécessite --with-traefik."
+      return 1
+    fi
+    if [ -z "$DOMAIN" ]; then
+      err "--with-webui nécessite --domain."
+      return 1
+    fi
+    if [ "$OAUTH2_ENABLED" = false ]; then
+      err "--with-webui nécessite OAuth2 Proxy. Configure --oauth-client-id, --oauth-client-secret et --oauth-allowed-email ou --oauth-github-user."
+      return 1
+    fi
+  fi
+
   if [ -z "$DOMAIN" ]; then
     err "Le domaine principal est requis."
     return 1
@@ -1062,14 +1079,20 @@ step_start_infrastructure
 if [ "$WITH_WEBUI" = true ]; then
   if [ "$DRY_RUN" = true ]; then
     warn "[DRY-RUN] Installation du Web UI : ./app.sh install webui --base-dir ${BASE_DIR} --subdomain webui --auth -y"
+    WEBUI_INSTALL_STATUS="simulé"
   else
     info "Installation du Web UI..."
-    AUTO_YES=true \
-    bash "${SCRIPT_DIR}/app.sh" install webui \
+    if AUTO_YES=true bash "${SCRIPT_DIR}/app.sh" install webui \
       --base-dir "${BASE_DIR}" \
       --subdomain webui \
       --auth \
-      -y || warn "Échec de l'installation du Web UI."
+      -y; then
+      WEBUI_INSTALL_STATUS="installé"
+    else
+      WEBUI_INSTALL_STATUS="échec"
+      DEPLOYMENT_PARTIAL=true
+      err "Déploiement plateforme partiel : l'infrastructure est démarrée, mais l'installation déléguée du Web UI a échoué."
+    fi
   fi
 fi
 
@@ -1077,6 +1100,8 @@ echo ""
 echo "============================================================"
 if [ "$DRY_RUN" = true ]; then
   echo " Simulation terminée : aucune modification appliquée."
+elif [ "$DEPLOYMENT_PARTIAL" = true ]; then
+  echo " Déploiement plateforme partiel : le Web UI n'est pas installé"
 else
   echo " Déploiement terminé"
 fi
@@ -1106,6 +1131,7 @@ else
 fi
 echo "OAuth2 Proxy     : $(display_bool "${OAUTH2_ENABLED}")"
 echo "Host OAuth2 Proxy: $(display_value "${OAUTH2_HOST}")"
+echo "Web UI           : ${WEBUI_INSTALL_STATUS}"
 if [ "$OAUTH2_AUTH_MODE" = "email" ]; then
   echo "OAuth2 emails    : ${OAUTH2_ALLOWED_EMAILS}"
 fi
@@ -1130,3 +1156,7 @@ echo ""
 echo "Prérequis : les DNS des hostnames doivent pointer vers ce serveur."
 echo "Pour Let's Encrypt DNS-01, la clé API Cloudflare doit pouvoir éditer la zone DNS du domaine."
 echo ""
+
+if [ "$DEPLOYMENT_PARTIAL" = true ]; then
+  exit 1
+fi

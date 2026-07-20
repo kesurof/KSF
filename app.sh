@@ -37,6 +37,8 @@ APP_NO_HOST_PORT_OVERRIDE=false
 APP_INSTANCE_OVERRIDE=""
 APP_AUTH_CHOICE="ask"
 APP_LOCAL_ONLY=false
+APP_LOCAL_ONLY_REQUESTED=false
+APP_INSTALL_FORCE="${APP_INSTALL_FORCE:-false}"
 
 usage() {
   cat <<EOF
@@ -69,6 +71,7 @@ Options:
   --auth                Protège cette instance avec OAuth2 Proxy (si OAuth2 Proxy est configuré)
   --no-auth             N'applique pas OAuth2 à cette instance
   --local-only          Ne génère pas de route Traefik
+  --force               Force la réinstallation d'une instance existante du même template
   --dry-run             Affiche les actions sans modifier les fichiers
   -y, --yes             Répondre oui automatiquement
   -h, --help            Affiche l'aide
@@ -105,26 +108,32 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --base-dir)
+      ksf_require_option_value "$1" "$#" || exit 1
       BASE_DIR="$2"
       shift 2
       ;;
     --domain)
+      ksf_require_option_value "$1" "$#" || exit 1
       APP_DOMAIN_OVERRIDE="$2"
       shift 2
       ;;
     --subdomain)
+      ksf_require_option_value "$1" "$#" || exit 1
       APP_SUBDOMAIN_OVERRIDE="$2"
       shift 2
       ;;
     --host)
+      ksf_require_option_value "$1" "$#" || exit 1
       APP_HOST_OVERRIDE="$2"
       shift 2
       ;;
     --port)
+      ksf_require_option_value "$1" "$#" || exit 1
       APP_PORT_OVERRIDE="$2"
       shift 2
       ;;
     --host-port)
+      ksf_require_option_value "$1" "$#" || exit 1
       APP_HOST_PORT_OVERRIDE="$2"
       APP_NO_HOST_PORT_OVERRIDE=false
       shift 2
@@ -135,6 +144,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --instance)
+      ksf_require_option_value "$1" "$#" || exit 1
       APP_INSTANCE_OVERRIDE="$2"
       shift 2
       ;;
@@ -148,6 +158,11 @@ while [[ $# -gt 0 ]]; do
       ;;
     --local-only)
       APP_LOCAL_ONLY=true
+      APP_LOCAL_ONLY_REQUESTED=true
+      shift
+      ;;
+    --force)
+      APP_INSTALL_FORCE=true
       shift
       ;;
     --dry-run)
@@ -175,6 +190,37 @@ done
 
 if [ -z "$COMMAND" ]; then
   usage
+fi
+
+# Reject caller-controlled values before loading runtime state or performing
+# any route, DNS, render, or Compose operation.
+if [ -n "$APP_NAME" ] && ! ksf_instance_is_valid "$APP_NAME"; then
+  err "Nom d'instance ou de template invalide : ${APP_NAME}"
+  exit 1
+fi
+if [ -n "$APP_INSTANCE_OVERRIDE" ] && ! ksf_instance_is_valid "$APP_INSTANCE_OVERRIDE"; then
+  err "Nom d'instance invalide : ${APP_INSTANCE_OVERRIDE}"
+  exit 1
+fi
+if [ -n "$APP_DOMAIN_OVERRIDE" ] && ! ksf_domain_is_valid "$APP_DOMAIN_OVERRIDE"; then
+  err "Domaine applicatif invalide : ${APP_DOMAIN_OVERRIDE}"
+  exit 1
+fi
+if [ -n "$APP_SUBDOMAIN_OVERRIDE" ] && ! ksf_subdomain_is_valid "$APP_SUBDOMAIN_OVERRIDE"; then
+  err "Sous-domaine applicatif invalide : ${APP_SUBDOMAIN_OVERRIDE}"
+  exit 1
+fi
+if [ -n "$APP_HOST_OVERRIDE" ] && ! ksf_host_is_valid "$APP_HOST_OVERRIDE"; then
+  err "Hostname applicatif invalide : ${APP_HOST_OVERRIDE}"
+  exit 1
+fi
+if [ -n "$APP_PORT_OVERRIDE" ] && ! ksf_port_is_valid "$APP_PORT_OVERRIDE"; then
+  err "Port interne Docker invalide : ${APP_PORT_OVERRIDE}"
+  exit 1
+fi
+if [ -n "$APP_HOST_PORT_OVERRIDE" ] && ! ksf_port_is_valid "$APP_HOST_PORT_OVERRIDE"; then
+  err "Port hote local invalide : ${APP_HOST_PORT_OVERRIDE}"
+  exit 1
 fi
 
 KSF_ENV="${BASE_DIR}/config/ksf.env"

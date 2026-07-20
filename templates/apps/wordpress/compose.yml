@@ -11,22 +11,28 @@ services:
         condition: service_healthy
       cache:
         condition: service_started
+    env_file:
+      # Generated per instance by pre_install.sh with mode 600.
+      - ./.env
     environment:
-      PUID: ${APP_PUID}
-      PGID: ${APP_PGID}
       TZ: ${TZ_VALUE}
       WORDPRESS_DEBUG: "1"
       WORDPRESS_DB_HOST: db:3306
-      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME}
-      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER}
-      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
-      WORDPRESS_TABLE_PREFIX: ${WORDPRESS_TABLE_PREFIX}
       WORDPRESS_CONFIG_EXTRA: |
         // Object cache Redis
         define('WP_REDIS_HOST', 'cache');
         define('WP_REDIS_PORT', 6379);
-        define('WP_CACHE_KEY_SALT', '${WORDPRESS_CACHE_KEY_SALT}');
+        define('WP_CACHE_KEY_SALT', getenv('WORDPRESS_CACHE_KEY_SALT'));
         define('WP_CACHE', true);
+        // Keys and salts are injected from the instance-only env_file.
+        define('AUTH_KEY', getenv('WORDPRESS_AUTH_KEY'));
+        define('SECURE_AUTH_KEY', getenv('WORDPRESS_SECURE_AUTH_KEY'));
+        define('LOGGED_IN_KEY', getenv('WORDPRESS_LOGGED_IN_KEY'));
+        define('NONCE_KEY', getenv('WORDPRESS_NONCE_KEY'));
+        define('AUTH_SALT', getenv('WORDPRESS_AUTH_SALT'));
+        define('SECURE_AUTH_SALT', getenv('WORDPRESS_SECURE_AUTH_SALT'));
+        define('LOGGED_IN_SALT', getenv('WORDPRESS_LOGGED_IN_SALT'));
+        define('NONCE_SALT', getenv('WORDPRESS_NONCE_SALT'));
         // Durcissement
         define('DISALLOW_FILE_EDIT', true);
         define('FORCE_SSL_ADMIN', true);
@@ -82,13 +88,11 @@ services:
     restart: unless-stopped
     networks:
       - proxy
+    env_file:
+      # Generated per instance by pre_install.sh with mode 600.
+      - ./.env
     environment:
-      - PUID=${APP_PUID}
-      - PGID=${APP_PGID}
       - TZ=${TZ_VALUE}
-      - MARIADB_DATABASE=${WORDPRESS_DB_NAME}
-      - MARIADB_USER=${WORDPRESS_DB_USER}
-      - MARIADB_PASSWORD=${WORDPRESS_DB_PASSWORD}
       - MARIADB_RANDOM_ROOT_PASSWORD=true
     volumes:
       - ${BASE_DIR}/data/${APP_INSTANCE}/db:/var/lib/mysql

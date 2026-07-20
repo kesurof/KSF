@@ -1,0 +1,6 @@
+{% macro fragment_loader(url, label='Chargement du contenu…') %}
+<div class="card" role="status" aria-live="polite" aria-busy="true"
+     hx-get="{{ url }}" hx-trigger="load" hx-target="#content" hx-swap="innerHTML">
+  <span class="spinner" aria-hidden="true"></span> {{ label }}
+</div>
+{% endmacro %}

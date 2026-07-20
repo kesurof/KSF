@@ -7,6 +7,10 @@ description: Use when a KSF change is ready to verify, especially after script e
 
 Use this skill near the end of a change to select the smallest correct validation set.
 
+For repository-wide offline evidence, prefer `make validate`; use `make
+check-release` when `VERSION` or `CHANGELOG.md` changed. Docker, Web UI and
+browser checks are opt-in and must be reported separately when not run.
+
 ## Validation ladder
 
 1. If Bash scripts changed, run:

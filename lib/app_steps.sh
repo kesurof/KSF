@@ -24,7 +24,7 @@ app_dns_ensure_record() {
 
   if ! dns_ensure_record "${APP_HOST}"; then
     err "Échec de la création DNS pour ${APP_HOST}."
-    exit 1
+    return 1
   fi
 }
 
@@ -60,6 +60,11 @@ app_validate_domain_allowed() {
   domain="${domain//[[:space:]]/}"
   configured="$(app_allowed_domains)"
 
+  if ! ksf_domain_is_valid "${domain}"; then
+    err "Domaine applicatif invalide : ${domain}"
+    return 1
+  fi
+
   if [ -z "${domain}" ]; then
     err "Domaine applicatif vide."
     return 1
@@ -89,6 +94,11 @@ app_domain_from_host() {
 
   host="${host//[[:space:]]/}"
   configured="$(app_allowed_domains)"
+
+  if ! ksf_host_is_valid "${host}"; then
+    err "Hostname applicatif invalide : ${host}"
+    return 1
+  fi
 
   if [ -z "${host}" ]; then
     err "Hostname applicatif vide."
@@ -233,6 +243,7 @@ app_normalize_loaded() {
   if [ -z "${APP_DOCKER_SERVICE:-}" ]; then
     APP_DOCKER_SERVICE="$(app_template_value "$app_template_name" APP_DOCKER_SERVICE)"
   fi
+  : "${APP_DOCKER_SERVICE:=${app_template_name}}"
   : "${APP_DIR:=${BASE_DIR}/apps/${app_instance_name}}"
   # Fallback : si APP_DIR pointe vers un chemin inexistant mais qu'un chemin
   # équivalent sous BASE_DIR existe (cas typique : APP_DIR est l'ancien chemin
@@ -766,6 +777,10 @@ resolve_app_host() {
   fi
 
   APP_SUBDOMAIN="${subdomain}"
+  if ! ksf_subdomain_is_valid "${APP_SUBDOMAIN}"; then
+    err "Sous-domaine applicatif invalide : ${APP_SUBDOMAIN}"
+    exit 1
+  fi
   APP_HOST="${APP_SUBDOMAIN}.${APP_DOMAIN}"
 }
 
@@ -806,7 +821,12 @@ app_configure() {
   APP_LOCAL_ONLY="${old_local_only}"
   APP_HOST_PORT="${old_host_port:-}"
 
-  if [ -n "${APP_HOST_OVERRIDE:-}" ] || [ -n "${APP_DOMAIN_OVERRIDE:-}" ] || [ -n "${APP_SUBDOMAIN_OVERRIDE:-}" ] || [ "${old_local_only}" != true ]; then
+  if [ "${APP_LOCAL_ONLY_REQUESTED:-false}" = true ]; then
+    APP_LOCAL_ONLY=true
+    APP_HOST=""
+    APP_DOMAIN=""
+    APP_SUBDOMAIN=""
+  elif [ -n "${APP_HOST_OVERRIDE:-}" ] || [ -n "${APP_DOMAIN_OVERRIDE:-}" ] || [ -n "${APP_SUBDOMAIN_OVERRIDE:-}" ] || [ "${old_local_only}" != true ]; then
     APP_LOCAL_ONLY=false
     resolve_app_host "${APP_INSTANCE:-${app_name}}"
   fi
@@ -874,7 +894,7 @@ resolve_app_auth() {
 
 app_resolve_docker_gid() {
   if [ -n "${DOCKER_GID:-}" ]; then
-    DOCKER_GROUP_ADD_BLOCK="group_add:
+    DOCKER_GROUP_ADD_BLOCK="    group_add:
       - \"${DOCKER_GID}\""
     return 0
   fi
@@ -885,7 +905,7 @@ app_resolve_docker_gid() {
     DOCKER_GID="$(getent group docker 2>/dev/null | cut -d: -f3 || true)"
   fi
   if [ -n "${DOCKER_GID}" ]; then
-    DOCKER_GROUP_ADD_BLOCK="group_add:
+    DOCKER_GROUP_ADD_BLOCK="    group_add:
       - \"${DOCKER_GID}\""
   else
     DOCKER_GROUP_ADD_BLOCK=""
@@ -918,7 +938,7 @@ app_run_hook() {
   fi
   if [ ! -r "$hook_path" ]; then
     err "Hook ${hook_name} illisible : ${hook_path}"
-    exit 1
+    return 1
   fi
 
   info "Hook ${hook_name} de ${app_name}..."
@@ -935,7 +955,44 @@ app_run_hook() {
 
   if ! ( source "$hook_path" ); then
     err "Échec du hook ${hook_name} pour ${app_name} (voir logs ci-dessus)."
-    exit 1
+    return 1
+  fi
+}
+
+app_restore_file() {
+  local destination="$1"
+  local backup="$2"
+
+  if [ -n "$backup" ] && [ -f "$backup" ]; then
+    cp "$backup" "$destination"
+  else
+    rm -f "$destination"
+  fi
+}
+
+app_install_rollback() {
+  local app_dir="$1"
+  local installed_env="$2"
+  local route_file="$3"
+  local compose_backup="$4"
+  local app_env_backup="$5"
+  local installed_backup="$6"
+  local route_backup="$7"
+  local had_previous_install="$8"
+
+  warn "Rollback de l'installation de ${APP_INSTANCE}: les donnees dans ${APP_DATA} sont conservees."
+  if [ "${DRY_RUN:-false}" = false ] && [ -f "${app_dir}/docker-compose.yml" ]; then
+    (cd "$app_dir" && docker compose down) >/dev/null 2>&1 || true
+  fi
+
+  app_restore_file "${app_dir}/docker-compose.yml" "$compose_backup"
+  app_restore_file "${app_dir}/app.env" "$app_env_backup"
+  app_restore_file "$installed_env" "$installed_backup"
+  app_restore_file "$route_file" "$route_backup"
+
+  # A forced reinstall resumes the previous stack after its files are restored.
+  if [ "$had_previous_install" = true ] && [ "${DRY_RUN:-false}" = false ] && [ -f "${app_dir}/docker-compose.yml" ]; then
+    (cd "$app_dir" && docker compose up -d --force-recreate) >/dev/null 2>&1 || warn "Impossible de restaurer automatiquement la stack precedente."
   fi
 }
 
@@ -1099,6 +1156,7 @@ app_install() {
   local old_host=""
   local old_local_only=false
   local route_file="${BASE_DIR}/proxy/traefik/dynamic/route-${app_instance}.yml"
+  local rollback_dir compose_backup app_env_backup installed_backup route_backup rendered_compose
   # Exporte APP_TEMPLATE_DIR avec le chemin complet du template courant
   # pour que les hooks (sourcés en sous-shell) y accèdent correctement.
   export APP_TEMPLATE_DIR="${app_template_dir}"
@@ -1106,6 +1164,14 @@ app_install() {
   if [ ! -d "${app_template_dir}" ]; then
     err "App inconnue : ${app_name}"
     app_list_available
+    exit 1
+  fi
+  if [ ! -f "${app_template_dir}/app.env" ] || [ ! -f "${app_template_dir}/compose.yml" ]; then
+    err "Template incomplet : ${app_template_dir} doit contenir app.env et compose.yml."
+    exit 1
+  fi
+  if ! ksf_instance_is_valid "$app_instance"; then
+    err "Nom d'instance invalide : ${app_instance}"
     exit 1
   fi
 
@@ -1134,6 +1200,14 @@ app_install() {
   APP_PGID="$(id -g)"
   local app_dir="${BASE_DIR}/apps/${app_instance}"
   local app_data="${BASE_DIR}/data/${app_instance}"
+  APP_DIR="$app_dir"
+  APP_DATA="$app_data"
+
+  if ! ksf_derived_path_is_valid "${BASE_DIR}" "$app_dir" || ! ksf_derived_path_is_valid "${BASE_DIR}" "$app_data"; then
+    err "Chemin derive invalide pour l'instance ${app_instance}."
+    exit 1
+  fi
+  app_validate_port_value "$APP_PORT" "Port interne Docker"
 
   if [ "${APP_LOCAL_ONLY}" = false ] && [ "${WITH_TRAEFIK:-false}" = true ]; then
     resolve_app_host "${app_instance}"
@@ -1149,37 +1223,40 @@ app_install() {
     info "${app_instance} sera aussi accessible en local sur 127.0.0.1:${APP_HOST_PORT}."
   fi
 
-  run mkdir -p "${INSTALLED_DIR}" "${app_dir}" "${app_data}"
   app_resolve_docker_gid
   : "${APP_PUID:=$(id -u)}"
   : "${APP_PGID:=$(id -g)}"
 
-  render_template "${app_template_dir}/compose.yml" "${app_dir}/docker-compose.yml"
+  rollback_dir="$(mktemp -d "${TMPDIR:-/tmp}/ksf-app-rollback.XXXXXX")"
+  compose_backup="${rollback_dir}/docker-compose.yml"
+  app_env_backup="${rollback_dir}/app.env"
+  installed_backup="${rollback_dir}/installed.env"
+  route_backup="${rollback_dir}/route.yml"
+  [ -f "${app_dir}/docker-compose.yml" ] && cp "${app_dir}/docker-compose.yml" "$compose_backup" || compose_backup=""
+  [ -f "${app_dir}/app.env" ] && cp "${app_dir}/app.env" "$app_env_backup" || app_env_backup=""
+  [ -f "$installed_env" ] && cp "$installed_env" "$installed_backup" || installed_backup=""
+  [ -f "$route_file" ] && cp "$route_file" "$route_backup" || route_backup=""
+  rendered_compose="${rollback_dir}/docker-compose.yml.rendered"
+
+  if ! render_template "${app_template_dir}/compose.yml" "$rendered_compose"; then
+    rm -rf "$rollback_dir"
+    exit 1
+  fi
+  run mkdir -p "${INSTALLED_DIR}" "${app_dir}" "${app_data}"
+  if [ "${DRY_RUN:-false}" = false ]; then
+    cp "$rendered_compose" "${app_dir}/docker-compose.yml"
+  fi
   app_write_env_file "${app_dir}/app.env" "$app_name" "$app_dir" "$app_data"
   ok "Stack ${app_instance} générée dans ${app_dir}"
-
-  if [ "${reinstalling}" = true ] && [ -n "${old_host}" ] && [ "${old_host}" != "${APP_HOST}" ]; then
-    app_dns_delete_record "${old_host}" "${old_local_only}"
-  fi
-
-  if [ "${APP_LOCAL_ONLY}" = false ] && [ "${WITH_TRAEFIK:-false}" = true ] && [ -n "${APP_HOST}" ] && [ "${APP_PUBLIC}" = true ]; then
-    local dynamic_dir="${BASE_DIR}/proxy/traefik/dynamic"
-    run mkdir -p "${dynamic_dir}"
-    render_app_route_from_env "${dynamic_dir}/route-${app_instance}.yml"
-    ok "Route Traefik générée pour ${app_instance} (${APP_HOST})"
-  elif [ -f "${route_file}" ]; then
-    run rm -f "${route_file}"
-    ok "Route Traefik supprimée pour ${app_instance}"
-  fi
-
-  app_dns_ensure_record
-
-  app_write_env_file "${INSTALLED_DIR}/${app_instance}.env" "$app_name" "$app_dir" "$app_data"
 
   # Hook pre_install : permet à l'app de générer des secrets, fichiers de
   # config, .env, etc. AVANT le démarrage de la stack. Le hook est sourcé
   # (donc peut set des variables / écrire des fichiers utilisés par la suite).
-  app_run_hook "pre_install" "${app_template_dir}/pre_install.sh" "$app_instance"
+  if ! app_run_hook "pre_install" "${app_template_dir}/pre_install.sh" "$app_instance"; then
+    app_install_rollback "$app_dir" "$installed_env" "$route_file" "$compose_backup" "$app_env_backup" "$installed_backup" "$route_backup" "$reinstalling"
+    rm -rf "$rollback_dir"
+    exit 1
+  fi
 
   if [ "${DRY_RUN:-false}" = true ]; then
     if _compose_has_build "${app_dir}/docker-compose.yml"; then
@@ -1202,6 +1279,8 @@ app_install() {
     fi
     if ! (cd "${app_dir}" && ${up_cmd}); then
       err "Echec du demarrage de ${app_instance}. Stack generee dans ${app_dir}."
+      app_install_rollback "$app_dir" "$installed_env" "$route_file" "$compose_backup" "$app_env_backup" "$installed_backup" "$route_backup" "$reinstalling"
+      rm -rf "$rollback_dir"
       exit 1
     fi
     if [ "${reinstalling}" = true ]; then
@@ -1212,8 +1291,43 @@ app_install() {
 
     # Hook post_install : configuration post-démarrage (ex : activation de
     # plugins, configuration WP, etc.). Ne s'exécute que si le up a réussi.
-    app_run_hook "post_install" "${app_template_dir}/post_install.sh" "$app_instance"
+    if ! app_run_hook "post_install" "${app_template_dir}/post_install.sh" "$app_instance"; then
+      app_install_rollback "$app_dir" "$installed_env" "$route_file" "$compose_backup" "$app_env_backup" "$installed_backup" "$route_backup" "$reinstalling"
+      rm -rf "$rollback_dir"
+      exit 1
+    fi
   fi
+
+  if [ "${APP_LOCAL_ONLY}" = false ] && [ "${WITH_TRAEFIK:-false}" = true ] && [ -n "${APP_HOST}" ] && [ "${APP_PUBLIC}" = true ]; then
+    local dynamic_dir="${BASE_DIR}/proxy/traefik/dynamic"
+    if ! run mkdir -p "${dynamic_dir}"; then
+      err "Impossible de créer le répertoire des routes Traefik : ${dynamic_dir}"
+      app_install_rollback "$app_dir" "$installed_env" "$route_file" "$compose_backup" "$app_env_backup" "$installed_backup" "$route_backup" "$reinstalling"
+      rm -rf "$rollback_dir"
+      exit 1
+    fi
+    if ! render_app_route_from_env "${dynamic_dir}/route-${app_instance}.yml"; then
+      app_install_rollback "$app_dir" "$installed_env" "$route_file" "$compose_backup" "$app_env_backup" "$installed_backup" "$route_backup" "$reinstalling"
+      rm -rf "$rollback_dir"
+      exit 1
+    fi
+    ok "Route Traefik générée pour ${app_instance} (${APP_HOST})"
+  elif [ -f "${route_file}" ]; then
+    run rm -f "${route_file}"
+    ok "Route Traefik supprimée pour ${app_instance}"
+  fi
+
+  if ! app_dns_ensure_record; then
+    app_install_rollback "$app_dir" "$installed_env" "$route_file" "$compose_backup" "$app_env_backup" "$installed_backup" "$route_backup" "$reinstalling"
+    rm -rf "$rollback_dir"
+    exit 1
+  fi
+  if [ "${reinstalling}" = true ] && [ -n "${old_host}" ] && [ "${old_host}" != "${APP_HOST}" ]; then
+    app_dns_delete_record "${old_host}" "${old_local_only}"
+  fi
+
+  app_write_env_file "${INSTALLED_DIR}/${app_instance}.env" "$app_name" "$app_dir" "$app_data"
+  rm -rf "$rollback_dir"
 }
 
 app_remove_data_after_remove() {

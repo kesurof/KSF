@@ -15,19 +15,17 @@ class InstallRequest(BaseModel):
     local_only: bool = False
 
 
-class ConfigureRequest(BaseModel):
+class ConfirmRequest(BaseModel):
+    confirmed: bool = False
+
+
+class ConfigureRequest(ConfirmRequest):
     subdomain: str = ""
     domain: str = ""
     host: str = ""
     host_port: str = ""
     no_host_port: bool = False
     local_only: Optional[bool] = None
-
-
-class ConfirmRequest(BaseModel):
-    confirmed: bool = False
-
-
 class RemoveRequest(ConfirmRequest):
     remove_data: bool = False
 

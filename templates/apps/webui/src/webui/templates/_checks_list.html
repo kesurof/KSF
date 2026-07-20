@@ -1,13 +1,13 @@
 {% from "_components.html" import icon, chip %}
 <div>
   {% for c in checks %}
-  <div class="card" style="padding:0.75rem;margin-bottom:0.5rem;display:flex;align-items:flex-start;gap:0.5rem">
+  <div class="card check-row">
     <span class="flex-shrink-0">
       {% if c.status == 'ok' %}{{ icon('check-circle', 18, 'status-ok') }}
       {% elif c.status == 'warn' %}{{ icon('alert-triangle', 18, 'status-warn') }}
       {% else %}{{ icon('x-circle', 18, 'status-err') }}{% endif %}
     </span>
-    <div style="flex:1">
+    <div class="check-row-content">
       <strong>{{ c.label }}</strong>
       {% if c.detail %}<div class="text-muted text-sm"> — {{ c.detail }}</div>{% endif %}
     </div>

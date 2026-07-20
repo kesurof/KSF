@@ -7,13 +7,11 @@
   <meta name="theme-color" content="#0f172a">
   <meta name="description" content="Panneau d'administration KSF — apps, infrastructure, sécurité et maintenance de la plateforme Docker.">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="preconnect" href="https://unpkg.com" crossorigin>
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <title>{% block title %}KSF Web UI{% endblock %}</title>
-  <script src="https://unpkg.com/htmx.org@1.9.12" crossorigin="anonymous"></script>
   <link rel="stylesheet" href="/static/app.css">
+  <script defer src="/static/vendor/htmx-2.0.8.min.js"></script>
   <script defer src="/static/app.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js" crossorigin="anonymous"></script>
+  <script defer src="/static/vendor/alpine-3.15.3.min.js"></script>
   {% block head %}{% endblock %}
 </head>
 <body>
@@ -84,7 +82,9 @@
         {% endif %}
       </header>
 
-      <div class="content" id="content" aria-live="polite">
+      <div class="content" id="content" aria-live="polite" aria-busy="false"
+           hx-on::before-request="this.setAttribute('aria-busy', 'true')"
+           hx-on::after-request="this.setAttribute('aria-busy', 'false')">
         <div class="content-inner">
           {% block breadcrumb %}{% endblock %}
           {% block content %}{% endblock %}
@@ -95,14 +95,14 @@
 
   {# Lot 5 : Modal de confirmation unifiée #}
   <div id="modal" class="modal" x-data="ksfModal()" @keydown.escape.window="cancel()"
-       role="dialog" aria-modal="true" aria-labelledby="modal-title" x-show="open" x-cloak>
+       @keydown.tab="trapFocus($event)" role="dialog" aria-modal="true" aria-labelledby="modal-title" x-show="open" x-cloak>
     <div class="modal-backdrop" @click="cancel()" aria-hidden="true"></div>
-    <div class="modal-body" :class="{ 'modal-danger': danger }" x-ref="body">
+    <div class="modal-body" :class="{ 'modal-danger': danger }" x-ref="body" tabindex="-1">
       <button type="button" class="btn-icon modal-close" @click="cancel()" aria-label="Fermer la fenêtre">{{ icon('x', 18) }}</button>
       <h3 id="modal-title" class="modal-title">Confirmation</h3>
       <p class="modal-message" x-text="message"></p>
       <div class="modal-actions">
-        <button type="button" class="btn btn-ghost btn-sm" @click="cancel()">Annuler</button>
+        <button type="button" class="btn btn-ghost btn-sm" x-ref="cancelButton" @click="cancel()">Annuler</button>
         <button type="button" class="btn btn-sm" :class="danger ? 'btn-danger' : 'btn'" @click="confirm()">Confirmer</button>
       </div>
     </div>

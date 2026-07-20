@@ -1,6 +1,6 @@
 services:
   radarr:
-    image: lscr.io/linuxserver/radarr:latest
+    image: lscr.io/linuxserver/radarr:6.3.0.10514-ls312
     container_name: ${APP_INSTANCE}
     restart: unless-stopped
     networks:

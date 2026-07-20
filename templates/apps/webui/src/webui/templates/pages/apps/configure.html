@@ -1,0 +1,4 @@
+{% extends "base.html" %}
+{% from "_fragment_loader.html" import fragment_loader %}
+{% block title %}Configurer {{ instance }} — Application KSF{% endblock %}
+{% block content %}{{ fragment_loader('/ui/apps/' ~ instance ~ '/configure') }}{% endblock %}

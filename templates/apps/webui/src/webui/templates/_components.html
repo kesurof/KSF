@@ -36,11 +36,11 @@
 {# Badge d'état coloré en background. state: 'ok' | 'warn' | 'err'. #}
 {% macro status_badge(state, label=None) %}
 {% set label = label or state %}
-{% if state == 'ok' %}{% set cls, fg = 'badge-ok', 'var(--text-on-accent)' %}
-{% elif state == 'warn' %}{% set cls, fg = 'badge-warn', 'var(--text-on-yellow)' %}
-{% elif state == 'err' %}{% set cls, fg = 'badge-err', 'var(--text-on-accent)' %}
-{% else %}{% set cls, fg = 'badge-neutral', 'var(--text)' %}{% endif %}
-<span class="badge {{ cls }}" style="color: {{ fg }}">{{ label }}</span>
+{% if state == 'ok' %}{% set cls = 'badge-ok' %}
+{% elif state == 'warn' %}{% set cls = 'badge-warn' %}
+{% elif state == 'err' %}{% set cls = 'badge-err' %}
+{% else %}{% set cls = 'badge-neutral' %}{% endif %}
+<span class="badge {{ cls }}">{{ label }}</span>
 {% endmacro %}
 
 {# Chip de statut "dot + label". state: 'ok' | 'warn' | 'err' | 'neutral' (Lot C) #}
@@ -69,25 +69,50 @@
 </div>
 {% endmacro %}
 
-{# Tabs à contenu Alpine dans des <template x-if>. items = liste de {label, icon, panel_id}.
+{# Tabs Alpine. Chaque item doit déclarer un panel_id qui identifie son panel.
    Utilisation :
      {% call tabs([{label:'Tab1'},{label:'Tab2'}]) %}{% raw %}<template x-if="active===0">...</template>...{% endraw %}{% endcall %}
    Variantes :
    - tabs(active_var, items): active_var est l'expression Alpine (index) à comparer
    Plus simple : rend les boutons + appelle caller() qui contient les <template> #}
 {% macro tabs(items, active_var='active') %}
-<div class="tabs" x-data="{ active: 0 }">
-  <div class="tabs-nav" role="tablist">
+<div class="tabs" x-data="ksfTabs({{ items|length }})">
+  <div class="tabs-nav" role="tablist" aria-label="Sections" @keydown="onKeydown($event)">
     {% for item in items %}
     <button type="button" role="tab"
-            :class="{ 'active': {{ active_var }} === {{ loop.index0 }} }"
-            @click="{{ active_var }} = {{ loop.index0 }}"
-            :aria-selected="{{ active_var }} === {{ loop.index0 }} ? 'true' : 'false'">
+              id="tab-{{ item.panel_id }}"
+              :class="{ 'active': {{ active_var }} === {{ loop.index0 }} }"
+              @click="select({{ loop.index0 }})"
+              :tabindex="{{ active_var }} === {{ loop.index0 }} ? 0 : -1"
+              :aria-selected="{{ active_var }} === {{ loop.index0 }} ? 'true' : 'false'"
+              aria-controls="{{ item.panel_id }}">
       {% if item.icon %}{{ icon(item.icon, 16) }}{% endif %}<span>{{ item.label }}</span>
     </button>
     {% endfor %}
   </div>
-  {% if caller %}<div class="tab-panel">{{ caller() }}</div>{% endif %}
+  {% if caller %}<div class="tab-panel" role="tabpanel">{{ caller() }}</div>{% endif %}
+</div>
+{% endmacro %}
+
+{# Menu d'actions local. Le caller fournit les boutons ou liens du menu. #}
+{% macro dropdown(label='Actions') %}
+<div class="dropdown" x-data="ksfDropdown()" @click.outside="close(false)" @keydown="onKeydown($event)">
+  <button type="button" class="btn btn-sm btn-ghost btn-icon" x-ref="trigger" @click="toggle()"
+          :aria-expanded="open ? 'true' : 'false'" aria-haspopup="menu" aria-label="{{ label }}">{{ icon('more-horizontal', 18) }}</button>
+  <div class="dropdown-menu" x-ref="menu" x-show="open" x-cloak role="menu" @click="close(false)">{{ caller() }}</div>
+</div>
+{% endmacro %}
+
+{# Combobox filtrable local. items est une liste de {value, label}. #}
+{% macro combobox(input_id, items, label) %}
+<div class="combobox" x-data="ksfCombobox()" @keydown="onKeydown($event)" @click.outside="close()">
+  <label for="{{ input_id }}">{{ label }}</label>
+  <input id="{{ input_id }}" type="text" role="combobox" autocomplete="off" aria-autocomplete="list"
+         x-ref="input" x-model="query" @focus="openList()" @input="openList()"
+         :aria-expanded="open ? 'true' : 'false'" aria-controls="{{ input_id }}-options">
+  <ul id="{{ input_id }}-options" x-ref="list" x-show="open" x-cloak role="listbox" class="combobox-options">
+    {% for item in items %}<li id="{{ input_id }}-option-{{ loop.index0 }}" role="option" data-value="{{ item.value }}" @click="choose($el)" :class="{ 'is-active': active === {{ loop.index0 }} }">{{ item.label }}</li>{% endfor %}
+  </ul>
 </div>
 {% endmacro %}
 
@@ -149,7 +174,7 @@
 {# Sprite SVG Lucide. À inclure une seule fois dans base.html via {% include "_components.html" with context %}.
    Usage : {% from "_components.html" import icon_sprite %}{{ icon_sprite() }} #}
 {% macro icon_sprite() %}
-<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+<svg xmlns="http://www.w3.org/2000/svg" class="icon-sprite" aria-hidden="true">
   <symbol id="icon-layout-dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></symbol>
   <symbol id="icon-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
   <symbol id="icon-route" viewBox="0 0 24 24"><circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M6 16v-4a4 4 0 0 1 4-4h4a4 4 0 0 0 4-4"/></symbol>

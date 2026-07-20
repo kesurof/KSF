@@ -3,7 +3,8 @@ import re
 import subprocess
 from pathlib import Path
 
-from .config import BASE_DIR, get_config
+from .config import BASE_DIR
+from .security import redact_secrets
 
 
 CLI_DIR = Path(os.environ.get("KSF_CLI_DIR", "/app/ksf"))
@@ -11,11 +12,7 @@ SECRET_KEYS = ("CF_API_KEY", "OAUTH2_CLIENT_SECRET", "OAUTH2_COOKIE_SECRET", "CR
 
 
 def _redact(value: str) -> str:
-    for secret in SECRET_KEYS:
-        configured = get_config().get(secret)
-        if configured:
-            value = value.replace(configured, "******")
-    return value[-30000:]
+    return redact_secrets(value)[-30000:]
 
 
 def run_ksf(*args: str, timeout: int = 900, dry_run: bool = False) -> tuple[int, str, str]:
@@ -35,16 +32,22 @@ def run_ksf(*args: str, timeout: int = 900, dry_run: bool = False) -> tuple[int,
         return -1, "", str(exc)
 
 
-def run_app(*args: str, timeout: int = 900, dry_run: bool = False) -> tuple[int, str, str]:
+def run_app(*args: str, timeout: int = 900, dry_run: bool = False,
+            confirmed: bool = False, remove_data: bool = False) -> tuple[int, str, str]:
     script = CLI_DIR / "app.sh"
     if not script.is_file():
         return -1, "", "Le script applicatif KSF embarque est introuvable."
     command = ["bash", str(script), *args, "--base-dir", str(BASE_DIR)]
     if dry_run:
         command.append("--dry-run")
-    command.append("--yes")
+    # The caller must validate the server-side confirmation before bypassing CLI prompts.
+    if confirmed:
+        command.append("--yes")
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+        env = os.environ.copy()
+        if remove_data:
+            env["APP_REMOVE_DELETE_DATA"] = "true"
+        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, env=env)
         return result.returncode, _redact(result.stdout), _redact(result.stderr)
     except subprocess.TimeoutExpired:
         return -1, "", "Delai depasse pendant la mise a jour de l'application."
