@@ -20,19 +20,25 @@
   {% from "_components.html" import icon, nav_item %}
   <a href="#main" class="skip-link">Aller au contenu principal</a>
 
-  <div class="layout" x-data="ksfLayout()" @keydown.escape.window="sidebarClose()">
-    <div class="sidebar-backdrop" :class="{ 'is-open': sidebarOpen && isMobile }" @click="sidebarClose()" aria-hidden="true" x-cloak></div>
+    <div class="layout" x-data="ksfLayout()" @keydown.escape.window="sidebarClose()">
+      <div class="sidebar-backdrop" :class="{ 'is-open': sidebarOpen && isDrawer }" @click="sidebarClose()" aria-hidden="true" x-cloak></div>
 
-    <aside class="sidebar" :class="{ 'is-open': sidebarOpen }"
-           :aria-hidden="sidebarOpen ? 'false' : 'true'"
-           aria-label="Navigation principale">
-      <div class="sidebar-header">
-        <h2>{{ icon('server', 22) }} KSF</h2>
+      <aside id="primary-navigation" class="sidebar"
+             :class="{ 'is-open': sidebarOpen, 'is-collapsed': sidebarCollapsed && !isDrawer }"
+             :aria-hidden="isDrawer && !sidebarOpen ? 'true' : 'false'"
+             aria-label="Navigation principale">
+        <div class="sidebar-header">
+          <a href="/" class="sidebar-brand" aria-label="KSF, tableau de bord">
+            {{ icon('server', 22) }}<span>KSF</span>
+          </a>
         <span class="badge" :class="'{{ 'installed' if installed else 'not-installed' }}'">
           {{ 'installé' if installed else 'non installé' }}
         </span>
+        <button type="button" class="btn-icon sidebar-close" @click="sidebarClose()" aria-label="Fermer le menu">
+          {{ icon('x', 20) }}
+        </button>
       </div>
-      <nav class="nav" aria-label="Sections">
+      <nav class="nav" aria-label="Sections" @click="handleNavigation($event)">
         {{ nav_item('Tableau de bord', '/', 'layout-dashboard', request.url.path, 'general') }}
         {% if installed %}
         <div class="nav-section">
@@ -71,13 +77,15 @@
       </nav>
     </aside>
 
-    <main class="main" id="main">
-      <header class="topbar">
+      <main class="main" id="main" :inert="isDrawer && sidebarOpen">
+        <header class="topbar">
         <button type="button"
-                class="btn-icon"
+                class="btn-icon sidebar-toggle"
+                x-ref="menuButton"
                 @click="sidebarToggle()"
                 :aria-expanded="sidebarOpen ? 'true' : 'false'"
-                :aria-label="sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'">{{ icon('menu', 20) }}</button>
+                aria-controls="primary-navigation"
+                :aria-label="sidebarToggleLabel">{{ icon('menu', 20) }}</button>
         {% block topbar_breadcrumb %}
         <span class="topbar-title">KSF Web UI</span>
         {% endblock %}

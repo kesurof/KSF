@@ -45,24 +45,48 @@ document.addEventListener('alpine:init', () => {
     dismiss(id) { this.items = this.items.filter(t => t.id !== id); },
   });
 
-  /* === Alpine.data : ksfLayout (sidebar drawer) === */
+  /* === Alpine.data : ksfLayout (rail desktop, drawer tablette/mobile) === */
   Alpine.data('ksfLayout', () => ({
-    sidebarOpen: window.innerWidth > 760,
-    isMobile: window.innerWidth <= 760,
+    sidebarOpen: window.innerWidth > 1023,
+    sidebarCollapsed: false,
+    isDrawer: window.innerWidth <= 1023,
+    sidebarToggleLabel: 'Replier la navigation',
     init() {
-      const mq = window.matchMedia('(max-width: 760px)');
-      const handler = (e) => { this.isMobile = e.matches; if (!e.matches) this.sidebarOpen = true; };
+      const mq = window.matchMedia('(max-width: 1023px)');
+      const handler = (e) => {
+        this.isDrawer = e.matches;
+        this.sidebarCollapsed = false;
+        this.sidebarOpen = !e.matches;
+        this.syncPageState();
+      };
       mq.addEventListener('change', handler);
-      this.sidebarOpen = !this.isMobile;
-      // Auto-close au clic d'un lien en mobile (Lot A)
-      this.$nextTick(() => {
-        document.querySelectorAll('.sidebar .nav-link').forEach(link => {
-          link.addEventListener('click', () => { if (this.isMobile) this.sidebarOpen = false; });
-        });
-      });
+      this.syncPageState();
     },
-    sidebarToggle() { this.sidebarOpen = !this.sidebarOpen; },
-    sidebarClose() { if (this.isMobile) this.sidebarOpen = false; },
+    syncPageState() {
+      this.sidebarToggleLabel = this.isDrawer
+        ? (this.sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu')
+        : (this.sidebarCollapsed ? 'Déplier la navigation' : 'Replier la navigation');
+      document.documentElement.classList.toggle('sidebar-drawer-open', this.isDrawer && this.sidebarOpen);
+    },
+    handleNavigation(event) {
+      if (this.isDrawer && event.target.closest('.nav-link')) this.sidebarClose();
+    },
+    sidebarToggle() {
+      if (this.isDrawer) {
+        this.sidebarOpen = !this.sidebarOpen;
+        if (this.sidebarOpen) this.$nextTick(() => this.$el.querySelector('.sidebar-brand').focus());
+      } else {
+        this.sidebarCollapsed = !this.sidebarCollapsed;
+        this.sidebarOpen = !this.sidebarCollapsed;
+      }
+      this.syncPageState();
+    },
+    sidebarClose() {
+      if (!this.isDrawer || !this.sidebarOpen) return;
+      this.sidebarOpen = false;
+      this.syncPageState();
+      this.$nextTick(() => this.$refs.menuButton.focus());
+    },
   }));
 
   /* === Alpine.data : ksfModal (modal de confirmation) ===

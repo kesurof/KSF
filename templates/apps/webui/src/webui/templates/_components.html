@@ -141,8 +141,8 @@
    nav_item(label, href, icon, request_path, section=None) #}
 {% macro nav_item(label, href, icon_name, request_path, section=None) %}
 <a href="{{ href }}" class="nav-link{% if section %} nav-{{ section }}{% endif %}{% if request_path == href %} active section-{{ section or 'general' }}{% endif %}"
-   {% if request_path == href %}aria-current="page"{% endif %}>
-  {{ icon(icon_name, 18) }}<span>{{ label }}</span>
+   aria-label="{{ label }}" title="{{ label }}"{% if request_path == href %} aria-current="page"{% endif %}>
+  {{ icon(icon_name, 18) }}<span class="nav-label">{{ label }}</span>
 </a>
 {% endmacro %}
 
