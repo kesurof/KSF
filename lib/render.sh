@@ -55,6 +55,7 @@ RENDER_VARS=(
   APP_PGID
   KSF_REPO_DIR
   DOCKER_GID
+  DOCKER_GROUP_ADD_BLOCK
 )
 
 RENDER_OPTIONAL_VARS=(
@@ -75,6 +76,7 @@ RENDER_OPTIONAL_VARS=(
   CROWDSEC_APPSEC_VOLUME_BLOCK
   CROWDSEC_APPSEC_PLUGIN_BLOCK
   DOCKER_GID
+  DOCKER_GROUP_ADD_BLOCK
   APP_HOST_PORT
   APP_PORTS_BLOCK
 )
@@ -105,6 +107,12 @@ prepare_render_context() {
   : "${CROWDSEC_APPSEC_FAILURE_BLOCK:=true}"
   : "${CROWDSEC_APPSEC_UNREACHABLE_BLOCK:=true}"
   : "${CROWDSEC_APPSEC_COLLECTIONS:=crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules}"
+  : "${DOCKER_GROUP_ADD_BLOCK:=}"
+
+  if [ -n "${DOCKER_GID:-}" ] && [ -z "${DOCKER_GROUP_ADD_BLOCK}" ]; then
+    DOCKER_GROUP_ADD_BLOCK="group_add:
+      - \"${DOCKER_GID}\""
+  fi
 
   if [ "${WITH_CROWDSEC:-false}" = true ]; then
     TRAEFIK_PUBLIC_MIDDLEWARES_BLOCK="      middlewares:

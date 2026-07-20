@@ -5,8 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: ${APP_INSTANCE}
     user: "${APP_PUID}:${APP_PGID}"
-    group_add:
-      - "${DOCKER_GID}"
+    ${DOCKER_GROUP_ADD_BLOCK}
     restart: unless-stopped
     networks:
       - proxy

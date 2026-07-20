@@ -573,17 +573,24 @@ def rebuild_app(instance: str):
         return JSONResponse({"error": "L'app est desactivee."}, status_code=409)
 
     if instance == "webui":
-        import subprocess as _subprocess
-        from ..core.ksf_cli import CLI_DIR
-        _subprocess.Popen(
-            ["nohup", "bash", str(CLI_DIR / "app.sh"), "rebuild", instance,
-             "--base-dir", str(BASE_DIR), "--yes"],
-            stdout=_subprocess.DEVNULL, stderr=_subprocess.DEVNULL,
-            start_new_session=True,
+        import docker as _docker
+        client = _docker.from_env()
+        container = client.containers.run(
+            "webui-webui:latest",
+            command=["bash", "/app/ksf/app.sh", "rebuild", "webui",
+                     "--base-dir", str(BASE_DIR), "--yes"],
+            volumes={
+                str(BASE_DIR): {"bind": str(BASE_DIR), "mode": "rw"},
+                "/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"},
+            },
+            network_mode="host",
+            detach=True,
+            remove=True,
+            name="ksf-rebuild-webui",
         )
         return {
             "success": True, "instance": instance,
-            "notice": "Rebuild lance en arriere-plan. Le Web UI redemarre dans quelques instants."
+            "notice": "Rebuild lancé dans un conteneur helper. Le Web UI redémarre dans quelques instants, reconnectez-vous."
         }
 
     job_id, error = start_job(f"rebuild-{instance}", instance,

@@ -874,10 +874,21 @@ resolve_app_auth() {
 
 app_resolve_docker_gid() {
   if [ -n "${DOCKER_GID:-}" ]; then
+    DOCKER_GROUP_ADD_BLOCK="group_add:
+      - \"${DOCKER_GID}\""
     return 0
   fi
-  DOCKER_GID="$(getent group docker 2>/dev/null | cut -d: -f3 || true)"
+  if [ -S "/var/run/docker.sock" ]; then
+    DOCKER_GID="$(stat -c '%g' /var/run/docker.sock 2>/dev/null || true)"
+  fi
   if [ -z "${DOCKER_GID}" ]; then
+    DOCKER_GID="$(getent group docker 2>/dev/null | cut -d: -f3 || true)"
+  fi
+  if [ -n "${DOCKER_GID}" ]; then
+    DOCKER_GROUP_ADD_BLOCK="group_add:
+      - \"${DOCKER_GID}\""
+  else
+    DOCKER_GROUP_ADD_BLOCK=""
     warn "Groupe docker introuvable sur l'hôte. L'accès au socket Docker pourrait échouer pour les apps qui le nécessitent."
   fi
 }
