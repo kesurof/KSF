@@ -22,14 +22,32 @@
       {# Étape 1 — Template & Instance (Lot E) #}
       <template x-if="step === 1">
         <div class="stepper-variant-enter">
-          <div class="form-group">
-            <label for="tpl-select">Template</label>
-            <select id="tpl-select" x-model="template" required :class="{ invalid: step1Touched && !template }">
-              <option value="">Choisir un template…</option>
-              <template x-for="t in templates" :key="t.name">
-                <option :value="t.name" x-text="t.name + ' — ' + t.description"></option>
-              </template>
-            </select>
+          <div class="form-group"
+               @click.away="templateDropdownOpen = false"
+               @keydown.escape="templateDropdownOpen = false">
+            <label for="tpl-search">Template</label>
+            <div class="searchable-select">
+              <input id="tpl-search" type="text"
+                     x-model="templateSearch"
+                     @focus="templateDropdownOpen = true"
+                     @input="templateDropdownOpen = true; template = ''"
+                     :placeholder="template ? (templates.find(t => t.name === template)?.name + ' — ' + templates.find(t => t.name === template)?.description) : 'Rechercher un template…'"
+                     :class="{ invalid: step1Touched && !template }"
+                     autocomplete="off">
+              <div class="searchable-select-dropdown" x-show="templateDropdownOpen && filteredTemplates.length" x-cloak>
+                <template x-for="t in filteredTemplates" :key="t.name">
+                  <button type="button" class="searchable-select-option"
+                          @click="selectTemplate(t.name)"
+                          :class="{ active: template === t.name }">
+                    <strong x-text="t.name"></strong>
+                    <span class="text-muted text-xs" x-text="t.description"></span>
+                  </button>
+                </template>
+              </div>
+              <div class="searchable-select-empty" x-show="templateDropdownOpen && templateSearch && !filteredTemplates.length">
+                <span class="text-muted text-sm">Aucun template trouvé.</span>
+              </div>
+            </div>
             <template x-if="step1Touched && !template"><span class="form-error">Sélectionnez un template.</span></template>
           </div>
           <div class="form-group">
@@ -78,7 +96,10 @@
               </template>
 
               <div class="form-group">
-                <label><input type="checkbox" x-model="noAuth"> Désactiver OAuth2 Proxy</label>
+                <label class="checkbox-card checkbox-card-warning">
+                  <input type="checkbox" x-model="noAuth">
+                  <span>{{ icon('shield-off', 16) }} Désactiver OAuth2 Proxy</span>
+                </label>
               </div>
             </div>
           </template>
@@ -132,6 +153,7 @@ function installForm() {
     accessMode: 'subdomain', subdomain: '', domain: '', domains: [], host: '',
     hostPort: '', port: '', noAuth: false,
     submitting: false, error: '', success: '',
+    templateSearch: '', templateDropdownOpen: false,
 
     async init() {
       try {
@@ -150,6 +172,19 @@ function installForm() {
     get templateInfo() {
       if (!this.template) return null;
       return this.templates.find(t => t.name === this.template) || null;
+    },
+    get filteredTemplates() {
+      if (!this.templateSearch) return this.templates;
+      const q = this.templateSearch.toLowerCase();
+      return this.templates.filter(t =>
+        t.name.toLowerCase().includes(q) ||
+        (t.description && t.description.toLowerCase().includes(q))
+      );
+    },
+    selectTemplate(name) {
+      this.template = name;
+      this.templateSearch = '';
+      this.templateDropdownOpen = false;
     },
 
     accessLabel() {

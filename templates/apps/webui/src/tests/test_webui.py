@@ -11,9 +11,11 @@ from unittest.mock import Mock, patch
 
 from webui.api import router_operations
 from webui.api import router_status
+from webui.api import router_apps
 from webui.core import ksf_cli
 from webui.core import jobs
 from webui.core.schemas import InstallRequest, OperationRequest
+from webui.core.state import AppRecord
 from webui.core.validation import validate_host, validate_instance, validate_port
 from webui.main import app
 
@@ -168,6 +170,32 @@ class RouteTests(unittest.TestCase):
         self.assertIn("/api/operations/render", paths)
         self.assertIn("/api/operations/apps/update-all", paths)
         self.assertIn("/apps/install", paths)
+
+
+class AppListTests(unittest.TestCase):
+    @patch("webui.api.router_apps.get_docker")
+    @patch("webui.api.router_apps.list_installed_apps")
+    def test_list_apps_exposes_table_fields(self, list_installed, get_docker):
+        list_installed.return_value = [
+            AppRecord(instance="films", template="radarr", host="films.example.com", host_port="17878")
+        ]
+        get_docker.return_value.stack_state.return_value = {
+            "state": "running", "running": 1, "total": 1, "services": []
+        }
+
+        payload = router_apps.list_apps()
+
+        self.assertEqual(payload["apps"][0]["display_name"], "films [radarr]")
+        self.assertEqual(payload["apps"][0]["access_label"], "https://films.example.com +127.0.0.1:17878")
+        self.assertEqual(payload["apps"][0]["state"], "running")
+
+    def test_apps_table_uses_record_list_class(self):
+        template = Path(__file__).parents[1] / "webui" / "templates" / "pages" / "apps" / "index.html"
+        source = template.read_text()
+
+        self.assertIn('class="record-list"', source)
+        self.assertIn('class="record-row"', source)
+        self.assertNotIn('<td data-label="Actions" class="flex', source)
 
 
 if __name__ == "__main__":

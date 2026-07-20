@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_components.html" import page_header, stat_card, icon, empty_state, chip, breadcrumb %}
+{% from "_components.html" import page_header, icon, empty_state, chip, breadcrumb %}
 {% block title %}Tableau de bord — KSF{% endblock %}
 {% block topbar_breadcrumb %}{{ breadcrumb([('Tableau de bord', None)]) }}{% endblock %}
 {% block content %}
@@ -10,106 +10,177 @@
 
   <template x-if="error"><p class="error-box mb-1" x-text="error" role="alert"></p></template>
 
-  {# Statut global (Lot F) #}
-  <div class="card-grid" x-show="status" role="status" aria-live="polite">
-    <div class="card stat">
-      <span class="stat-value" :class="status && status.installed ? 'status-ok' : 'status-warn'"
-            x-text="status && status.installed ? 'Oui' : 'Non'"></span>
-      <span class="stat-label">Installation</span>
+  {# Indicateurs clés #}
+  <div class="metric-grid" x-show="status">
+    <div class="metric-card">
+      <span class="metric-icon" :class="status.installed ? 'metric-ok' : 'metric-warn'"><span x-show="status.installed">{{ icon('check-circle', 20) }}</span><span x-show="!status.installed">{{ icon('alert-triangle', 20) }}</span></span>
+      <div class="metric-body">
+        <span class="metric-value" :class="status.installed ? 'status-ok' : 'status-warn'" x-text="status.installed ? 'Installé' : 'Non installé'"></span>
+        <span class="metric-label">Plateforme</span>
+      </div>
     </div>
-    <div class="card stat">
-      <span class="stat-value" :class="status && status.docker_available ? 'status-ok' : 'status-err'"
-            x-text="status && status.docker_available ? 'OK' : 'Indisponible'"></span>
-      <span class="stat-label">Docker</span>
+    <div class="metric-card">
+      <span class="metric-icon" :class="status.docker_available ? 'metric-ok' : 'metric-err'"><span x-show="status.docker_available">{{ icon('check-circle', 20) }}</span><span x-show="!status.docker_available">{{ icon('x-circle', 20) }}</span></span>
+      <div class="metric-body">
+        <span class="metric-value" :class="status.docker_available ? 'status-ok' : 'status-err'" x-text="status.docker_available ? 'Accessible' : 'Indisponible'"></span>
+        <span class="metric-label">Docker</span>
+      </div>
+    </div>
+    <div class="metric-card">
+      <span class="metric-icon" :class="unhealthyCount > 0 ? 'metric-warn' : 'metric-ok'">{{ icon('package', 20) }}</span>
+      <div class="metric-body">
+        <span class="metric-value" x-text="status.apps_running + '/' + status.apps_total"></span>
+        <span class="metric-label">Apps actives</span>
+      </div>
+    </div>
+    <div class="metric-card">
+      <span class="metric-icon" :class="doctorErrors > 0 ? 'metric-err' : (doctorWarnings > 0 ? 'metric-warn' : 'metric-ok')">{{ icon('stethoscope', 20) }}</span>
+      <div class="metric-body">
+        <span class="metric-value" :class="doctorErrors > 0 ? 'status-err' : (doctorWarnings > 0 ? 'status-warn' : 'status-ok')" x-text="doctorErrors + ' err / ' + doctorWarnings + ' warn'"></span>
+        <span class="metric-label">Diagnostic</span>
+      </div>
+    </div>
+    <div class="metric-card" x-show="status.with_crowdsec">
+      <span class="metric-icon" :class="crowdsecAlerts > 0 ? 'metric-warn' : 'metric-ok'">{{ icon('bell', 20) }}</span>
+      <div class="metric-body">
+        <span class="metric-value" :class="crowdsecAlerts > 0 ? 'status-warn' : 'status-ok'" x-text="crowdsecAlerts"></span>
+        <span class="metric-label">Alertes CrowdSec</span>
+      </div>
+    </div>
+    <div class="metric-card">
+      <span class="metric-icon metric-neutral">{{ icon('shield', 20) }}</span>
+      <div class="metric-body">
+        <span class="metric-value" x-text="securedCount + '/' + apps.length"></span>
+        <span class="metric-label">Apps protégées</span>
+      </div>
     </div>
   </div>
 
   {% if installed %}
-  {# Infrastructure (Lot F) #}
-  <section class="section section-infra">
-    <h2 class="section-title">Infrastructure</h2>
-    <div class="card-grid" aria-live="polite">
-      <template x-for="service in services" :key="service.name">
-        <div class="card">
-          <strong x-text="service.name"></strong>
-          <p class="mt-1" :class="service.state === 'running' ? 'status-ok' : 'status-warn'"
-             x-text="service.enabled ? service.state + ' (' + (service.running || 0) + '/' + (service.total || 0) + ')' : 'non configuré'"></p>
+  <div class="dashboard-grid">
+    {# Infrastructure #}
+    <section class="section section-infra">
+      <h2 class="section-title">{{ icon('server', 16) }} Infrastructure</h2>
+      <div class="vstack gap-1">
+        <template x-for="service in services" :key="service.name">
+          <div class="service-row">
+            <span class="chip" :class="service.enabled ? (service.state === 'running' ? 'chip-ok' : 'chip-warn') : 'chip-neutral'"
+                  x-text="service.enabled ? service.state + ' (' + (service.running || 0) + '/' + (service.total || 0) + ')' : 'non configuré'"></span>
+            <strong class="service-name" x-text="service.name"></strong>
+            <div class="service-actions" x-show="service.enabled">
+              <button class="btn btn-xs btn-ghost" @click="restartService(service.name)" :disabled="busy" :title="'Redémarrer ' + service.name">{{ icon('rotate-ccw', 12) }}</button>
+              <a :href="'/infrastructure?service=' + service.name" class="btn btn-xs btn-ghost" :title="'Détails ' + service.name">{{ icon('external-link', 12) }}</a>
+            </div>
+          </div>
+        </template>
+      </div>
+    </section>
+
+    {# Applications #}
+    <section class="section section-apps">
+      <div class="flex gap-2 items-center mb-1">
+        <h2 class="section-title">{{ icon('package', 16) }} Applications</h2>
+        <div class="ml-auto"><a href="/apps/install" class="btn btn-sm">{{ icon('plus', 12) }} Installer</a></div>
+      </div>
+      <template x-if="!loading && !apps.length">
+        {{ empty_state('Aucune app installée.', action='<a href="/apps/install" class="btn btn-sm">Installer une app</a>', icon_name='package') }}
+      </template>
+      <template x-if="apps.length">
+        <div class="vstack gap-1">
+          <template x-for="app in apps.slice(0, 8)" :key="app.instance">
+            <a :href="'/apps/' + app.instance" class="app-row">
+              <span class="chip" :class="app.state === 'running' ? 'chip-ok' : (app.state === 'stopped' ? 'chip-neutral' : 'chip-warn')"
+                    x-text="app.state + ' (' + app.running + '/' + app.total + ')'"></span>
+              <div class="app-row-info">
+                <span class="app-row-name" x-text="app.display_name"></span>
+                <span class="text-xs text-muted" x-text="app.access_label || '—'"></span>
+              </div>
+            </a>
+          </template>
+          <a x-show="apps.length > 8" href="/apps" class="text-sm text-muted text-center mt-1">{{ icon('chevron-right', 14) }} Voir les <span x-text="apps.length"></span> applications</a>
         </div>
       </template>
-    </div>
-  </section>
+    </section>
 
-  {# Applications (Lot F) #}
-  <section class="section section-apps">
-    <div class="flex gap-2 items-center mb-1">
-      <h2 class="section-title">Applications</h2>
-      <div class="ml-auto">
-        <a href="/apps/install" class="btn btn-sm">{{ icon('plus', 14) }} Installer</a>
+    {# Jobs récents #}
+    <section class="section section-general">
+      <div class="flex gap-2 items-center mb-1">
+        <h2 class="section-title">{{ icon('clock', 16) }} Activité récente</h2>
+        <div class="ml-auto"><a href="/general" class="text-xs text-muted">Voir tout</a></div>
       </div>
-    </div>
-    <template x-if="!loading && !apps.length">
-      {{ empty_state('Aucune app installée.', action='<a href="/apps/install" class="btn btn-sm">Installer une app</a>', icon_name='package') }}
-    </template>
-    <div class="card" x-show="apps.length">
-      <div class="table-scroll">
-        <table class="responsive-table">
-          <caption class="sr-only">Applications installées</caption>
-          <thead><tr>
-            <th scope="col">Instance</th><th scope="col">État</th><th scope="col">Accès</th>
-          </tr></thead>
-          <tbody>
-            <template x-for="app in apps" :key="app.instance">
-              <tr>
-                <td data-label="Instance"><a :href="'/apps/' + app.instance" x-text="app.display_name"></a></td>
-                <td data-label="État" :class="app.state === 'running' ? 'status-ok' : 'status-warn'"
-                    x-text="app.state + ' (' + app.running + '/' + app.total + ')'"></td>
-                <td data-label="Accès" class="text-sm text-muted" x-text="app.access_label"></td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </section>
-
-  {# Configuration (Lot F) #}
-  <section class="section section-general">
-    <h2 class="section-title">Configuration</h2>
-    <div class="card-grid">
-      <div class="card stat">
-        <span class="stat-value" x-text="status ? (status.domain || '—') : '—'"></span>
-        <span class="stat-label">Domaine</span>
-      </div>
-      <div class="card card-subtle">
-        <strong>Plateforme</strong>
-        <p class="text-sm text-muted mt-1">Configuration KSF persistée.</p>
-        <a href="/config" class="btn btn-sm btn-ghost mt-1">{{ icon('settings', 14) }} Voir la configuration</a>
-      </div>
-    </div>
-  </section>
+      <template x-if="!recentJobs.length">
+        <p class="text-sm text-muted">Aucune opération récente.</p>
+      </template>
+      <template x-if="recentJobs.length">
+        <div class="vstack gap-1">
+          <template x-for="job in recentJobs.slice(0, 4)" :key="job.id">
+            <div class="job-row">
+              <span class="chip" :class="job.status === 'completed' ? 'chip-ok' : (job.status === 'failed' ? 'chip-err' : 'chip-neutral')"
+                    x-text="job.status"></span>
+              <span class="job-row-label text-sm" x-text="job.operation + ' — ' + job.target"></span>
+              <span class="text-xs text-muted ml-auto" x-text="job.created_at ? new Date(job.created_at).toLocaleString() : ''"></span>
+            </div>
+          </template>
+        </div>
+      </template>
+    </section>
+  </div>
   {% endif %}
 </div>
 <script>
 function dashboardPage() {
   return {
-    status: null, services: [], apps: [], error: '', loading: false,
+    status: null, services: [], apps: [], recentJobs: [],
+    error: '', loading: false, busy: false,
+    crowdsecAlerts: 0, doctorErrors: 0, doctorWarnings: 0,
+
+    get unhealthyCount() {
+      return this.apps.filter(a => a.unhealthy && a.unhealthy > 0).length +
+             this.apps.filter(a => a.state === 'running' && a.total > a.running).length;
+    },
+    get securedCount() {
+      return this.apps.filter(a => a.protected).length;
+    },
+
     async load() {
       this.loading = true; this.error = '';
       try {
-        const [status, services, apps] = await Promise.all([
+        const [status, services, apps, doctor, jobs] = await Promise.all([
           ksfFetch('/api/status'),
           ksfFetch('/api/services'),
           ksfFetch('/api/apps'),
+          ksfFetch('/api/doctor'),
+          ksfFetch('/api/jobs'),
         ]);
         this.status = status;
         this.services = services.services;
         this.apps = apps.apps;
+        this.recentJobs = jobs.jobs || [];
+        this.doctorErrors = doctor.errors || 0;
+        this.doctorWarnings = doctor.warnings || 0;
+
+        if (status.with_crowdsec) {
+          try {
+            const alerts = await ksfFetch('/api/crowdsec/alerts');
+            this.crowdsecAlerts = (alerts.output || '').split('\n').filter(l => l.trim()).length;
+          } catch (_) { this.crowdsecAlerts = -1; }
+        }
       } catch (error) {
         this.error = ksfError(error);
         Alpine.store('toasts').error(ksfError(error));
-      } finally {
-        this.loading = false;
-      }
+      } finally { this.loading = false; }
+    },
+
+    async restartService(name) {
+      const ok = await ksfConfirm('Redémarrer ' + name + ' ?');
+      if (!ok) return;
+      this.busy = true;
+      try {
+        await ksfFetch('/api/services/' + name + '/restart', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({confirmed: true})});
+        Alpine.store('toasts').success(name + ' redémarré.');
+        await this.load();
+      } catch (error) { Alpine.store('toasts').error(ksfError(error)); }
+      finally { this.busy = false; }
     }
   };
 }

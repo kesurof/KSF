@@ -11,38 +11,42 @@
   <template x-if="error"><p class="error-box" x-text="error" role="alert"></p></template>
   <template x-if="loading">{{ skeleton_rows(3) }}</template>
   <template x-if="!loading && !directories.length">{{ empty_state('Aucune donnée conservée à nettoyer.', icon_name='trash') }}</template>
-  <div class="card" x-show="directories.length">
-    <div class="table-scroll">
-      <table class="responsive-table">
-        <caption class="sr-only">Données conservées</caption>
-        <thead><tr>
-          <th scope="col">Instance</th><th scope="col" class="col-secondary">Chemin</th><th scope="col">État</th><th scope="col">Action</th>
-        </tr></thead>
-        <tbody>
-          <template x-for="directory in directories" :key="directory.name">
-            <tr>
-              <td data-label="Instance" x-text="directory.name"></td>
-              <td data-label="Chemin" class="text-sm text-muted col-secondary" x-text="directory.path"></td>
-              <td data-label="État">
-                <span :class="directory.installed ? 'chip chip-warn' : 'chip chip-ok'" x-text="directory.installed ? 'installée' : 'orpheline'"></span>
-              </td>
-              <td data-label="Action">
-                <button class="btn btn-sm btn-danger" x-show="!directory.installed" @click="remove(directory.name)">{{ icon('trash', 14) }} Supprimer</button>
-              </td>
-            </tr>
-          </template>
-        </tbody>
-      </table>
+
+  <template x-if="directories.length">
+    <div>
+      <div class="filter-bar">
+        <input type="text" x-model="q" @input="filter()" placeholder="Filtrer par nom ou chemin…">
+        <span class="count" x-text="filtered.length + ' / ' + directories.length"></span>
+      </div>
+      <div class="record-list">
+        <template x-for="dir in filtered" :key="dir.name">
+          <div class="record-row">
+            <span class="chip" :class="dir.installed ? 'chip-warn' : 'chip-ok'" x-text="dir.installed ? 'installée' : 'orpheline'"></span>
+            <div class="record-main">
+              <strong x-text="dir.name"></strong>
+              <span class="sub" x-text="dir.path"></span>
+            </div>
+            <div class="record-actions" x-show="!dir.installed">
+              <button class="btn btn-sm btn-danger" @click="remove(dir.name)">{{ icon('trash', 14) }} Supprimer</button>
+            </div>
+          </div>
+        </template>
+      </div>
     </div>
-  </div>
+  </template>
 </div>
 <script>
 function maintenancePage() {
   return {
-    directories: [], error: '', loading: false,
+    directories: [], q: '', filtered: [], loading: false, error: '',
+    filter() {
+      if (!this.q) { this.filtered = [...this.directories]; return; }
+      const s = this.q.toLowerCase();
+      this.filtered = this.directories.filter(d => (d.name + ' ' + d.path).toLowerCase().includes(s));
+    },
     async load() {
       this.loading = true; this.error = '';
-      try { this.directories = (await ksfFetch('/api/clean-data')).directories; }
+      try { this.directories = (await ksfFetch('/api/clean-data')).directories; this.filter(); }
       catch (error) { this.error = ksfError(error); Alpine.store('toasts').error(ksfError(error)); }
       finally { this.loading = false; }
     },

@@ -1,33 +1,20 @@
-{% from "_components.html" import icon, status_badge, empty_state, chip %}
+{% from "_components.html" import icon, chip, empty_state %}
 {% if not jobs %}
-{{ empty_state('Aucune opération enregistrée.', icon_name='clock') }}
+<div class="card">{{ empty_state('Aucune opération enregistrée.', icon_name='clock') }}</div>
 {% else %}
-<div class="card">
-  <div class="table-scroll">
-    <table class="responsive-table">
-      <caption class="sr-only">Historique des opérations</caption>
-      <thead><tr>
-        <th scope="col">Date</th><th scope="col">Action</th><th scope="col">Cible</th>
-        <th scope="col" class="col-secondary">Mode</th><th scope="col">État</th><th scope="col" class="col-secondary">Message</th>
-      </tr></thead>
-      <tbody>
-        {% for job in jobs %}
-        <tr>
-          <td data-label="Date" class="text-sm">{{ job.created_at | ts_local }}</td>
-          <td data-label="Action">{{ job.action }}</td>
-          <td data-label="Cible">{{ job.target }}</td>
-          <td data-label="Mode" class="col-secondary">{{ 'simulation' if job.dry_run else 'réel' }}</td>
-          <td data-label="État">
-            {% if job.status == 'completed' %}{{ chip('ok', 'completed') }}
-            {% elif job.status == 'failed' %}{{ chip('err', 'failed') }}
-            {% elif job.status == 'running' %}{{ chip('warn', job.status) }}
-            {% else %}{{ chip('neutral', job.status) }}{% endif %}
-          </td>
-          <td data-label="Message" class="text-sm col-secondary">{{ job.message }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+<div class="record-list">
+  {% for job in jobs %}
+  <div class="record-row">
+    <span class="chip{% if job.status == 'completed' %} chip-ok{% elif job.status == 'failed' %} chip-err{% elif job.status == 'running' %} chip-warn{% else %} chip-neutral{% endif %}">{{ job.status }}</span>
+    <div class="record-main">
+      <strong>{{ job.operation }}</strong>
+      <span class="sub">{{ job.created_at | ts_local }}{% if job.dry_run %} — simulation{% endif %}</span>
+    </div>
+    <div class="record-meta nowrap text-sm text-muted">
+      <span>{{ job.target }}</span>
+      {% if job.message %}<span class="text-xs"> — {{ job.message }}</span>{% endif %}
+    </div>
   </div>
+  {% endfor %}
 </div>
 {% endif %}

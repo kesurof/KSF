@@ -87,23 +87,24 @@ async def app_detail_page(request: Request, instance: str):
 @app.get("/{path:path}", response_class=HTMLResponse)
 async def catch_all(request: Request, path: str):
     page_map = {
-        "overview": "pages/overview.html",
+        "general": "pages/general/index.html",
+        "overview": "pages/general/index.html",
+        "config": "pages/general/index.html",
+        "routes": "pages/general/index.html",
+        "doctor": "pages/general/index.html",
+        "operations": "pages/general/index.html",
+        "jobs": "pages/general/index.html",
         "apps": "pages/apps/index.html",
         "apps/install": "pages/apps/install.html",
         "infrastructure": "pages/infrastructure/index.html",
         "security": "pages/security/index.html",
-        "security/alerts": "pages/security/alerts.html",
-        "security/metrics": "pages/security/metrics.html",
-        "security/bouncers": "pages/security/bouncers.html",
-        "security/decisions": "pages/security/decisions.html",
-        "security/appsec": "pages/security/appsec.html",
+        "security/alerts": "pages/security/index.html",
+        "security/metrics": "pages/security/index.html",
+        "security/bouncers": "pages/security/index.html",
+        "security/decisions": "pages/security/index.html",
+        "security/appsec": "pages/security/index.html",
         "logs": "pages/logs/index.html",
         "maintenance": "pages/maintenance/index.html",
-        "operations": "pages/operations/index.html",
-        "jobs": "pages/jobs/index.html",
-        "config": "pages/config/index.html",
-        "routes": "pages/routes.html",
-        "doctor": "pages/doctor.html",
     }
     template_name = page_map.get(path)
     if not template_name:

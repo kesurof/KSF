@@ -43,12 +43,7 @@
         {% if installed %}
         <div class="nav-section">
           <span class="nav-section-title">Général</span>
-          {{ nav_item("Vue d'ensemble", '/overview', 'grid', request.url.path, 'general') }}
-          {{ nav_item('Configuration', '/config', 'settings', request.url.path, 'general') }}
-          {{ nav_item('Routes', '/routes', 'route', request.url.path, 'general') }}
-          {{ nav_item('Diagnostic', '/doctor', 'stethoscope', request.url.path, 'general') }}
-          {{ nav_item('Opérations plateforme', '/operations', 'wrench', request.url.path, 'general') }}
-          {{ nav_item('Historique des jobs', '/jobs', 'clock', request.url.path, 'general') }}
+          {{ nav_item('Général', '/general', 'grid', request.url.path, 'general') }}
         </div>
         <div class="nav-section">
           <span class="nav-section-title">Applications</span>
@@ -63,11 +58,6 @@
         <div class="nav-section">
           <span class="nav-section-title">Sécurité</span>
           {{ nav_item('CrowdSec', '/security', 'shield', request.url.path, 'security') }}
-          {{ nav_item('Alertes', '/security/alerts', 'bell', request.url.path, 'security') }}
-          {{ nav_item('Métriques', '/security/metrics', 'chart', request.url.path, 'security') }}
-          {{ nav_item('Bouncers', '/security/bouncers', 'users', request.url.path, 'security') }}
-          {{ nav_item('Décisions', '/security/decisions', 'gavel', request.url.path, 'security') }}
-          {{ nav_item('AppSec / WAF', '/security/appsec', 'shield-alert', request.url.path, 'security') }}
         </div>
         <div class="nav-section">
           <span class="nav-section-title">Maintenance</span>

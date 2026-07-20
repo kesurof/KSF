@@ -1,15 +1,14 @@
-{% from "_components.html" import icon %}
-<div class="table-scroll">
-  <table class="responsive-table">
-    <caption class="sr-only">Configuration de la plateforme</caption>
-    <thead><tr><th scope="col">Clé</th><th scope="col">Valeur</th></tr></thead>
-    <tbody>
-      {% for key, value in config.items() %}
-      <tr>
-        <td data-label="Clé" class="text-sm text-muted">{{ key }}</td>
-        <td data-label="Valeur"><code>{{ value }}</code></td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+{% from "_components.html" import icon, chip %}
+{% for section in sections %}
+<div class="card">
+  <h3 class="section-title section-{{ section.accent }}">{{ section.label }}</h3>
+  <div class="config-grid">
+    {% for key, value in section["items"] %}
+    <div class="config-item">
+      <span class="config-key" title="{{ key }}">{{ key }}</span>
+      <span class="config-value">{% if value == "******" %}<span class="chip chip-neutral">masqué</span>{% elif value in ("true", "false", "yes", "no", "1", "0") %}<span class="chip {{ 'chip-ok' if value in ('true','yes','1') else 'chip-neutral' }}">{{ "✓" if value in ('true','yes','1') else "✕" }} {{ value }}</span>{% elif key.endswith("_URL") or key.endswith("_HOST") or "@" in value %}<code class="config-code">{{ value }}</code>{% else %}<code class="config-code">{{ value }}</code>{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
 </div>
+{% endfor %}

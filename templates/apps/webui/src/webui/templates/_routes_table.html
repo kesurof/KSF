@@ -1,28 +1,15 @@
-{% from "_components.html" import icon, status_badge, chip %}
-<div class="table-scroll">
-  <table class="responsive-table">
-    <caption class="sr-only">Routes Traefik chargées</caption>
-    <thead><tr>
-      <th scope="col">Fichier</th><th scope="col">Host</th><th scope="col">Type</th><th scope="col" class="col-secondary">CrowdSec</th>
-    </tr></thead>
-    <tbody>
-      {% for r in routes %}
-      <tr>
-        <td data-label="Fichier" class="text-sm">{{ r.filename }}</td>
-        <td data-label="Host"><code>{{ r.host or '—' }}</code></td>
-        <td data-label="Type">
-          {% if r.has_placeholder %}{{ chip('err', 'placeholder') }}
-          {% elif r.has_oauth2 %}{{ chip('ok', 'protégée') }}
-          {% else %}{{ chip('warn', 'publique') }}{% endif %}
-        </td>
-        <td data-label="CrowdSec" class="col-secondary">
-          {% if r.has_crowdsec %}<span class="chip-ok">{{ icon('check-circle', 16) }}</span><span class="sr-only">oui</span>
-          {% else %}—{% endif %}
-        </td>
-      </tr>
-      {% else %}
-      <tr><td colspan="4" class="text-muted">Aucune route</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+{% from "_components.html" import chip, icon %}
+<div class="record-list">
+  {% for r in routes %}
+  <div class="record-row">
+    <span class="chip{% if r.has_placeholder %} chip-err{% elif r.has_oauth2 %} chip-ok{% else %} chip-warn{% endif %}">{% if r.has_placeholder %}placeholder{% elif r.has_oauth2 %}protégée{% else %}publique{% endif %}</span>
+    <div class="record-main">
+      <strong>{{ r.filename }}</strong>
+      <span class="sub">{% if r.has_crowdsec %}CrowdSec activé{% endif %}</span>
+    </div>
+    <div class="record-meta nowrap">{% if r.host %}<code>{{ r.host }}</code>{% else %}<span class="text-muted text-sm">aucun host</span>{% endif %}</div>
+  </div>
+  {% else %}
+  <div class="empty-state">{{ icon('route', 24) }}<p>Aucune route</p></div>
+  {% endfor %}
 </div>

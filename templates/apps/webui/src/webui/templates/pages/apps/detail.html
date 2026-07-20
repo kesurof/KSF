@@ -11,7 +11,6 @@
 
   <template x-if="!loading && app">
     <div>
-      {# Header avec badge état + lien d'ouverture (Lot D) #}
       <div class="page-header flex gap-2 items-center mb-1">
         <h1 class="section-title section-apps" x-text="app.display_name">{{ instance }}</h1>
         <div class="flex gap-1 items-center ml-auto">
@@ -28,25 +27,49 @@
         <p class="error-box mb-1">Cette application est désactivée: sa stack et sa route Traefik sont arrêtées.</p>
       </template>
 
-      {# Tabs multi-sections (Lot D) #}
       {% call tabs([
-        {'label': 'Vue d\'ensemble', 'icon': 'layout-dashboard'},
-        {'label': 'Services', 'icon': 'server'},
+        {'label': 'Général', 'icon': 'layout-dashboard'},
         {'label': 'Logs', 'icon': 'scroll-text'},
-        {'label': 'Accès & suppression', 'icon': 'settings'}
+        {'label': 'Configuration', 'icon': 'settings'}
       ]) %}
         <template x-if="active === 0">
           <div>
-            <div class="card-grid">
-              <div class="card stat"><span class="stat-value" x-text="app.running + '/' + app.total"></span><span class="stat-label">Services actifs</span></div>
-              <div class="card stat"><span class="stat-value" :class="app.unhealthy ? 'status-err' : 'status-ok'" x-text="app.unhealthy || '0'"></span><span class="stat-label">Services non sains</span></div>
-              <div class="card stat"><span class="stat-value text-sm" x-text="app.primary_health || app.primary_state || '—'"></span><span class="stat-label" x-text="'Service principal: ' + (app.primary_service || '—')"></span></div>
-              <div class="card stat"><span class="stat-value text-sm" x-text="app.access_label"></span><span class="stat-label" x-text="app.route_present ? 'Route Traefik active' : 'Accès sans route Traefik'"></span></div>
+            {# Statistiques clés #}
+            <div class="metric-grid">
+              <div class="metric-card">
+                <span class="metric-icon" :class="app.state === 'running' ? 'metric-ok' : 'metric-warn'"><span x-show="app.state === 'running'">{{ icon('check-circle', 20) }}</span><span x-show="app.state !== 'running'">{{ icon('alert-triangle', 20) }}</span></span>
+                <div class="metric-body">
+                  <span class="metric-value" :class="app.state === 'running' ? 'status-ok' : 'status-warn'" x-text="app.state"></span>
+                  <span class="metric-label">État</span>
+                </div>
+              </div>
+              <div class="metric-card">
+                <span class="metric-icon" :class="app.unhealthy > 0 ? 'metric-err' : 'metric-ok'">{{ icon('server', 20) }}</span>
+                <div class="metric-body">
+                  <span class="metric-value" x-text="app.running + '/' + app.total"></span>
+                  <span class="metric-label">Services actifs</span>
+                </div>
+              </div>
+              <div class="metric-card">
+                <span class="metric-icon" :class="app.unhealthy > 0 ? 'metric-err' : 'metric-ok'">{{ icon('check-circle', 20) }}</span>
+                <div class="metric-body">
+                  <span class="metric-value" :class="app.unhealthy > 0 ? 'status-err' : 'status-ok'" x-text="app.unhealthy || '0'"></span>
+                  <span class="metric-label">Services non sains</span>
+                </div>
+              </div>
+              <div class="metric-card">
+                <span class="metric-icon" :class="app.route_present ? 'metric-ok' : 'metric-neutral'">{{ icon('route', 20) }}</span>
+                <div class="metric-body">
+                  <span class="metric-value text-sm" x-text="app.access_label"></span>
+                  <span class="metric-label" x-text="app.route_present ? 'Route active' : 'Sans route'"></span>
+                </div>
+              </div>
             </div>
 
+            {# Cycle de vie #}
             <div class="card">
-              <div class="card-header"><strong>Cycle de vie</strong></div>
-              <div class="flex gap-1" x-show="!app.disabled">
+              <div class="card-header"><strong>{{ icon('rotate-ccw', 16) }} Cycle de vie</strong></div>
+              <div class="flex gap-1 flex-wrap" x-show="!app.disabled">
                 <button class="btn btn-sm" @click="action('start')" :disabled="busy">{{ icon('play', 14) }} Démarrer</button>
                 <button class="btn btn-sm btn-warning" @click="action('stop')" :disabled="busy">{{ icon('square', 14) }} Arrêter</button>
                 <button class="btn btn-sm btn-ghost" @click="action('restart')" :disabled="busy">{{ icon('rotate-ccw', 14) }} Redémarrer</button>
@@ -54,49 +77,38 @@
                 <button class="btn btn-sm btn-ghost" @click="action('rebuild')" :disabled="busy">{{ icon('refresh', 14) }} Rebuild</button>
                 <button class="btn btn-sm btn-danger" @click="disable()" :disabled="busy">{{ icon('power', 14) }} Désactiver</button>
               </div>
-              <div class="flex gap-1" x-show="app.disabled">
+              <div class="flex gap-1 flex-wrap" x-show="app.disabled">
                 <button class="btn btn-sm" @click="action('enable')" :disabled="busy">{{ icon('power', 14) }} Activer et démarrer</button>
                 <button class="btn btn-sm btn-ghost" @click="action('update')" :disabled="busy">{{ icon('download', 14) }} Mettre à jour</button>
                 <button class="btn btn-sm btn-ghost" @click="action('rebuild')" :disabled="busy">{{ icon('refresh', 14) }} Rebuild</button>
               </div>
             </div>
-          </div>
-        </template>
 
-        <template x-if="active === 1">
-          <div>
+            {# Services #}
             <div class="card">
-              <div class="card-header"><strong>Services</strong><button class="btn btn-sm btn-ghost" @click="load()" :disabled="busy">{{ icon('refresh', 14) }} Actualiser</button></div>
-              <div class="table-scroll" x-show="app.services.length">
-                <table class="responsive-table">
-                  <caption class="sr-only">Conteneurs de la stack</caption>
-                  <thead><tr>
-                    <th scope="col">Service</th><th scope="col" class="col-secondary">Conteneur</th>
-                    <th scope="col">État</th><th scope="col">Santé</th>
-                  </tr></thead>
-                  <tbody>
-                    <template x-for="service in app.services" :key="service.service">
-                      <tr>
-                        <td data-label="Service" x-text="service.service"></td>
-                        <td data-label="Conteneur" class="text-sm text-muted col-secondary" x-text="service.name"></td>
-                        <td data-label="État" x-text="service.state" :class="service.state === 'running' ? 'status-ok' : 'status-warn'"></td>
-                        <td data-label="Santé" x-text="service.health || '—'" :class="service.health === 'unhealthy' ? 'status-err' : (service.health === 'healthy' ? 'status-ok' : '')"></td>
-                      </tr>
-                    </template>
-                  </tbody>
-                </table>
-              </div>
-              <template x-if="!app.services.length">{{ empty_state('Aucun conteneur créé pour cette stack.', icon_name='server') }}</template>
+              <div class="card-header"><strong>{{ icon('server', 16) }} Services</strong><button class="btn btn-sm btn-ghost" @click="load()" :disabled="busy">{{ icon('refresh', 14) }} Actualiser</button></div>
+              <template x-if="app.services && app.services.length">
+                <div class="vstack gap-1">
+                  <template x-for="service in app.services" :key="service.service">
+                    <div class="service-row">
+                      <span class="chip" :class="service.state === 'running' ? 'chip-ok' : (service.state === 'exited' ? 'chip-err' : 'chip-warn')" x-text="service.state"></span>
+                      <span class="service-name" x-text="service.service"></span>
+                      <span class="text-xs text-muted" x-text="'Santé: ' + (service.health || '—')" :class="service.health === 'unhealthy' ? 'status-err' : (service.health === 'healthy' ? 'status-ok' : '')"></span>
+                    </div>
+                  </template>
+                </div>
+              </template>
+              <template x-if="!app.services || !app.services.length">{{ empty_state('Aucun conteneur créé pour cette stack.', icon_name='server') }}</template>
             </div>
           </div>
         </template>
 
-        <template x-if="active === 2">
+        <template x-if="active === 1">
           <div class="card">
-            <div class="card-header"><strong>Logs</strong>
-              <div class="flex gap-1">
-                <label for="log-tail" class="sr-only">Nombre de lignes</label>
-                <input id="log-tail" type="number" min="1" max="5000" x-model.number="logTail">
+            <div class="card-header"><strong>{{ icon('scroll-text', 16) }} Logs</strong>
+              <div class="flex gap-1 items-center">
+                <label for="log-tail" class="text-xs text-muted mr-1">Lignes</label>
+                <input id="log-tail" type="number" min="1" max="5000" x-model.number="logTail" style="width:80px">
                 <button class="btn btn-sm btn-ghost" @click="loadLogs()">{{ icon('refresh', 14) }} Rafraîchir</button>
               </div>
             </div>
@@ -104,23 +116,36 @@
           </div>
         </template>
 
-        <template x-if="active === 3">
+        <template x-if="active === 2">
           <div>
             <div class="card">
-              <div class="card-header"><strong>Accès</strong></div>
+              <div class="card-header"><strong>{{ icon('pencil', 16) }} Accès</strong></div>
               <p class="text-muted text-sm mb-1" x-text="app.host ? 'Actuel: https://' + app.host : 'Actuel: accès local uniquement'"></p>
               <div class="form-group"><label for="cfg-sub">Sous-domaine</label><input id="cfg-sub" type="text" x-model="subdomain" placeholder="app"></div>
               <div class="form-group"><label for="cfg-dom">Domaine</label><input id="cfg-dom" type="text" x-model="domain" placeholder="example.com"></div>
               <div class="form-group"><label for="cfg-port">Port hôte local, optionnel</label><input id="cfg-port" type="number" min="1" max="65535" x-model="hostPort" placeholder="8080"></div>
-              <div class="form-group"><label><input type="checkbox" x-model="localOnly"> Accès local uniquement</label></div>
-              <div class="form-group"><label><input type="checkbox" x-model="noHostPort"> Désactiver le port hôte local</label></div>
+              <div class="form-group">
+                <label class="checkbox-card">
+                  <input type="checkbox" x-model="localOnly">
+                  <span>{{ icon('server', 16) }} Accès local uniquement</span>
+                </label>
+              </div>
+              <div class="form-group">
+                <label class="checkbox-card">
+                  <input type="checkbox" x-model="noHostPort">
+                  <span>{{ icon('unlink', 16) }} Désactiver le port hôte local</span>
+                </label>
+              </div>
               <button class="btn btn-sm" @click="configure()" :disabled="busy">{{ icon('pencil', 14) }} Enregistrer l'accès</button>
             </div>
 
             <div class="card">
-              <div class="card-header"><strong>Suppression</strong></div>
+              <div class="card-header"><strong>{{ icon('trash', 16) }} Suppression</strong></div>
               <p class="text-muted text-sm mb-1">La stack et son enregistrement seront supprimés. Les données sont conservées par défaut.</p>
-              <label class="text-sm"><input type="checkbox" x-model="removeData"> Supprimer aussi les données persistantes</label><br>
+              <label class="checkbox-card checkbox-card-warning">
+                <input type="checkbox" x-model="removeData">
+                <span class="text-sm">{{ icon('trash', 16) }} Supprimer aussi les données persistantes</span>
+              </label>
               <button class="btn btn-sm btn-danger mt-1" @click="removeApp()" :disabled="busy">{{ icon('trash', 14) }} Supprimer l'application</button>
             </div>
           </div>
@@ -129,7 +154,6 @@
     </div>
   </template>
 </div>
-
 <script>
 function appDetail(instance) {
   return {
@@ -149,7 +173,7 @@ function appDetail(instance) {
         this.localOnly = this.app.local_only;
         this.noHostPort = false;
         await this.$nextTick();
-        if (this.active === 2) await this.loadLogs();
+        if (this.active === 1) await this.loadLogs();
       } catch (error) {
         this.app = null; this.error = ksfError(error);
         Alpine.store('toasts').error(ksfError(error));

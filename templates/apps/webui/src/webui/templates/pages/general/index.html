@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+{% from "_components.html" import page_header, icon, breadcrumb, tabs, skeleton_rows %}
+{% block title %}Général — KSF{% endblock %}
+{% block topbar_breadcrumb %}{{ breadcrumb([('Général', None)]) }}{% endblock %}
+{% block content %}
+{% call page_header('Général', subtitle='État de la plateforme, configuration, routes et opérations.', section='general') %}{% endcall %}
+
+<div x-data="generalPage()">
+  {% call tabs([
+    {'label': 'Vue d\'ensemble', 'icon': 'layout-dashboard'},
+    {'label': 'Configuration', 'icon': 'settings'},
+    {'label': 'Routes', 'icon': 'route'},
+    {'label': 'Opérations', 'icon': 'wrench'},
+    {'label': 'Jobs', 'icon': 'clock'},
+  ]) %}
+    <template x-if="active === 0">
+      <div x-init="loadTab(0)">
+        <template x-if="!statusHtml">
+          <div class="card-grid"><div class="card stat"><span class="skeleton skeleton-card"></span></div><div class="card stat"><span class="skeleton skeleton-card"></span></div><div class="card stat"><span class="skeleton skeleton-card"></span></div></div>
+        </template>
+        <div x-html="statusHtml"></div>
+        <h2 class="section-title section-general mt-2">{{ icon('stethoscope', 16) }} Diagnostic</h2>
+        <template x-if="!doctorHtml">
+          <div class="card"><span class="skeleton skeleton-row"></span><span class="skeleton skeleton-row"></span><span class="skeleton skeleton-row"></span></div>
+        </template>
+        <div x-html="doctorHtml"></div>
+      </div>
+    </template>
+
+    <template x-if="active === 1">
+      <div x-init="loadTab(1)">
+        <template x-if="!configHtml">
+          <div class="card"><span class="skeleton skeleton-row"></span><span class="skeleton skeleton-row"></span></div>
+        </template>
+        <div x-html="configHtml"></div>
+      </div>
+    </template>
+
+    <template x-if="active === 2">
+      <div x-init="loadTab(2)">
+        <template x-if="!routesHtml">
+          <div class="card"><span class="skeleton skeleton-row"></span><span class="skeleton skeleton-row"></span></div>
+        </template>
+        <div x-html="routesHtml"></div>
+      </div>
+    </template>
+
+    <template x-if="active === 3">
+      <div x-data="operationsPage()" x-init="loadDns()">
+        <div class="card card-subtle mb-1">
+          <label class="checkbox-card" :class="{ 'checkbox-card-warning': dryRun }">
+            <input type="checkbox" x-model="dryRun">
+            <span>{{ icon('alert-triangle', 16) }} Mode simulation, sans écriture persistante</span>
+          </label>
+        </div>
+        <template x-if="message"><p class="error-box mb-1" x-text="message" role="status" x-show="message"></p></template>
+        {% call tabs([
+          {'label': 'Infrastructure', 'icon': 'server'},
+          {'label': 'Sécurité', 'icon': 'shield'},
+          {'label': 'DNS Cloudflare', 'icon': 'route'}
+        ]) %}
+          <template x-if="active === 0">
+            <div class="card-grid">
+              <div class="card">
+                <div class="card-header"><strong>Stacks</strong></div>
+                <p class="text-sm text-muted mb-1">Redémarrage ou mise à jour de toutes les stacks système et applicatives.</p>
+                <div class="flex gap-1 flex-wrap">
+                  <button class="btn btn-sm" @click="run('/api/operations/infrastructure/restart', 'Redémarrer toute l\'infrastructure ?')" :disabled="busy">{{ icon('rotate-ccw', 14) }} Tout redémarrer</button>
+                  <button class="btn btn-sm btn-ghost" @click="run('/api/operations/infrastructure/update-all', 'Mettre à jour toutes les stacks système ?')" :disabled="busy">{{ icon('download', 14) }} Tout mettre à jour</button>
+                  <button class="btn btn-sm btn-ghost" @click="run('/api/operations/apps/update-all', 'Mettre à jour toutes les applications actives ?')" :disabled="busy">{{ icon('package', 14) }} Mettre à jour les apps</button>
+                </div>
+              </div>
+              <div class="card">
+                <div class="card-header"><strong>Rendu &amp; protection</strong></div>
+                <p class="text-sm text-muted mb-1">Régénération complète des fichiers rendus ou réapplication des couches OAuth2.</p>
+                <div class="flex gap-1 flex-wrap">
+                  <button class="btn btn-sm" @click="run('/api/operations/render', 'Régénérer toute la plateforme ?')" :disabled="busy">{{ icon('refresh', 14) }} Régénérer</button>
+                  <button class="btn btn-sm btn-ghost" @click="run('/api/operations/protect', 'Réappliquer OAuth2 aux applications protégées ?')" :disabled="busy">{{ icon('shield', 14) }} Réappliquer OAuth2</button>
+                </div>
+              </div>
+            </div>
+          </template>
+          <template x-if="active === 1">
+            <div class="card-grid">
+              <div class="card">
+                <div class="card-header"><strong>CrowdSec Console</strong></div>
+                <p class="text-sm text-muted mb-1">Enrôlez cette instance dans votre console CrowdSec pour centraliser la supervision.</p>
+                <div class="form-group"><label for="enroll-token">Token d'enrôlement</label><input id="enroll-token" type="password" x-model="enrollToken" autocomplete="off" placeholder="Token CrowdSec Console"></div>
+                <button class="btn btn-sm" @click="enroll()" :disabled="busy || !enrollToken">{{ icon('plus', 14) }} Enrôler</button>
+                <p class="text-xs text-muted mt-1">L'enrôlement ne prend pas en charge la simulation.</p>
+              </div>
+              <div class="card">
+                <div class="card-header"><strong>AppSec / WAF</strong></div>
+                <p class="text-sm text-muted mb-1">Activez ou testez la couche de protection applicative CrowdSec.</p>
+                <div class="flex gap-1 flex-wrap">
+                  <button class="btn btn-sm" @click="appsec('enable', 'Activer AppSec ?')" :disabled="busy">{{ icon('shield', 14) }} Activer</button>
+                  <button class="btn btn-sm btn-warning" @click="appsec('disable', 'Désactiver AppSec ?')" :disabled="busy">{{ icon('power', 14) }} Désactiver</button>
+                  <button class="btn btn-sm btn-ghost" @click="appsec('metrics', 'Lire les métriques AppSec ?')" :disabled="busy">{{ icon('chart', 14) }} Métriques</button>
+                  <button class="btn btn-sm btn-ghost" @click="appsec('test', 'Lancer le test AppSec ?')" :disabled="busy">{{ icon('stethoscope', 14) }} Tester</button>
+                </div>
+              </div>
+            </div>
+          </template>
+          <template x-if="active === 2">
+            <div class="card-grid">
+              <div class="card">
+                <div class="card-header"><strong>Trusted IPs Cloudflare</strong></div>
+                <p class="text-sm text-muted mb-1" x-text="dnsLabel">Configuration DNS: chargement…</p>
+                <div class="flex gap-1 flex-wrap">
+                  <button class="btn btn-sm btn-ghost" @click="run('/api/operations/trusted-ips/cloudflare', 'Récupérer les CIDR Cloudflare ?', {}, false)" :disabled="busy">{{ icon('download', 14) }} Récupérer les CIDR</button>
+                  <button class="btn btn-sm" @click="run('/api/operations/trusted-ips/cloudflare/apply', 'Appliquer les CIDR Cloudflare et redémarrer Traefik ?')" :disabled="busy">{{ icon('shield', 14) }} Appliquer</button>
+                </div>
+              </div>
+            </div>
+          </template>
+        {% endcall %}
+        <div class="card" x-show="job" :class="job && job.dry_run ? 'job-dry-run' : ''" role="status" aria-live="polite">
+          <div class="card-header">
+            <span class="chip" :class="job && job.dry_run ? 'chip-warn' : (job && job.status === 'completed' ? 'chip-ok' : 'chip-neutral')" x-text="job && job.dry_run ? 'Simulation' : (job && job.status || 'Opération')"></span>
+            <span class="text-sm text-muted" x-text="job && job.message"></span>
+          </div>
+          <template x-if="job && job.result">
+            <div>
+              <div class="flex gap-1"><button class="btn btn-xs btn-ghost" @click="copyResult()">{{ icon('external-link', 14) }} Copier</button></div>
+              <div class="job-output mt-1">
+                <template x-for="(line, index) in resultLines" :key="index">
+                  <div class="job-output-line" x-text="line"></div>
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
+
+    <template x-if="active === 4">
+      <div x-init="loadTab(4)">
+        <template x-if="!jobsHtml">
+          {{ skeleton_rows(5) }}
+        </template>
+        <div x-html="jobsHtml"></div>
+      </div>
+    </template>
+  {% endcall %}
+</div>
+<script>
+function generalPage() {
+  return {
+    statusHtml: '', doctorHtml: '', configHtml: '',
+    routesHtml: '', jobsHtml: '',
+    loaded: {},
+    async loadTab(idx) {
+      if (this.loaded[idx]) return;
+      this.loaded[idx] = true;
+      try {
+        if (idx === 0) {
+          const [statusHtml, doctorHtml] = await Promise.all([
+            (await fetch('/api/status/dashboard')).text(),
+            (await fetch('/api/doctor/html')).text(),
+          ]);
+          this.statusHtml = statusHtml;
+          this.doctorHtml = doctorHtml;
+        } else if (idx === 1) {
+          this.configHtml = await (await fetch('/api/config/html')).text();
+        } else if (idx === 2) {
+          this.routesHtml = await (await fetch('/api/routes/html')).text();
+        } else if (idx === 4) {
+          this.jobsHtml = await (await fetch('/api/jobs/html')).text();
+        }
+      } catch (error) {
+        Alpine.store('toasts').error(ksfError(error));
+      }
+    }
+  };
+}
+function operationsPage() {
+  return {
+    busy: false, dryRun: false, message: '', messageType: '', active: 0,
+    job: null, enrollToken: '', enrollJobId: null,
+    dnsLabel: 'Configuration DNS: chargement…',
+    get resultLines() { return this.job && this.job.result ? this.job.result.split('\n') : []; },
+    async loadDns() {
+      try {
+        const dns = await ksfFetch('/api/operations/dns');
+        this.dnsLabel = `DNS ${dns.enabled ? 'activé' : 'désactivé'} (${dns.provider}), identifiants ${dns.email_configured && dns.api_key_configured ? 'configurés' : 'incomplets'}.`;
+      } catch (error) { this.dnsLabel = ksfError(error); }
+    },
+    async run(url, confirmation, body = {}, allowDryRun = true) {
+      const simulation = this.dryRun && allowDryRun;
+      const fullConfirmation = (simulation ? 'Simuler sans modification: ' : '') + confirmation;
+      const ok = await ksfConfirm(fullConfirmation, { danger: false });
+      if (!ok) return null;
+      this.busy = true; this.message = '';
+      try {
+        const result = await ksfFetch(url, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({...body, confirmed: true, dry_run: simulation})
+        });
+        this.job = {status: 'pending', message: simulation ? 'Simulation planifiée' : 'Opération planifiée', result: '', id: result.job_id, dry_run: simulation};
+        this.poll();
+        return result.job_id;
+      } catch (error) {
+        this.message = ksfError(error);
+        Alpine.store('toasts').error(ksfError(error));
+        this.busy = false;
+        return null;
+      }
+    },
+    async enroll() {
+      const id = await this.run('/api/operations/crowdsec/enroll', 'Enrôler CrowdSec Console ?', {token: this.enrollToken}, false);
+      if (id) this.enrollJobId = id;
+    },
+    async appsec(action, confirmation) {
+      await this.run(`/api/operations/crowdsec/appsec/${action}`, confirmation);
+    },
+    async poll() {
+      if (!this.job) return;
+      try {
+        const data = await ksfFetch('/api/jobs/' + this.job.id);
+        this.job = data;
+        if (data.status === 'pending' || data.status === 'running') {
+          setTimeout(() => this.poll(), 1200);
+          return;
+        }
+        this.busy = false;
+        if (data.status === 'completed') {
+          this.message = data.dry_run ? 'Simulation terminée.' : 'Opération terminée.';
+          Alpine.store('toasts').success(this.message);
+        } else {
+          this.message = data.message || 'Échec de l\'opération.';
+          Alpine.store('toasts').error(this.message);
+        }
+        if (data.status === 'completed' && this.enrollJobId === data.id) {
+          this.enrollToken = ''; this.enrollJobId = null;
+        }
+      } catch (error) {
+        this.busy = false; this.message = ksfError(error);
+        Alpine.store('toasts').error(ksfError(error));
+      }
+    },
+    async copyResult() {
+      if (!this.job || !this.job.result) return;
+      try { await navigator.clipboard.writeText(this.job.result); Alpine.store('toasts').info('Résultat copié.'); }
+      catch (error) { Alpine.store('toasts').error(ksfError(error)); }
+    }
+  };
+}
+</script>
+{% endblock %}

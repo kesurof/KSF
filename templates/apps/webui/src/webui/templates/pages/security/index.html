@@ -13,7 +13,11 @@
     {'label': 'Console', 'icon': 'scroll-text'},
     {'label': 'Bannir', 'icon': 'ban'},
     {'label': 'Débannir', 'icon': 'power'},
-    {'label': 'Sous-pages', 'icon': 'grid'}
+    {'label': 'Alertes', 'icon': 'bell'},
+    {'label': 'Métriques', 'icon': 'chart'},
+    {'label': 'Bouncers', 'icon': 'users'},
+    {'label': 'Décisions', 'icon': 'gavel'},
+    {'label': 'AppSec', 'icon': 'shield-alert'}
   ]) %}
     <template x-if="active === 0">
       <div>
@@ -54,12 +58,66 @@
     </template>
 
     <template x-if="active === 3">
-      <div class="card-grid">
-        <a href="/security/alerts" class="card">{{ icon('bell', 24) }}<strong class="mt-1">Alertes</strong><p class="text-sm text-muted">Alertes remontées par CrowdSec.</p></a>
-        <a href="/security/metrics" class="card">{{ icon('chart', 24) }}<strong class="mt-1">Métriques</strong><p class="text-sm text-muted">Activité locale.</p></a>
-        <a href="/security/bouncers" class="card">{{ icon('users', 24) }}<strong class="mt-1">Bouncers</strong><p class="text-sm text-muted">Composants actifs.</p></a>
-        <a href="/security/decisions" class="card">{{ icon('gavel', 24) }}<strong class="mt-1">Décisions</strong><p class="text-sm text-muted">IPs bannies actives.</p></a>
-        <a href="/security/appsec" class="card">{{ icon('shield-alert', 24) }}<strong class="mt-1">AppSec / WAF</strong><p class="text-sm text-muted">Protection applicative.</p></a>
+      <div x-init="loadAlerts()">
+        <div class="card">
+          <div class="card-header"><strong>Alertes CrowdSec</strong><button class="btn btn-sm btn-ghost" @click="loadAlerts()" :disabled="alertsLoading">{{ icon('refresh', 14) }} Rafraîchir</button></div>
+          <template x-if="alertsLoading"><div><span class="skeleton skeleton-row"></span><span class="skeleton skeleton-row"></span></div></template>
+          <template x-if="!alertsLoading && alertsError"><p class="error-box" x-text="alertsError" role="alert"></p></template>
+          <pre x-show="!alertsLoading && !alertsError" x-text="alertsOutput || 'Aucune alerte'"></pre>
+        </div>
+      </div>
+    </template>
+
+    <template x-if="active === 4">
+      <div x-init="loadMetrics()">
+        <div class="card">
+          <div class="card-header"><strong>Métriques CrowdSec</strong><button class="btn btn-sm btn-ghost" @click="loadMetrics()" :disabled="metricsLoading">{{ icon('refresh', 14) }} Rafraîchir</button></div>
+          <template x-if="metricsLoading"><div><span class="skeleton skeleton-row"></span><span class="skeleton skeleton-row"></span></div></template>
+          <template x-if="!metricsLoading && metricsError"><p class="error-box" x-text="metricsError" role="alert"></p></template>
+          <pre x-show="!metricsLoading && !metricsError" x-text="metricsOutput || 'Aucune métrique'"></pre>
+        </div>
+      </div>
+    </template>
+
+    <template x-if="active === 5">
+      <div x-init="loadBouncers()">
+        <div class="card">
+          <div class="card-header"><strong>Bouncers CrowdSec</strong><button class="btn btn-sm btn-ghost" @click="loadBouncers()" :disabled="bouncersLoading">{{ icon('refresh', 14) }} Rafraîchir</button></div>
+          <template x-if="bouncersLoading"><div><span class="skeleton skeleton-row"></span><span class="skeleton skeleton-row"></span></div></template>
+          <template x-if="!bouncersLoading && bouncersError"><p class="error-box" x-text="bouncersError" role="alert"></p></template>
+          <pre x-show="!bouncersLoading && !bouncersError" x-text="bouncersOutput || 'Aucun bouncer'"></pre>
+        </div>
+      </div>
+    </template>
+
+    <template x-if="active === 6">
+      <div x-init="loadDecisions()">
+        <div class="card">
+          <div class="card-header"><strong>Décisions CrowdSec</strong>
+            <div class="flex gap-1 items-center">
+              <button class="btn btn-sm btn-ghost" @click="loadDecisions()" :disabled="decisionsLoading">{{ icon('refresh', 14) }} Rafraîchir</button>
+              <button class="btn btn-sm btn-danger" @click="flush()" :disabled="decisionsLoading">{{ icon('trash', 14) }} Vider</button>
+            </div>
+          </div>
+          <template x-if="decisionsLoading"><div><span class="skeleton skeleton-row"></span></div></template>
+          <template x-if="!decisionsLoading && decisionsError"><p class="error-box" x-text="decisionsError" role="alert"></p></template>
+          <pre x-show="!decisionsLoading && !decisionsError" x-text="decisionsOutput || 'Aucune décision'"></pre>
+        </div>
+      </div>
+    </template>
+
+    <template x-if="active === 7">
+      <div x-init="loadAppsec()">
+        <div class="card" x-show="appsecStatus" role="status" aria-live="polite">
+          <div class="card-header"><strong>AppSec / WAF</strong><button class="btn btn-sm btn-ghost" @click="loadAppsec()" :disabled="appsecLoading">{{ icon('refresh', 14) }} Rafraîchir</button></div>
+          <template x-if="appsecLoading"><span class="skeleton skeleton-line"></span></template>
+          <template x-if="!appsecLoading">
+            <div>
+              <p>AppSec: <strong :class="appsecStatus && appsecStatus.enabled ? 'status-ok' : 'status-warn'" x-text="appsecStatus && appsecStatus.enabled ? 'activé' : 'désactivé'"></strong></p>
+              <p class="text-muted text-sm" x-text="appsecStatus && appsecStatus.appsec_yaml_present ? 'Configuration AppSec détectée.' : 'Aucune configuration AppSec détectée.'"></p>
+            </div>
+          </template>
+        </div>
       </div>
     </template>
   {% endcall %}
@@ -68,7 +126,14 @@
 function crowdsecPage() {
   return {
     status: null, consoleOutput: '', consoleError: '',
-    ip: '', unbanIp: '', duration: '4h', error: '', loading: false, active: 0,
+    ip: '', unbanIp: '', duration: '4h', error: '', loading: false,
+
+    alertsOutput: '', alertsError: '', alertsLoading: false,
+    metricsOutput: '', metricsError: '', metricsLoading: false,
+    bouncersOutput: '', bouncersError: '', bouncersLoading: false,
+    decisionsOutput: '', decisionsError: '', decisionsLoading: false,
+    appsecStatus: null, appsecError: '', appsecLoading: false,
+
     async load() {
       this.loading = true; this.error = '';
       try {
@@ -81,6 +146,38 @@ function crowdsecPage() {
       try { this.consoleOutput = (await ksfFetch('/api/crowdsec/console/status')).output || ''; }
       catch (error) { this.consoleError = ksfError(error); }
     },
+    async _fetch(endpoint, setLoading, setError, setOutput, transform) {
+      setLoading(true); setError('');
+      try {
+        const data = await ksfFetch('/api/crowdsec/' + endpoint);
+        const value = transform ? transform(data) : data.output || '';
+        setOutput(value);
+      } catch (error) {
+        const msg = ksfError(error); setError(msg);
+        Alpine.store('toasts').error(msg);
+      } finally { setLoading(false); }
+    },
+    loadAlerts() {
+      this._fetch('alerts',
+        v => this.alertsLoading = v, v => this.alertsError = v, v => this.alertsOutput = v);
+    },
+    loadMetrics() {
+      this._fetch('metrics',
+        v => this.metricsLoading = v, v => this.metricsError = v, v => this.metricsOutput = v);
+    },
+    loadBouncers() {
+      this._fetch('bouncers',
+        v => this.bouncersLoading = v, v => this.bouncersError = v, v => this.bouncersOutput = v);
+    },
+    loadDecisions() {
+      this._fetch('decisions',
+        v => this.decisionsLoading = v, v => this.decisionsError = v, v => this.decisionsOutput = v);
+    },
+    loadAppsec() {
+      this._fetch('appsec/status',
+        v => this.appsecLoading = v, v => this.appsecError = v, v => this.appsecStatus = v,
+        data => data);
+    },
     async request(action, body) {
       try {
         const result = await ksfFetch('/api/crowdsec/' + action, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
@@ -92,6 +189,15 @@ function crowdsecPage() {
       if (!ok) return;
       await this.request('restart', {confirmed: true});
       await this.load();
+    },
+    async flush() {
+      const ok = await ksfConfirm('Supprimer toutes les décisions CrowdSec ?', { danger: true });
+      if (!ok) return;
+      try {
+        await ksfFetch('/api/crowdsec/decisions/flush', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({confirmed: true})});
+        Alpine.store('toasts').success('Décisions vidées.');
+        await this.loadDecisions();
+      } catch (error) { Alpine.store('toasts').error(ksfError(error)); }
     },
     async ban() {
       const ok = await ksfConfirm(`Bannir ${this.ip} pour ${this.duration} ?`, { danger: true });
