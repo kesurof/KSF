@@ -50,7 +50,7 @@ Commands:
   install <template>    Installe une app depuis un template
   status <instance>     Affiche l'état Docker d'une app installée
   update <instance>     Met à jour une app installée (build incrémental)
-  configure <instance>  Modifie l'accès d'une app installée (host, domaine, sous-domaine, port hôte local)
+  configure <instance>  Modifie l'accès d'une app installée (host, domaine, sous-domaine, port hôte local, OAuth2)
   rebuild <instance>    Reconstruit l'image d'une app installée sans cache puis recrée le container
   start <instance>      Démarre une app installée
   stop <instance>       Arrête une app installée sans suppression
@@ -89,6 +89,8 @@ Exemples:
   $0 configure blog --subdomain articles
   $0 configure blog --domain example.net
   $0 configure blog --host blog.example.net
+  $0 configure blog --auth
+  $0 configure blog --no-auth
   $0 logs radarr
   $0 restart radarr
   $0 disable radarr --dry-run

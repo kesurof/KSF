@@ -1175,14 +1175,24 @@ _menu_app_details() {
     echo "  4) Logs"
     echo "  5) Mettre a jour"
     echo "  6) Modifier domaine / sous-domaine"
-    echo "  7) Rebuild"
-    echo "  8) Desactiver"
-    echo "  9) Supprimer"
-    echo " 10) Retour"
+
+    local oauth2_toggle_label
+    if [ "${MENU_APP_LOCAL_ONLY:-false}" = true ]; then
+      oauth2_toggle_label="n/a (local-only)"
+    elif [ "${MENU_APP_PROTECTED:-true}" = true ]; then
+      oauth2_toggle_label="Desactiver OAuth2"
+    else
+      oauth2_toggle_label="Activer OAuth2"
+    fi
+    printf '  7) %s\n' "$oauth2_toggle_label"
+    echo "  8) Rebuild"
+    echo "  9) Desactiver"
+    echo " 10) Supprimer"
+    echo " 11) Retour"
     echo ""
 
     local choice
-    read -rp "Choix [1-10] : " choice
+    read -rp "Choix [1-11] : " choice
     case "$choice" in
       1)
         _menu_app status "$app_name"
@@ -1213,22 +1223,32 @@ _menu_app_details() {
         action_ran=true
         ;;
       7)
-        _menu_app rebuild "$app_name"
+        if [ "${MENU_APP_LOCAL_ONLY:-false}" = true ]; then
+          err "OAuth2 non applicable (app en mode local-only)."
+        elif [ "${MENU_APP_PROTECTED:-true}" = true ]; then
+          _menu_app configure "$app_name" --no-auth
+        else
+          _menu_app configure "$app_name" --auth
+        fi
         action_ran=true
         ;;
       8)
+        _menu_app rebuild "$app_name"
+        action_ran=true
+        ;;
+      9)
         if _menu_confirm "Desactiver ${app_name} ?"; then
           _menu_app disable "$app_name"
           action_ran=true
         fi
         ;;
-      9)
+      10)
         if _menu_confirm "Supprimer ${app_name} ? Les donnees seront conservees."; then
           _menu_app remove "$app_name"
           return 0
         fi
         ;;
-      10)
+      11)
         return 0
         ;;
       *) err "Choix invalide." ;;

@@ -787,7 +787,7 @@ resolve_app_host() {
 app_configure() {
   local app_name="$1"
   local app_template_dir
-  local route_file old_host old_local_only old_domain old_subdomain old_route_state changed=false
+  local route_file old_host old_local_only old_domain old_subdomain old_host_port old_protected old_route_state changed=false
 
   app_require_installed "$app_name"
   app_template_dir="${APP_TEMPLATE_DIR}/${APP_NAME:-${app_name}}"
@@ -796,15 +796,20 @@ app_configure() {
   old_local_only="${APP_LOCAL_ONLY:-false}"
   old_domain="${APP_DOMAIN:-}"
   old_subdomain="${APP_SUBDOMAIN:-${APP_INSTANCE:-${app_name}}}"
-  local old_host_port="${APP_HOST_PORT:-}"
+  old_host_port="${APP_HOST_PORT:-}"
+  old_protected="${APP_PROTECTED:-${APP_AUTH:-true}}"
   route_file="${BASE_DIR}/proxy/traefik/dynamic/route-${app_name}.yml"
 
-  if [ "${APP_LOCAL_ONLY:-false}" = true ] && [ -z "${APP_HOST_OVERRIDE:-}" ] && [ -z "${APP_DOMAIN_OVERRIDE:-}" ] && [ -z "${APP_SUBDOMAIN_OVERRIDE:-}" ] && [ -z "${APP_HOST_PORT_OVERRIDE:-}" ] && [ "${APP_NO_HOST_PORT_OVERRIDE:-false}" != true ] && [ "${AUTO_YES:-false}" = true ]; then
-    err "Precise --host, --domain, --subdomain, --host-port et/ou --no-host-port pour configurer une app en mode automatique."
+  if [ "${APP_LOCAL_ONLY:-false}" = true ] && [ -z "${APP_HOST_OVERRIDE:-}" ] && [ -z "${APP_DOMAIN_OVERRIDE:-}" ] && [ -z "${APP_SUBDOMAIN_OVERRIDE:-}" ] && [ -z "${APP_HOST_PORT_OVERRIDE:-}" ] && [ "${APP_NO_HOST_PORT_OVERRIDE:-false}" != true ] && [ "${APP_AUTH_CHOICE:-ask}" = "ask" ] && [ "${AUTO_YES:-false}" = true ]; then
+    err "Precise --host, --domain, --subdomain, --host-port, --no-host-port, --auth ou --no-auth pour configurer une app en mode automatique."
     exit 1
   fi
 
-  if [ -z "${APP_HOST_OVERRIDE:-}" ] && [ -z "${APP_DOMAIN_OVERRIDE:-}" ] && [ -z "${APP_SUBDOMAIN_OVERRIDE:-}" ] && [ -z "${APP_HOST_PORT_OVERRIDE:-}" ] && [ "${APP_NO_HOST_PORT_OVERRIDE:-false}" != true ] && [ "${AUTO_YES:-false}" = false ]; then
+  if [ "${APP_AUTH_CHOICE:-ask}" != "ask" ]; then
+    resolve_app_auth "$app_name"
+  fi
+
+  if [ -z "${APP_HOST_OVERRIDE:-}" ] && [ -z "${APP_DOMAIN_OVERRIDE:-}" ] && [ -z "${APP_SUBDOMAIN_OVERRIDE:-}" ] && [ -z "${APP_HOST_PORT_OVERRIDE:-}" ] && [ "${APP_NO_HOST_PORT_OVERRIDE:-false}" != true ] && [ "${APP_AUTH_CHOICE:-ask}" = "ask" ] && [ "${AUTO_YES:-false}" = false ]; then
     echo "Configuration actuelle :"
     echo "  Instance    : ${APP_INSTANCE:-${app_name}}"
     echo "  Template    : ${APP_NAME:-${app_name}}"
@@ -812,6 +817,7 @@ app_configure() {
     echo "  Sous-domaine: ${old_subdomain:-non configure}"
     echo "  Host        : ${old_host:-non configure}"
     echo "  Port local  : ${old_host_port:+127.0.0.1:${old_host_port}}${old_host_port:-non configure}"
+    echo "  OAuth2      : ${old_protected}"
     echo ""
   fi
 
@@ -832,7 +838,7 @@ app_configure() {
   fi
   resolve_app_host_port "${APP_INSTANCE:-${app_name}}"
 
-  if [ "${APP_DOMAIN}" != "$old_domain" ] || [ "${APP_SUBDOMAIN}" != "$old_subdomain" ] || [ "${APP_HOST}" != "$old_host" ] || [ "$old_local_only" = true ] || [ "${APP_HOST_PORT:-}" != "$old_host_port" ]; then
+  if [ "${APP_DOMAIN}" != "$old_domain" ] || [ "${APP_SUBDOMAIN}" != "$old_subdomain" ] || [ "${APP_HOST}" != "$old_host" ] || [ "$old_local_only" = true ] || [ "${APP_HOST_PORT:-}" != "$old_host_port" ] || [ "${APP_PROTECTED:-true}" != "$old_protected" ]; then
     changed=true
   fi
 
@@ -841,7 +847,11 @@ app_configure() {
     return 0
   fi
 
-  app_confirm_action "la reconfiguration d'accès" "$app_name"
+  if [ "${APP_PROTECTED:-true}" != "$old_protected" ]; then
+    app_confirm_action "la modification OAuth2 (${old_protected} -> ${APP_PROTECTED:-true})" "${APP_INSTANCE:-${app_name}}"
+  else
+    app_confirm_action "la reconfiguration d'accès" "$app_name"
+  fi
 
   render_template "${app_template_dir}/compose.yml" "${APP_MANAGED_DIR}/docker-compose.yml"
   app_write_env_file "${APP_MANAGED_DIR}/app.env" "${APP_NAME}" "$APP_MANAGED_DIR" "$APP_MANAGED_DATA"
@@ -861,7 +871,11 @@ app_configure() {
     app_dns_ensure_record
   fi
 
-  ok "Accès de ${APP_INSTANCE:-${app_name}} mis à jour : ${APP_HOST:-local-only}${APP_HOST_PORT:+ (127.0.0.1:${APP_HOST_PORT})}"
+  local auth_msg=""
+  if [ "${APP_PROTECTED:-true}" != "$old_protected" ]; then
+    auth_msg=", OAuth2: ${old_protected} -> ${APP_PROTECTED:-true}"
+  fi
+  ok "Accès de ${APP_INSTANCE:-${app_name}} mis à jour : ${APP_HOST:-local-only}${APP_HOST_PORT:+ (127.0.0.1:${APP_HOST_PORT})}${auth_msg}"
 }
 
 resolve_app_auth() {
