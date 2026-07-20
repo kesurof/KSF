@@ -76,6 +76,7 @@
                 <button class="btn btn-sm btn-ghost" @click="action('update')" :disabled="busy">{{ icon('download', 14) }} Mettre à jour</button>
                 <button class="btn btn-sm btn-ghost" @click="action('rebuild')" :disabled="busy">{{ icon('refresh', 14) }} Rebuild</button>
                 <button class="btn btn-sm btn-danger" @click="disable()" :disabled="busy">{{ icon('power', 14) }} Désactiver</button>
+                <button class="btn btn-sm btn-danger" @click="showDelete()" :disabled="busy">{{ icon('trash', 14) }} Supprimer</button>
               </div>
               <div class="flex gap-1 flex-wrap" x-show="app.disabled">
                 <button class="btn btn-sm" @click="action('enable')" :disabled="busy">{{ icon('power', 14) }} Activer et démarrer</button>
@@ -139,18 +140,30 @@
               <button class="btn btn-sm" @click="configure()" :disabled="busy">{{ icon('pencil', 14) }} Enregistrer l'accès</button>
             </div>
 
-            <div class="card">
-              <div class="card-header"><strong>{{ icon('trash', 16) }} Suppression</strong></div>
-              <p class="text-muted text-sm mb-1">La stack et son enregistrement seront supprimés. Les données sont conservées par défaut.</p>
-              <label class="checkbox-card checkbox-card-warning">
-                <input type="checkbox" x-model="removeData">
-                <span class="text-sm">{{ icon('trash', 16) }} Supprimer aussi les données persistantes</span>
-              </label>
-              <button class="btn btn-sm btn-danger mt-1" @click="removeApp()" :disabled="busy">{{ icon('trash', 14) }} Supprimer l'application</button>
-            </div>
           </div>
         </template>
       {% endcall %}
+
+      {# Modal de suppression #}
+      <div class="modal" x-show="delOpen" x-cloak @keydown.escape.window="delOpen = false" role="dialog" aria-modal="true" aria-labelledby="del-title">
+        <div class="modal-backdrop" @click="delOpen = false" aria-hidden="true"></div>
+        <div class="modal-body modal-danger">
+          <button type="button" class="btn-icon modal-close" @click="delOpen = false" aria-label="Fermer">{{ icon('x', 18) }}</button>
+          <h3 id="del-title" class="modal-title">{{ icon('trash', 18) }} Supprimer <span x-text="instance"></span> ?</h3>
+          <p class="modal-message">La stack et son enregistrement seront supprimés. Choisissez le mode de suppression :</p>
+          <div class="vstack gap-1" @click="delOpen = false">
+            <button type="button" class="btn btn-ghost" @click="removeApp(false)" style="justify-content:flex-start;padding:var(--sp-3);height:auto;line-height:1.4">
+              <div><strong>Conserver les données</strong><br><span class="text-xs text-muted">Les données persistantes restent dans <code x-text="app ? app.app_data : ''"></code></span></div>
+            </button>
+            <button type="button" class="btn btn-danger" @click="removeApp(true)" style="justify-content:flex-start;padding:var(--sp-3);height:auto;line-height:1.4">
+              <div><strong>Tout supprimer</strong><br><span class="text-xs">Les données persistantes seront définitivement effacées.</span></div>
+            </button>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-ghost btn-sm" @click="delOpen = false">Annuler</button>
+          </div>
+        </div>
+      </div>
     </div>
   </template>
 </div>
@@ -160,7 +173,7 @@ function appDetail(instance) {
     instance, app: null, loading: true, busy: false, error: '',
     active: 0,
     subdomain: '', domain: '', hostPort: '', localOnly: false, noHostPort: false,
-    logs: '', logsLoading: false, logTail: 200, removeData: false,
+    logs: '', logsLoading: false, logTail: 200, delOpen: false,
 
     async init() { await this.load(); },
     async load() {
@@ -190,7 +203,8 @@ function appDetail(instance) {
     async action(action) {
       this.busy = true;
       try {
-        await ksfFetch(`/api/apps/${encodeURIComponent(this.instance)}/${action}`, {method: 'POST'});
+        const data = await ksfFetch(`/api/apps/${encodeURIComponent(this.instance)}/${action}`, {method: 'POST'});
+        if (data.notice) { Alpine.store('toasts').info(data.notice); return; }
         Alpine.store('toasts').success(`Action effectuée: ${action}.`);
         await this.load();
       } catch (error) { Alpine.store('toasts').error(ksfError(error)); }
@@ -213,13 +227,12 @@ function appDetail(instance) {
       } catch (error) { Alpine.store('toasts').error(ksfError(error)); }
       finally { this.busy = false; }
     },
-    async removeApp() {
-      const dataMessage = this.removeData ? ' Les données persistantes seront aussi supprimées.' : ' Les données persistantes seront conservées.';
-      const ok = await ksfConfirm(`Supprimer ${this.instance} ?${dataMessage}`, { danger: true });
-      if (!ok) return;
+    showDelete() { this.delOpen = true; },
+    async removeApp(removeData) {
+      this.delOpen = false;
       this.busy = true;
       try {
-        await ksfFetch(`/api/apps/${encodeURIComponent(this.instance)}/remove`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({remove_data: this.removeData, confirmed: true})});
+        await ksfFetch(`/api/apps/${encodeURIComponent(this.instance)}/remove`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({remove_data: removeData, confirmed: true})});
         Alpine.store('toasts').success('Application supprimée.');
         window.location.assign('/apps');
       } catch (error) { Alpine.store('toasts').error(ksfError(error)); this.busy = false; }

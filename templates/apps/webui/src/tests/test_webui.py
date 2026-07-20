@@ -8,10 +8,12 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+from fastapi.testclient import TestClient
 
+from webui.main import app
+from webui.api import router_apps
 from webui.api import router_operations
 from webui.api import router_status
-from webui.api import router_apps
 from webui.core import ksf_cli
 from webui.core import jobs
 from webui.core.schemas import InstallRequest, OperationRequest
@@ -189,13 +191,34 @@ class AppListTests(unittest.TestCase):
         self.assertEqual(payload["apps"][0]["access_label"], "https://films.example.com +127.0.0.1:17878")
         self.assertEqual(payload["apps"][0]["state"], "running")
 
-    def test_apps_table_uses_record_list_class(self):
+    def test_apps_page_has_card_design(self):
         template = Path(__file__).parents[1] / "webui" / "templates" / "pages" / "apps" / "index.html"
         source = template.read_text()
 
-        self.assertIn('class="record-list"', source)
-        self.assertIn('class="record-row"', source)
+        self.assertIn('class="app-card"', source)
+        self.assertIn('class="app-card-body"', source)
+        self.assertIn('class="dropdown-menu"', source)
         self.assertNotIn('<td data-label="Actions" class="flex', source)
+
+
+class InfraRouteTests(unittest.TestCase):
+    def test_infra_detail_renders_known_services(self):
+        client = TestClient(app)
+        for name in ["traefik", "oauth2", "crowdsec"]:
+            resp = client.get(f"/infrastructure/{name}")
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn(name, resp.text.lower() if name == "crowdsec" else resp.text)
+
+    def test_infra_detail_returns_404_for_unknown(self):
+        client = TestClient(app)
+        resp = client.get("/infrastructure/invalid")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_infra_index_uses_app_card(self):
+        source = Path(__file__).parents[1].joinpath(
+            "webui/templates/pages/infrastructure/index.html").read_text()
+        self.assertIn('class="app-card"', source)
+        self.assertIn('class="app-card-body"', source)
 
 
 if __name__ == "__main__":

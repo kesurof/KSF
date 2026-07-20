@@ -84,6 +84,18 @@ async def app_detail_page(request: Request, instance: str):
     })
 
 
+@app.get("/infrastructure/{name}", response_class=HTMLResponse)
+async def infra_detail_page(request: Request, name: str):
+    if name not in ("traefik", "oauth2", "crowdsec"):
+        return _render_error(request, 404, "Service inconnu.")
+    cfg = get_config()
+    return templates.TemplateResponse(request, "pages/infrastructure/detail.html", {
+        "config": cfg,
+        "installed": cfg.loaded,
+        "service_name": name,
+    })
+
+
 @app.get("/{path:path}", response_class=HTMLResponse)
 async def catch_all(request: Request, path: str):
     page_map = {

@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% from "_components.html" import page_header, icon, breadcrumb, chip, empty_state, tabs %}
+{% block title %}{{ service_name }} — Infrastructure KSF{% endblock %}
+{% block topbar_breadcrumb %}{{ breadcrumb([('Infrastructure', '/infrastructure'), (service_name, None)]) }}{% endblock %}
+{% block content %}
+<div x-data="serviceDetail('{{ service_name }}')" x-init="init()">
+  <div x-show="loading" class="card" role="status" aria-live="polite">
+    <span class="spinner" aria-label="Chargement"></span> Chargement du service…
+  </div>
+  <template x-if="error"><p class="error-box" x-text="error" role="alert"></p></template>
+
+  <template x-if="!loading && svc">
+    <div>
+      <div class="page-header flex gap-2 items-center mb-1">
+        <h1 class="section-title section-infra" x-text="svc.name === 'traefik' ? 'Traefik' : (svc.name === 'oauth2' ? 'OAuth2 Proxy' : 'CrowdSec')"></h1>
+        <div class="flex gap-1 items-center ml-auto">
+          <span class="chip" :class="svc.enabled ? (svc.state === 'running' ? 'chip-ok' : 'chip-warn') : 'chip-neutral'" x-text="svc.enabled ? svc.state : 'non configuré'"></span>
+        </div>
+      </div>
+
+      <template x-if="!svc.enabled">
+        <div class="card"><p class="text-muted">Ce service n'est pas configuré pour cette installation.</p></div>
+      </template>
+
+      <template x-if="svc.enabled">
+        <div>
+          {% call tabs([
+            {'label': 'Général', 'icon': 'layout-dashboard'},
+            {'label': 'Services', 'icon': 'server'},
+            {'label': 'Logs', 'icon': 'scroll-text'}
+          ]) %}
+            <template x-if="active === 0">
+              <div>
+                <div class="metric-grid">
+                  <div class="metric-card">
+                    <span class="metric-icon" :class="svc.state === 'running' ? 'metric-ok' : 'metric-warn'">
+                      <span x-show="svc.state === 'running'">{{ icon('check-circle', 20) }}</span>
+                      <span x-show="svc.state !== 'running'">{{ icon('alert-triangle', 20) }}</span>
+                    </span>
+                    <div class="metric-body">
+                      <span class="metric-value" :class="svc.state === 'running' ? 'status-ok' : 'status-warn'" x-text="svc.state"></span>
+                      <span class="metric-label">État</span>
+                    </div>
+                  </div>
+                  <div class="metric-card">
+                    <span class="metric-icon metric-ok">{{ icon('server', 20) }}</span>
+                    <div class="metric-body">
+                      <span class="metric-value" x-text="(svc.running || 0) + '/' + (svc.total || 0)"></span>
+                      <span class="metric-label" x-text="svc.name === 'traefik' ? 'Routeurs actifs' : 'Services actifs'"></span>
+                    </div>
+                  </div>
+                  <div class="metric-card">
+                    <span class="metric-icon" :class="(svc.unhealthy || 0) > 0 ? 'metric-err' : 'metric-ok'">{{ icon('check-circle', 20) }}</span>
+                    <div class="metric-body">
+                      <span class="metric-value" :class="(svc.unhealthy || 0) > 0 ? 'status-err' : 'status-ok'" x-text="svc.unhealthy || '0'"></span>
+                      <span class="metric-label">Services non sains</span>
+                    </div>
+                  </div>
+                  <div class="metric-card">
+                    <span class="metric-icon" :class="svc.primary_state === 'running' ? 'metric-ok' : 'metric-warn'">{{ icon('server', 20) }}</span>
+                    <div class="metric-body">
+                      <span class="metric-value text-sm" x-text="svc.primary_health || svc.primary_state || '—'"></span>
+                      <span class="metric-label" x-text="'Principal: ' + (svc.primary_service || svc.name)"></span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="card-header"><strong>{{ icon('rotate-ccw', 16) }} Cycle de vie</strong></div>
+                  <div class="flex gap-1 flex-wrap">
+                    <button class="btn btn-sm" @click="restartSvc()" :disabled="busy">{{ icon('rotate-ccw', 14) }} Redémarrer</button>
+                    <button class="btn btn-sm btn-ghost" @click="updateSvc()" :disabled="busy">{{ icon('download', 14) }} Mettre à jour</button>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <template x-if="active === 1">
+              <div class="card">
+                <div class="card-header"><strong>{{ icon('server', 16) }} Conteneurs</strong></div>
+                <template x-if="svc.services && svc.services.length">
+                  <div class="vstack gap-1">
+                    <template x-for="s in svc.services" :key="s.name">
+                      <div class="service-row">
+                        <span class="chip" :class="s.state === 'running' ? 'chip-ok' : (s.state === 'exited' ? 'chip-err' : 'chip-warn')" x-text="s.state"></span>
+                        <span class="service-name" x-text="s.service"></span>
+                        <span class="text-xs text-muted" :class="s.health === 'unhealthy' ? 'status-err' : (s.health === 'healthy' ? 'status-ok' : '')" x-text="'Santé: ' + (s.health || '—')"></span>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+                <template x-if="!svc.services || !svc.services.length">{{ empty_state('Aucun conteneur.', icon_name='server') }}</template>
+              </div>
+            </template>
+
+            <template x-if="active === 2">
+              <div class="card">
+                <div class="card-header"><strong>{{ icon('scroll-text', 16) }} Logs</strong>
+                  <div class="flex gap-1 items-center">
+                    <label for="log-tail-svc" class="text-xs text-muted mr-1">Lignes</label>
+                    <input id="log-tail-svc" type="number" min="1" max="5000" x-model.number="logTail" style="width:80px">
+                    <button class="btn btn-sm btn-ghost" @click="loadLogs()">{{ icon('refresh', 14) }} Rafraîchir</button>
+                  </div>
+                </div>
+                <pre x-ref="logs" x-text="logs || (logsLoading ? 'Chargement…' : 'Aucun log')"></pre>
+              </div>
+            </template>
+          {% endcall %}
+        </div>
+      </template>
+    </div>
+  </template>
+</div>
+<script>
+function serviceDetail(name) {
+  return {
+    name, svc: null, loading: true, busy: false, error: '',
+    active: 0, logs: '', logsLoading: false, logTail: 200,
+
+    async init() { await this.load(); },
+    async load() {
+      this.loading = true; this.error = '';
+      try {
+        this.svc = await ksfFetch('/api/services/' + encodeURIComponent(this.name));
+        await this.$nextTick();
+        if (this.active === 2) await this.loadLogs();
+      } catch (error) {
+        this.svc = null;
+        this.error = ksfError(error);
+        Alpine.store('toasts').error(ksfError(error));
+      } finally { this.loading = false; }
+    },
+    async loadLogs() {
+      if (!this.svc || !this.svc.enabled) return;
+      this.logsLoading = true;
+      try {
+        const data = await ksfFetch(`/api/services/${encodeURIComponent(this.name)}/logs?tail=${Math.max(1, Math.min(this.logTail || 200, 5000))}`);
+        this.logs = data.logs || '';
+      } catch (error) { this.logs = 'Erreur: ' + ksfError(error); }
+      finally { this.logsLoading = false; }
+    },
+    async restartSvc() {
+      const ok = await ksfConfirm('Redémarrer ' + this.name + ' ?');
+      if (!ok) return;
+      this.busy = true;
+      try {
+        await ksfFetch('/api/services/' + this.name + '/restart', {method: 'POST'});
+        Alpine.store('toasts').success(this.name + ' redémarré.');
+        await this.load();
+      } catch (error) { Alpine.store('toasts').error(ksfError(error)); }
+      finally { this.busy = false; }
+    },
+    async updateSvc() {
+      const ok = await ksfConfirm('Mettre à jour ' + this.name + ' ?');
+      if (!ok) return;
+      this.busy = true;
+      try {
+        await ksfFetch('/api/services/' + this.name + '/update', {method: 'POST'});
+        Alpine.store('toasts').success(this.name + ' mis à jour.');
+        await this.load();
+      } catch (error) { Alpine.store('toasts').error(ksfError(error)); }
+      finally { this.busy = false; }
+    }
+  };
+}
+</script>
+{% endblock %}

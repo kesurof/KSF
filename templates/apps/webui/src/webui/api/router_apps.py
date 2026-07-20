@@ -17,7 +17,8 @@ from ..core.schemas import InstallRequest, ConfigureRequest, RemoveRequest
 from ..core.validation import (validate_allowed_domain, validate_allowed_host,
                                validate_host, validate_instance, validate_port,
                                validate_subdomain)
-from ..core.ksf_cli import run_dns
+from ..core.ksf_cli import run_dns, run_app
+from ..core.jobs import start_job
 
 router = APIRouter()
 
@@ -166,6 +167,7 @@ def list_apps():
             "running": state["running"],
             "total": state["total"],
             "services": state["services"],
+            "route_present": (TRAEFIK_DYNAMIC_DIR / f"route-{app.instance}.yml").exists(),
         })
     return {"apps": results}
 
@@ -567,16 +569,28 @@ def rebuild_app(instance: str):
     app = get_installed_app(instance)
     if not app:
         return JSONResponse({"error": "App not found"}, status_code=404)
-    docker = get_docker()
-    code, stdout, stderr = docker.compose_build(app.app_dir, no_cache=True)
-    if code != 0:
-        return JSONResponse({"error": stderr or stdout}, status_code=500)
     if app.disabled:
-        return {"success": True, "instance": instance, "started": False}
-    code, stdout, stderr = docker.compose_up(app.app_dir)
-    if code != 0:
-        return JSONResponse({"error": stderr or stdout}, status_code=500)
-    return {"success": True, "instance": instance}
+        return JSONResponse({"error": "L'app est desactivee."}, status_code=409)
+
+    if instance == "webui":
+        import subprocess as _subprocess
+        from ..core.ksf_cli import CLI_DIR
+        _subprocess.Popen(
+            ["nohup", "bash", str(CLI_DIR / "app.sh"), "rebuild", instance,
+             "--base-dir", str(BASE_DIR), "--yes"],
+            stdout=_subprocess.DEVNULL, stderr=_subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        return {
+            "success": True, "instance": instance,
+            "notice": "Rebuild lance en arriere-plan. Le Web UI redemarre dans quelques instants."
+        }
+
+    job_id, error = start_job(f"rebuild-{instance}", instance,
+                               lambda: run_app("rebuild", instance))
+    if job_id is None:
+        return JSONResponse({"error": error}, status_code=409)
+    return JSONResponse({"job_id": job_id, "status": "pending"}, status_code=202)
 
 
 @router.get("/{instance}/services")

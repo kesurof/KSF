@@ -69,7 +69,7 @@
             <strong class="service-name" x-text="service.name"></strong>
             <div class="service-actions" x-show="service.enabled">
               <button class="btn btn-xs btn-ghost" @click="restartService(service.name)" :disabled="busy" :title="'Redémarrer ' + service.name">{{ icon('rotate-ccw', 12) }}</button>
-              <a :href="'/infrastructure?service=' + service.name" class="btn btn-xs btn-ghost" :title="'Détails ' + service.name">{{ icon('external-link', 12) }}</a>
+              <a :href="'/infrastructure/' + service.name" class="btn btn-xs btn-ghost" :title="'Détails ' + service.name">{{ icon('external-link', 12) }}</a>
             </div>
           </div>
         </template>
