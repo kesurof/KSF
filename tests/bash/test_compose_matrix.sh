@@ -89,9 +89,9 @@ for template in "${ROOT_DIR}"/templates/apps/*; do
   APP_PUID="$(id -u)"
   APP_PGID="$(id -g)"
   render_template "${template}/compose.yml" "${TMP_DIR}/apps/${app_name}/docker-compose.yml"
-  # WordPress declares its generated secrets through env_file; Compose config
+  # Some templates declare generated secrets through env_file; Compose config
   # needs the file to exist even though the values are not interpolated here.
-  [ "${app_name}" != wordpress ] || : >"${TMP_DIR}/apps/${app_name}/.env"
+  : >"${TMP_DIR}/apps/${app_name}/.env"
   render_app_route_from_env "${TMP_DIR}/routes/route-${app_name}.yml"
   assert_contains "${TMP_DIR}/routes/route-${app_name}.yml" 'oauth2-chain'
 done

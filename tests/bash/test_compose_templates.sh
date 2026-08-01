@@ -57,7 +57,7 @@ render_and_validate templates/compose/traefik.yml "${TMP_DIR}/traefik/docker-com
 render_and_validate templates/compose/oauth2-proxy.yml "${TMP_DIR}/oauth2-proxy/docker-compose.yml"
 render_and_validate templates/compose/crowdsec.yml "${TMP_DIR}/crowdsec/docker-compose.yml"
 
-for app in dockge radarr wordpress; do
+for app in dockge radarr speedtest-tracker wordpress; do
   APP_NAME="${app}"
   APP_INSTANCE="${app}"
   APP_TEMPLATE_DIR="${ROOT_DIR}/templates/apps/${app}"
@@ -69,7 +69,7 @@ for app in dockge radarr wordpress; do
   APP_PORTS_BLOCK=
   DOCKER_GROUP_ADD_BLOCK=
   mkdir -p "${APP_DIR}" "${APP_DATA}"
-  if [ "${app}" = wordpress ]; then
+  if [ -f "${APP_TEMPLATE_DIR}/pre_install.sh" ]; then
     source "${APP_TEMPLATE_DIR}/pre_install.sh"
   fi
   render_and_validate "templates/apps/${app}/compose.yml" "${TMP_DIR}/apps/${app}/docker-compose.yml"

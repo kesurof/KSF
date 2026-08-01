@@ -1,0 +1,30 @@
+services:
+  speedtest-tracker:
+    image: lscr.io/linuxserver/speedtest-tracker:v1.14.6-ls164
+    container_name: ${APP_INSTANCE}
+    restart: unless-stopped
+    networks:
+      - proxy
+    ${APP_PORTS_BLOCK}
+    env_file:
+      # Generated per instance by pre_install.sh with mode 600.
+      - ./.env
+    environment:
+      - PUID=${APP_PUID}
+      - PGID=${APP_PGID}
+      - TZ=${TZ_VALUE}
+      - APP_TIMEZONE=${TZ_VALUE}
+      - DB_CONNECTION=sqlite
+    volumes:
+      - ${BASE_DIR}/data/${APP_INSTANCE}:/config
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+networks:
+  proxy:
+    name: ${NETWORK_NAME}
+    external: true

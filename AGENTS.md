@@ -47,12 +47,14 @@ lib/
     apps/
       dockge/
       radarr/
+      speedtest-tracker/
       webui/
       wordpress/
 templates/
   apps/
     dockge/
     radarr/
+    speedtest-tracker/
     webui/
     wordpress/
   compose/

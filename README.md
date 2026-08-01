@@ -396,7 +396,23 @@ Exemples :
 ./app.sh install radarr --domain example.com --subdomain films --auth
 ./app.sh install wordpress --instance blog --domain example.com --subdomain blog
 ./app.sh install wordpress --host blog.example.net --no-auth
+./app.sh install speedtest-tracker --domain example.com --subdomain speedtest --auth
 ```
+
+### Templates fournis par défaut
+
+| Template | Description | Catégorie | Port interne |
+|---|---|---|---|
+| `dockge` | Gestionnaire de stacks Docker | admin | 5001 |
+| `radarr` | Gestion de films | media | 7878 |
+| `speedtest-tracker` | Suivi des performances internet | monitoring | 80 |
+| `wordpress` | Site optimisé (PHP-FPM + MariaDB + Redis) | content | 80 |
+
+`speedtest-tracker` embarque une clé de chiffrement `APP_KEY` et son `APP_URL`
+générés par le hook `pre_install.sh` dans `apps/<instance>/.env` (permissions
+`600`). La clé est préservée lors des `update` / `rebuild` / réinstallation pour
+conserver les valeurs chiffrées en base ; `APP_URL` est régénéré depuis la
+configuration d'accès courante.
 
 Après installation, tu peux modifier uniquement l'accès d'une app sans la réinstaller :
 
