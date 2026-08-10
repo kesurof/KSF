@@ -45,6 +45,7 @@ lib/
   update_steps.sh
   templates/
     apps/
+      baseo/
       dockge/
       radarr/
       speedtest-tracker/
@@ -52,6 +53,7 @@ lib/
       wordpress/
 templates/
   apps/
+    baseo/
     dockge/
     radarr/
     speedtest-tracker/

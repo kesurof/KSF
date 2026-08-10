@@ -1,0 +1,66 @@
+services:
+  baseo:
+    image: ${BASEO_IMAGE:-ghcr.io/kesurof/baseo:1.0.0-rc.2}
+    container_name: ${APP_INSTANCE}-baseo
+    restart: unless-stopped
+    networks:
+      - proxy
+    ${APP_PORTS_BLOCK}
+    env_file:
+      # Generated per instance by pre_install.sh with mode 600.
+      - ./.env
+    environment:
+      PUID: ${APP_PUID}
+      PGID: ${APP_PGID}
+      TZ: ${TZ_VALUE}
+      UMASK: "022"
+      STORAGE_ROOT: /data
+      BACKUP_ROOT: /config/backups
+    labels:
+      baseo.auth.bypass: "false"
+      baseo.auth.mode: internal
+    volumes:
+      - ${BASE_DIR}/data/${APP_INSTANCE}/files:/data
+      - ${BASE_DIR}/data/${APP_INSTANCE}/config:/config
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: ${APP_INSTANCE}-postgres
+    restart: unless-stopped
+    networks:
+      - proxy
+    env_file:
+      # Generated per instance by pre_install.sh with mode 600.
+      - ./.env
+    environment:
+      TZ: ${TZ_VALUE}
+    volumes:
+      - baseo-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U baseo -d baseo"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  proxy:
+    name: ${NETWORK_NAME}
+    external: true
+
+volumes:
+  baseo-postgres:
+    name: baseo-${APP_INSTANCE}-postgres

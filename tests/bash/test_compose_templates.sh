@@ -44,6 +44,7 @@ CROWDSEC_APPSEC_ENABLED=false
 APP_PUID="$(id -u)"
 APP_PGID="$(id -g)"
 DRY_RUN=false
+AUTO_YES=true
 
 render_and_validate() {
   local template="$1"
@@ -57,7 +58,7 @@ render_and_validate templates/compose/traefik.yml "${TMP_DIR}/traefik/docker-com
 render_and_validate templates/compose/oauth2-proxy.yml "${TMP_DIR}/oauth2-proxy/docker-compose.yml"
 render_and_validate templates/compose/crowdsec.yml "${TMP_DIR}/crowdsec/docker-compose.yml"
 
-for app in dockge radarr speedtest-tracker wordpress; do
+for app in baseo dockge radarr speedtest-tracker wordpress; do
   APP_NAME="${app}"
   APP_INSTANCE="${app}"
   APP_TEMPLATE_DIR="${ROOT_DIR}/templates/apps/${app}"

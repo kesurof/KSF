@@ -403,6 +403,7 @@ Exemples :
 
 | Template | Description | Catégorie | Port interne |
 |---|---|---|---|
+| `baseo` | Gestion documentaire et comptes entreprises | content | 3000 |
 | `dockge` | Gestionnaire de stacks Docker | admin | 5001 |
 | `radarr` | Gestion de films | media | 7878 |
 | `speedtest-tracker` | Suivi des performances internet | monitoring | 80 |
@@ -413,6 +414,35 @@ générés par le hook `pre_install.sh` dans `apps/<instance>/.env` (permissions
 `600`). La clé est préservée lors des `update` / `rebuild` / réinstallation pour
 conserver les valeurs chiffrées en base ; `APP_URL` est régénéré depuis la
 configuration d'accès courante.
+
+`baseo` embarque sa propre authentification interne (compte administrateur
+initial, connexion, demande de création d'entreprise et codes d'invitation).
+Son template déclare donc `APP_PROTECTED=false` explicitement et publie une
+route publique derrière Traefik (middlewares CrowdSec le cas échéant). Les
+secrets (`BASEO_ADMIN_EMAIL`, `BASEO_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`,
+`BASEO_BACKUP_PASSPHRASE`, etc.) sont générés par le hook `pre_install.sh`
+dans `apps/<instance>/.env` (permissions `600`) et préservés lors des `update` /
+`rebuild` ; `BASEO_IMAGE` y est versionné pour piloter les mises à jour.
+
+Lors d'une installation interactive (`app.sh install baseo`), KSF pose après
+les questions de domaine les questions du compte administrateur initial :
+
+```text
+Compte administrateur initial Baseo
+  Adresse email (défaut: admin@example.com) : admin@example.com
+  Mot de passe (vide = générer un mot de passe aléatoire) :
+```
+
+En non-interactif (`--yes`), les valeurs par défaut sont utilisées et
+surchargeables via l'environnement :
+
+```bash
+BASEO_ADMIN_EMAIL=admin@example.com BASEO_ADMIN_PASSWORD=mon-mot-de-passe \
+  ./app.sh install baseo --subdomain baseo --no-auth --yes
+```
+
+Après le premier démarrage, le mot de passe se change dans l'interface Baseo,
+pas en modifiant `.env`.
 
 Après installation, tu peux modifier uniquement l'accès d'une app sans la réinstaller :
 
